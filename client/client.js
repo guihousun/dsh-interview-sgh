@@ -37,7 +37,7 @@ __export(index_exports, {
   resolveToolView: () => resolveToolView
 });
 module.exports = __toCommonJS(index_exports);
-var import_react9 = __toESM(require("react"), 1);
+var import_react10 = __toESM(require("react"), 1);
 
 // src/client/features/live-interview.js
 var import_react5 = __toESM(require("react"), 1);
@@ -1020,20 +1020,33 @@ function PracticeSummaryCard({ artifact, revision }) {
 }
 
 // src/client/features/practice-library.js
+var import_react7 = __toESM(require("react"), 1);
+
+// src/client/features/practice-config.js
 var import_react6 = __toESM(require("react"), 1);
-var MODE_OPTIONS = [
+var PRACTICE_MODE_OPTIONS = Object.freeze([
   { value: "bagu", label: "\u80CC\u516B\u80A1" },
   { value: "mock", label: "\u6A21\u62DF\u9762\u8BD5" },
   { value: "scenario", label: "\u573A\u666F\u9898" },
   { value: "leetcode", label: "\u5237\u529B\u6263" }
-];
-var CODING_OPTIONS = [{ value: "true", label: "\u662F" }, { value: "false", label: "\u5426" }];
-var DIFFICULTY_OPTIONS = [
+]);
+var CODING_OPTIONS = Object.freeze([
+  { value: "true", label: "\u662F" },
+  { value: "false", label: "\u5426" }
+]);
+var DIFFICULTY_OPTIONS = Object.freeze([
   { value: "junior", label: "\u521D\u7EA7" },
   { value: "intermediate", label: "\u4E2D\u7EA7" },
   { value: "senior", label: "\u9AD8\u7EA7" }
-];
-function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
+]);
+function PracticeConfigForm({
+  initial = null,
+  busy = false,
+  disabled = false,
+  onSubmit,
+  onCancel = null,
+  submitLabel = ""
+}) {
   const [mode, setMode] = import_react6.default.useState(initial?.mode || "");
   const [topic, setTopic] = import_react6.default.useState(initial?.config?.topic || "");
   const [resume, setResume] = import_react6.default.useState(initial?.config?.resume || "");
@@ -1044,7 +1057,7 @@ function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
   const topicMode = mode === "bagu" || mode === "scenario";
   const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language) : mode === "mock" && Boolean(resume.trim() && interviewerStyle.trim() && coding && difficulty);
   const submit = () => {
-    if (!valid) return;
+    if (!valid || disabled) return;
     onSubmit(mode === "mock" ? { mode, config: { resume: resume.trim(), interviewerStyle: interviewerStyle.trim(), coding: coding === "true", difficulty } } : mode === "leetcode" ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } });
   };
   return h(
@@ -1054,19 +1067,19 @@ function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
       "label",
       { className: "di-field" },
       h("span", null, "\u6A21\u5F0F"),
-      h(Select, { value: mode, options: MODE_OPTIONS, onChange: setMode, "aria-label": "\u9009\u62E9\u7EC3\u4E60\u6A21\u5F0F" })
+      h(Select, { value: mode, options: PRACTICE_MODE_OPTIONS, disabled, onChange: setMode, "aria-label": "\u9009\u62E9\u7EC3\u4E60\u6A21\u5F0F" })
     ),
     topicMode ? h(
       "label",
       { className: "di-field" },
       h("span", null, "\u4E3B\u9898"),
-      h("input", { className: "di-input", value: topic, onChange: (event) => setTopic(event.target.value) })
+      h("input", { className: "di-input", disabled, value: topic, onChange: (event) => setTopic(event.target.value) })
     ) : null,
     mode === "leetcode" ? h(
       "label",
       { className: "di-field" },
       h("span", null, "\u7F16\u7A0B\u8BED\u8A00"),
-      h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), onChange: setLanguage, "aria-label": "\u9009\u62E9\u7F16\u7A0B\u8BED\u8A00" })
+      h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), disabled, onChange: setLanguage, "aria-label": "\u9009\u62E9\u7F16\u7A0B\u8BED\u8A00" })
     ) : null,
     mode === "mock" ? h(
       import_react6.default.Fragment,
@@ -1075,43 +1088,45 @@ function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
         "label",
         { className: "di-field di-field-wide" },
         h("span", null, "\u7B80\u5386"),
-        h("textarea", { className: "di-input di-textarea", value: resume, onChange: (event) => setResume(event.target.value) })
+        h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
       ),
       h(
         "label",
         { className: "di-field" },
         h("span", null, "\u9762\u8BD5\u5B98\u98CE\u683C"),
-        h("input", { className: "di-input", value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })
+        h("input", { className: "di-input", disabled, value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })
       ),
       h(
         "label",
         { className: "di-field" },
         h("span", null, "\u662F\u5426\u624B\u6495\u4EE3\u7801"),
-        h(Select, { value: coding, options: CODING_OPTIONS, onChange: setCoding, "aria-label": "\u9009\u62E9\u662F\u5426\u624B\u6495\u4EE3\u7801" })
+        h(Select, { value: coding, options: CODING_OPTIONS, disabled, onChange: setCoding, "aria-label": "\u9009\u62E9\u662F\u5426\u624B\u6495\u4EE3\u7801" })
       ),
       h(
         "label",
         { className: "di-field" },
         h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
-        h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
+        h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
       )
     ) : null,
     h(
       "div",
       { className: "di-actions di-field-wide" },
-      h(Button, { onClick: onCancel }, "\u53D6\u6D88"),
-      h(Button, { tone: "primary", disabled: !valid, busy, onClick: submit }, initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60")
+      onCancel ? h(Button, { disabled, onClick: onCancel }, "\u53D6\u6D88") : null,
+      h(Button, { tone: "primary", disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60"))
     )
   );
 }
+
+// src/client/features/practice-library.js
 function PracticeDetail({ practice, sessionId, onDeleted }) {
   const command = useCommand(sessionId);
-  const [confirming, setConfirming] = import_react6.default.useState(false);
-  const [editing, setEditing] = import_react6.default.useState(false);
-  const [editingQuestionId, setEditingQuestionId] = import_react6.default.useState(null);
-  const [questionDraft, setQuestionDraft] = import_react6.default.useState("");
-  const [deletingQuestionId, setDeletingQuestionId] = import_react6.default.useState(null);
-  const [downloads, setDownloads] = import_react6.default.useState([]);
+  const [confirming, setConfirming] = import_react7.default.useState(false);
+  const [editing, setEditing] = import_react7.default.useState(false);
+  const [editingQuestionId, setEditingQuestionId] = import_react7.default.useState(null);
+  const [questionDraft, setQuestionDraft] = import_react7.default.useState("");
+  const [deletingQuestionId, setDeletingQuestionId] = import_react7.default.useState(null);
+  const [downloads, setDownloads] = import_react7.default.useState([]);
   if (!practice) return h(Empty, { title: "\u9009\u62E9\u4E00\u6761\u7EC3\u4E60", detail: "\u53F3\u4FA7\u4F1A\u5C55\u793A\u9898\u76EE\u3001\u5386\u6B21\u4F5C\u7B54\u548C\u8BB2\u89E3\u3002" });
   const run = (name2, payload) => command.run(name2, payload).catch(() => null);
   const activate = async () => {
@@ -1184,7 +1199,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
         )
       )
     ) : null,
-    editing ? h(PracticeForm, { initial: practice, busy: command.busy === "practice.update", onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
+    editing ? h(PracticeConfigForm, { initial: practice, busy: command.busy === "practice.update", onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
     h(ErrorNotice, null, command.error),
     practice.summary?.kind === "leetcode" ? h(
       "section",
@@ -1240,7 +1255,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
           "div",
           { className: "di-detail-actions" },
           !question.leetcode && editingQuestionId === question.id ? h(
-            import_react6.default.Fragment,
+            import_react7.default.Fragment,
             null,
             h(Button, { tone: "primary", disabled: !questionDraft.trim(), busy: command.busy === "question.update", onClick: () => updateQuestion(question.id) }, "\u4FDD\u5B58\u9898\u76EE"),
             h(Button, { onClick: () => {
@@ -1276,16 +1291,16 @@ function PracticeLibrary({
   title = "\u7EC3\u4E60\u6863\u6848",
   allowCreate = false
 }) {
-  const [queryText, setQueryText] = import_react6.default.useState("");
-  const [mode, setMode] = import_react6.default.useState("");
-  const [selectedId, setSelectedId] = import_react6.default.useState(initialPracticeId);
-  const [confirmingId, setConfirmingId] = import_react6.default.useState(null);
-  const [downloads, setDownloads] = import_react6.default.useState([]);
-  const [creating, setCreating] = import_react6.default.useState(false);
+  const [queryText, setQueryText] = import_react7.default.useState("");
+  const [mode, setMode] = import_react7.default.useState("");
+  const [selectedId, setSelectedId] = import_react7.default.useState(initialPracticeId);
+  const [confirmingId, setConfirmingId] = import_react7.default.useState(null);
+  const [downloads, setDownloads] = import_react7.default.useState([]);
+  const [creating, setCreating] = import_react7.default.useState(false);
   const command = useCommand(sessionId);
   const effectiveStatus = statusScope === "active" ? "active" : "completed";
   const normalizedQuery = queryText.trim();
-  const modeFilter = MODE_OPTIONS.some((option) => option.value === mode) ? mode : void 0;
+  const modeFilter = PRACTICE_MODE_OPTIONS.some((option) => option.value === mode) ? mode : void 0;
   const filters = { query: normalizedQuery || void 0, mode: modeFilter, status: effectiveStatus };
   const list = useInterviewQuery(
     `practices:${normalizedQuery}:${modeFilter || "all"}:${effectiveStatus}`,
@@ -1368,12 +1383,12 @@ function PracticeLibrary({
       h("h2", { className: "di-ledger-title" }, title),
       allowCreate ? h(Button, { tone: "primary", onClick: () => setCreating((value) => !value) }, h(Icon, { name: "plus", size: 15 }), "\u65B0\u5EFA\u7EC3\u4E60") : null
     ),
-    allowCreate && creating ? h(PracticeForm, { busy: command.busy === "session.start", onSubmit: createPractice, onCancel: () => setCreating(false) }) : null,
+    allowCreate && creating ? h(PracticeConfigForm, { busy: command.busy === "session.start", onSubmit: createPractice, onCancel: () => setCreating(false) }) : null,
     h(
       "div",
       { className: "di-history-filters" },
       h("input", { className: "di-input", value: queryText, onChange: (event) => setQueryText(event.target.value), placeholder: "\u641C\u7D22\u7EC3\u4E60\u4E3B\u9898", "aria-label": "\u641C\u7D22\u7EC3\u4E60\u4E3B\u9898" }),
-      h(Select, { className: "di-history-mode-select", value: mode, options: [{ value: "", label: "\u5168\u90E8\u6A21\u5F0F" }, ...MODE_OPTIONS], onChange: setMode, "aria-label": "\u7B5B\u9009\u6A21\u5F0F" })
+      h(Select, { className: "di-history-mode-select", value: mode, options: [{ value: "", label: "\u5168\u90E8\u6A21\u5F0F" }, ...PRACTICE_MODE_OPTIONS], onChange: setMode, "aria-label": "\u7B5B\u9009\u6A21\u5F0F" })
     ),
     h(ErrorNotice, null, list.error),
     downloads.length ? h("div", { className: "di-notice" }, downloads.map((file) => h("a", { className: "di-link", href: interviewApi.downloadUrl(file.token), key: file.token }, `\u4E0B\u8F7D ${file.name}`))) : null,
@@ -1460,7 +1475,7 @@ function InsightsCard() {
 }
 
 // src/client/features/timeline.js
-var import_react7 = __toESM(require("react"), 1);
+var import_react8 = __toESM(require("react"), 1);
 var TIMELINE_VIEWS = [
   { id: "question", label: "\u9898\u76EE" },
   { id: "attempts", label: "\u4F5C\u7B54\u8BB0\u5F55" },
@@ -1515,7 +1530,7 @@ function TimelineContent({ question, view }) {
   );
 }
 function TimelinePanel({ sessionId, revisionSignal }) {
-  const [selection, setSelection] = import_react7.default.useState(null);
+  const [selection, setSelection] = import_react8.default.useState(null);
   const sessionQuery = useInterviewQuery(`timeline-session:${sessionId}:${revisionSignal}`, () => interviewApi.session(sessionId), [sessionId, revisionSignal], { cache: false });
   const session = sessionQuery.data?.resource?.data;
   const practiceId = session?.practice?.id || null;
@@ -1578,7 +1593,7 @@ function TimelinePanel({ sessionId, revisionSignal }) {
 }
 
 // src/client/features/workspace-dock.js
-var import_react8 = __toESM(require("react"), 1);
+var import_react9 = __toESM(require("react"), 1);
 var WORKSPACE_TABS = Object.freeze([
   { id: "active", label: "\u8FDB\u884C\u4E2D", icon: "clock" },
   { id: "library", label: "\u7EC3\u4E60\u6863\u6848", icon: "archive" },
@@ -1623,15 +1638,15 @@ function WorkspaceContent({ tab, sessionId }) {
   return null;
 }
 function WorkspaceDock({ sessionId }) {
-  const [open, setOpen] = import_react8.default.useState(false);
-  const [tab, setTab] = import_react8.default.useState("active");
-  const [notice, setNotice] = import_react8.default.useState("");
-  const [launcherPosition, setLauncherPosition] = import_react8.default.useState(loadLauncherPosition);
-  const [draggingLauncher, setDraggingLauncher] = import_react8.default.useState(false);
-  const launcherRef = import_react8.default.useRef(null);
-  const launcherPositionRef = import_react8.default.useRef(launcherPosition);
-  const launcherDragRef = import_react8.default.useRef(null);
-  const suppressLauncherClickRef = import_react8.default.useRef(false);
+  const [open, setOpen] = import_react9.default.useState(false);
+  const [tab, setTab] = import_react9.default.useState("active");
+  const [notice, setNotice] = import_react9.default.useState("");
+  const [launcherPosition, setLauncherPosition] = import_react9.default.useState(loadLauncherPosition);
+  const [draggingLauncher, setDraggingLauncher] = import_react9.default.useState(false);
+  const launcherRef = import_react9.default.useRef(null);
+  const launcherPositionRef = import_react9.default.useRef(launcherPosition);
+  const launcherDragRef = import_react9.default.useRef(null);
+  const suppressLauncherClickRef = import_react9.default.useRef(false);
   launcherPositionRef.current = launcherPosition;
   const activeQuery = useInterviewQuery(
     `workspace-active-count:${open}`,
@@ -1640,7 +1655,7 @@ function WorkspaceDock({ sessionId }) {
     { cache: false }
   );
   const activeCount = activeQuery.data?.resource?.data?.length || 0;
-  import_react8.default.useEffect(() => {
+  import_react9.default.useEffect(() => {
     let timer = null;
     const unsubscribe = interviewApi.subscribeNotifications((message) => {
       if (timer) clearTimeout(timer);
@@ -1652,11 +1667,11 @@ function WorkspaceDock({ sessionId }) {
       unsubscribe();
     };
   }, []);
-  import_react8.default.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab) => {
+  import_react9.default.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab) => {
     if (WORKSPACE_TABS.some((item) => item.id === nextTab)) setTab(nextTab);
     setOpen(true);
   }), []);
-  import_react8.default.useEffect(() => {
+  import_react9.default.useEffect(() => {
     const keepLauncherInViewport = () => {
       const rect = launcherRef.current?.getBoundingClientRect();
       const current = launcherPositionRef.current;
@@ -1709,7 +1724,7 @@ function WorkspaceDock({ sessionId }) {
     setDraggingLauncher(false);
   };
   return h(
-    import_react8.default.Fragment,
+    import_react9.default.Fragment,
     null,
     h("button", {
       ref: launcherRef,

@@ -129,6 +129,7 @@ test('界面只对主标题使用粗体且不渲染装饰性副标题', () => {
   const featureFiles = [
     '../../src/client/features/leetcode.js',
     '../../src/client/features/live-interview.js',
+    '../../src/client/features/practice-config.js',
     '../../src/client/features/practice-library.js',
     '../../src/client/features/timeline.js',
     '../../src/client/features/workspace-dock.js',
@@ -184,11 +185,11 @@ test('力扣题目卡使用讲解入口且不重复展示题目列表入口', ()
 })
 
 test('力扣练习表单必须显式选择编程语言', () => {
-  const library = readFileSync(new URL('../../src/client/features/practice-library.js', import.meta.url), 'utf8')
-  assert.match(library, /initial\?\.config\?\.language \|\| ''/)
-  assert.match(library, /mode === 'leetcode' \? Boolean\(language\)/)
-  assert.match(library, /h\('span', null, '编程语言'\)/)
-  assert.match(library, /config: \{ language \}/)
+  const config = readFileSync(new URL('../../src/client/features/practice-config.js', import.meta.url), 'utf8')
+  assert.match(config, /initial\?\.config\?\.language \|\| ''/)
+  assert.match(config, /mode === 'leetcode' \? Boolean\(language\)/)
+  assert.match(config, /h\('span', null, '编程语言'\)/)
+  assert.match(config, /config: \{ language \}/)
 })
 
 test('力扣结束卡和档案只展示本次刷题汇总', () => {

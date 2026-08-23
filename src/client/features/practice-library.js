@@ -3,59 +3,8 @@ import { interviewApi } from '../shared/api.js'
 import { useCommand, useInterviewQuery } from '../shared/hooks.js'
 import { Button, Empty, ErrorNotice, h, Icon, Loading, Markdown, ScoreRail, Select } from '../shared/ui.js'
 import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
-import { LEETCODE_LANGUAGES, leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
-
-const MODE_OPTIONS = [
-  { value: 'bagu', label: '背八股' },
-  { value: 'mock', label: '模拟面试' },
-  { value: 'scenario', label: '场景题' },
-  { value: 'leetcode', label: '刷力扣' },
-]
-const CODING_OPTIONS = [{ value: 'true', label: '是' }, { value: 'false', label: '否' }]
-const DIFFICULTY_OPTIONS = [
-  { value: 'junior', label: '初级' },
-  { value: 'intermediate', label: '中级' },
-  { value: 'senior', label: '高级' },
-]
-
-function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
-  const [mode, setMode] = React.useState(initial?.mode || '')
-  const [topic, setTopic] = React.useState(initial?.config?.topic || '')
-  const [resume, setResume] = React.useState(initial?.config?.resume || '')
-  const [interviewerStyle, setInterviewerStyle] = React.useState(initial?.config?.interviewerStyle || '')
-  const [coding, setCoding] = React.useState(typeof initial?.config?.coding === 'boolean' ? String(initial.config.coding) : '')
-  const [difficulty, setDifficulty] = React.useState(initial?.config?.difficulty || '')
-  const [language, setLanguage] = React.useState(initial?.config?.language || '')
-  const topicMode = mode === 'bagu' || mode === 'scenario'
-  const valid = topicMode
-    ? Boolean(topic.trim())
-    : mode === 'leetcode' ? Boolean(language) : mode === 'mock' && Boolean(resume.trim() && interviewerStyle.trim() && coding && difficulty)
-  const submit = () => {
-    if (!valid) return
-    onSubmit(mode === 'mock'
-      ? { mode, config: { resume: resume.trim(), interviewerStyle: interviewerStyle.trim(), coding: coding === 'true', difficulty } }
-      : mode === 'leetcode' ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } })
-  }
-  return h('div', { className: 'di-practice-form' },
-    h('label', { className: 'di-field' }, h('span', null, '模式'),
-      h(Select, { value: mode, options: MODE_OPTIONS, onChange: setMode, 'aria-label': '选择练习模式' })),
-    topicMode ? h('label', { className: 'di-field' }, h('span', null, '主题'),
-      h('input', { className: 'di-input', value: topic, onChange: (event) => setTopic(event.target.value) })) : null,
-    mode === 'leetcode' ? h('label', { className: 'di-field' }, h('span', null, '编程语言'),
-      h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), onChange: setLanguage, 'aria-label': '选择编程语言' })) : null,
-    mode === 'mock' ? h(React.Fragment, null,
-      h('label', { className: 'di-field di-field-wide' }, h('span', null, '简历'),
-        h('textarea', { className: 'di-input di-textarea', value: resume, onChange: (event) => setResume(event.target.value) })),
-      h('label', { className: 'di-field' }, h('span', null, '面试官风格'),
-        h('input', { className: 'di-input', value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })),
-      h('label', { className: 'di-field' }, h('span', null, '是否手撕代码'),
-        h(Select, { value: coding, options: CODING_OPTIONS, onChange: setCoding, 'aria-label': '选择是否手撕代码' })),
-      h('label', { className: 'di-field' }, h('span', null, '面试难度'),
-        h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, onChange: setDifficulty, 'aria-label': '选择面试难度' }))) : null,
-    h('div', { className: 'di-actions di-field-wide' },
-      h(Button, { onClick: onCancel }, '取消'),
-      h(Button, { tone: 'primary', disabled: !valid, busy, onClick: submit }, initial ? '保存配置' : '开始练习')))
-}
+import { leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
+import { PRACTICE_MODE_OPTIONS, PracticeConfigForm } from './practice-config.js'
 
 function PracticeDetail({ practice, sessionId, onDeleted }) {
   const command = useCommand(sessionId)
@@ -117,7 +66,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
         h('div', { className: 'di-actions' },
           h(Button, { onClick: () => setConfirming(false) }, '取消'),
           h(Button, { tone: 'danger', busy: command.busy === 'library.delete', onClick: remove }, '确认删除')))) : null,
-    editing ? h(PracticeForm, { initial: practice, busy: command.busy === 'practice.update', onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
+    editing ? h(PracticeConfigForm, { initial: practice, busy: command.busy === 'practice.update', onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
     h(ErrorNotice, null, command.error),
     practice.summary?.kind === 'leetcode' ? h('section', { className: 'di-section' },
       h('div', { className: 'di-section-label' }, '刷题汇总'),
@@ -187,7 +136,7 @@ export function PracticeLibrary({
   const command = useCommand(sessionId)
   const effectiveStatus = statusScope === 'active' ? 'active' : 'completed'
   const normalizedQuery = queryText.trim()
-  const modeFilter = MODE_OPTIONS.some((option) => option.value === mode) ? mode : undefined
+  const modeFilter = PRACTICE_MODE_OPTIONS.some((option) => option.value === mode) ? mode : undefined
   const filters = { query: normalizedQuery || undefined, mode: modeFilter, status: effectiveStatus }
   const list = useInterviewQuery(
     `practices:${normalizedQuery}:${modeFilter || 'all'}:${effectiveStatus}`,
@@ -257,10 +206,10 @@ export function PracticeLibrary({
     h('header', { className: 'di-history-head' },
       h('h2', { className: 'di-ledger-title' }, title),
       allowCreate ? h(Button, { tone: 'primary', onClick: () => setCreating((value) => !value) }, h(Icon, { name: 'plus', size: 15 }), '新建练习') : null),
-    allowCreate && creating ? h(PracticeForm, { busy: command.busy === 'session.start', onSubmit: createPractice, onCancel: () => setCreating(false) }) : null,
+    allowCreate && creating ? h(PracticeConfigForm, { busy: command.busy === 'session.start', onSubmit: createPractice, onCancel: () => setCreating(false) }) : null,
     h('div', { className: 'di-history-filters' },
       h('input', { className: 'di-input', value: queryText, onChange: (event) => setQueryText(event.target.value), placeholder: '搜索练习主题', 'aria-label': '搜索练习主题' }),
-      h(Select, { className: 'di-history-mode-select', value: mode, options: [{ value: '', label: '全部模式' }, ...MODE_OPTIONS], onChange: setMode, 'aria-label': '筛选模式' })),
+      h(Select, { className: 'di-history-mode-select', value: mode, options: [{ value: '', label: '全部模式' }, ...PRACTICE_MODE_OPTIONS], onChange: setMode, 'aria-label': '筛选模式' })),
     h(ErrorNotice, null, list.error),
     downloads.length ? h('div', { className: 'di-notice' }, downloads.map((file) =>
       h('a', { className: 'di-link', href: interviewApi.downloadUrl(file.token), key: file.token }, `下载 ${file.name}`))) : null,
