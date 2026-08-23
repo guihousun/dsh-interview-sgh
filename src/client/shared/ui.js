@@ -78,19 +78,19 @@ export function toolErrorAudience(block) {
   return code === 'INVALID_ARGS' ? 'agent' : 'user'
 }
 
-export function PhaseBadge({ phase }) {
+export function PhaseBadge({ stage }) {
   const labels = {
-    awaiting_question: '准备出题',
-    awaiting_solution: '刷题中',
-    awaiting_answer: '等待回答',
-    awaiting_evaluation: '正在评价',
-    generating_explanation: '正在生成点评讲解',
-    generating_summary: '正在生成练习总结',
-    awaiting_next: '点评讲解完成',
+    ready_for_question: '准备出题',
+    solving: '刷题中',
+    ready_for_next: '可抽下一题',
+    answerable: '等待回答',
+    needs_evaluation: '待评价',
+    needs_explanation: '待讲解',
+    reviewed: '点评讲解完成',
     completed: '练习已结束',
     idle: '未选择练习',
   }
-  return h('span', { className: `di-phase di-phase-${phase || 'idle'}` }, labels[phase] || phase)
+  return h('span', { className: `di-phase di-phase-${stage || 'idle'}` }, labels[stage] || stage)
 }
 
 export function ScoreRail({ score, compact = false }) {

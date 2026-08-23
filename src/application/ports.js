@@ -1,11 +1,11 @@
 const REQUIRED_REPOSITORY_METHODS = [
   'getPractice',
   'listPractices',
-  'getCursor',
-  'getCursorByPractice',
+  'getSessionBinding',
+  'getSessionBindingByPractice',
   'commit',
   'deletePractice',
-  'clearCursor',
+  'clearSessionBinding',
   'listLeetcodeProgress',
   'saveLeetcodeProgress',
 ]

@@ -8,7 +8,7 @@ test('原子操作通过真实数据推进完整知识练习', async () => {
     mode: 'bagu', config: { topic: 'JVM' },
   })
   const practiceId = created.resource.data.id
-  assert.equal(created.agentTasks.length, 0)
+  assert.equal('agentTasks' in created, false)
 
   let session = await fixture.application.readAtomicSession('session-1')
   assert.equal(session.resource.data.stage, 'ready_for_question')

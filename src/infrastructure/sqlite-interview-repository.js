@@ -59,16 +59,6 @@ export class SqliteInterviewRepository {
         UNIQUE (question_id, sequence)
       );
 
-      CREATE TABLE IF NOT EXISTS session_cursors (
-        session_id TEXT PRIMARY KEY,
-        practice_id TEXT NOT NULL UNIQUE REFERENCES practices(id) ON DELETE CASCADE,
-        question_id TEXT,
-        attempt_id TEXT,
-        phase TEXT NOT NULL,
-        revision INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-
       CREATE TABLE IF NOT EXISTS session_bindings (
         session_id TEXT PRIMARY KEY,
         practice_id TEXT NOT NULL UNIQUE REFERENCES practices(id) ON DELETE CASCADE,
@@ -158,16 +148,6 @@ export class SqliteInterviewRepository {
     return Promise.all(rows.map((row) => this.getPractice(row.id)))
   }
 
-  async getCursor(sessionId) {
-    const row = this.database.prepare('SELECT * FROM session_cursors WHERE session_id = ?').get(sessionId)
-    return this.#readCursor(row)
-  }
-
-  async getCursorByPractice(practiceId) {
-    const row = this.database.prepare('SELECT * FROM session_cursors WHERE practice_id = ?').get(practiceId)
-    return this.#readCursor(row)
-  }
-
   async getSessionBinding(sessionId) {
     const row = this.database.prepare('SELECT * FROM session_bindings WHERE session_id = ?').get(sessionId)
     return this.#readSessionBinding(row)
@@ -183,18 +163,6 @@ export class SqliteInterviewRepository {
       sessionId: row.session_id,
       practiceId: row.practice_id,
       currentQuestionId: row.current_question_id,
-      revision: row.revision,
-      updatedAt: row.updated_at,
-    } : null
-  }
-
-  #readCursor(row) {
-    return row ? {
-      sessionId: row.session_id,
-      practiceId: row.practice_id,
-      questionId: row.question_id,
-      attemptId: row.attempt_id,
-      phase: row.phase,
       revision: row.revision,
       updatedAt: row.updated_at,
     } : null
@@ -270,24 +238,6 @@ export class SqliteInterviewRepository {
     }
   }
 
-  #writeCursor(cursor) {
-    this.database.prepare('DELETE FROM session_cursors WHERE session_id = ? OR practice_id = ?')
-      .run(cursor.sessionId, cursor.practiceId)
-    this.database.prepare(`
-      INSERT INTO session_cursors (
-        session_id, practice_id, question_id, attempt_id, phase, revision, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      cursor.sessionId,
-      cursor.practiceId,
-      cursor.questionId,
-      cursor.attemptId,
-      cursor.phase,
-      cursor.revision,
-      cursor.updatedAt,
-    )
-  }
-
   #writeSessionBinding(binding) {
     this.database.prepare('DELETE FROM session_bindings WHERE session_id = ? OR practice_id = ?')
       .run(binding.sessionId, binding.practiceId)
@@ -304,13 +254,11 @@ export class SqliteInterviewRepository {
     )
   }
 
-  async commit({ practice, practices = [], cursor, binding, unbindSessionId }) {
+  async commit({ practice, practices = [], binding, unbindSessionId }) {
     this.database.exec('BEGIN IMMEDIATE')
     try {
       for (const item of [...practices, ...(practice ? [practice] : [])]) this.#writePractice(item)
-      if (unbindSessionId) this.database.prepare('DELETE FROM session_cursors WHERE session_id = ?').run(unbindSessionId)
       if (unbindSessionId) this.database.prepare('DELETE FROM session_bindings WHERE session_id = ?').run(unbindSessionId)
-      if (cursor) this.#writeCursor(cursor)
       if (binding) this.#writeSessionBinding(binding)
       this.database.exec('COMMIT')
     } catch (error) {
@@ -321,10 +269,6 @@ export class SqliteInterviewRepository {
 
   async deletePractice(id) {
     this.database.prepare('DELETE FROM practices WHERE id = ?').run(id)
-  }
-
-  async clearCursor(sessionId) {
-    this.database.prepare('DELETE FROM session_cursors WHERE session_id = ?').run(sessionId)
   }
 
   async clearSessionBinding(sessionId) {

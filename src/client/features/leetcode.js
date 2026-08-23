@@ -85,7 +85,7 @@ export function LeetcodeCatalog({ sessionId }) {
     })))
 }
 
-function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, phase, nextRequested, onRun, onNext, onExplain }) {
+function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, nextRequested, onRun, onNext, onExplain }) {
   const saved = catalogProblem(catalog, question.leetcode.slug)
   const problem = { ...question.leetcode, completed: saved?.completed === true }
   return h('article', { className: `di-card di-lc-problem-card${active ? ' is-active' : ' is-history'}`, 'aria-label': active ? '当前力扣题目' : '历史力扣题目' },
@@ -105,7 +105,7 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
           }, problem.completed ? '标记未完成' : '标记完成'),
           h(Button, { disabled: nextRequested, onClick: onNext }, nextRequested ? '已出下一题' : '随机下一题'),
           h(Button, {
-            busy: command.busy === 'question.reveal' || phase === 'generating_explanation',
+            busy: command.busy === 'question.reveal',
             onClick: () => onExplain(question),
           }, '讲解')) : null),
       active ? h(ErrorNotice, null, command.error) : null,
@@ -176,7 +176,7 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, languag
 
   const catalog = catalogQuery.data?.resource?.data
   const active = live
-    ? sessionQuery.loading || Boolean(session?.selected && session?.phase !== 'completed' && sessionQuestion?.id === current.id)
+    ? sessionQuery.loading || Boolean(session?.selected && session?.stage !== 'completed' && sessionQuestion?.id === current.id)
     : true
   return h(LeetcodeQuestionCard, {
     question: current,
@@ -185,7 +185,6 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, languag
     active,
     expanded: showExplanation,
     command,
-    phase: live ? session?.phase : null,
     nextRequested,
     onRun: run,
     onNext: next,

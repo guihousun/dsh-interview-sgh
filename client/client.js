@@ -284,19 +284,19 @@ function toolErrorAudience(block) {
   const code = block?.error?.code || block?.error?.info?.code;
   return code === "INVALID_ARGS" ? "agent" : "user";
 }
-function PhaseBadge({ phase }) {
+function PhaseBadge({ stage }) {
   const labels = {
-    awaiting_question: "\u51C6\u5907\u51FA\u9898",
-    awaiting_solution: "\u5237\u9898\u4E2D",
-    awaiting_answer: "\u7B49\u5F85\u56DE\u7B54",
-    awaiting_evaluation: "\u6B63\u5728\u8BC4\u4EF7",
-    generating_explanation: "\u6B63\u5728\u751F\u6210\u70B9\u8BC4\u8BB2\u89E3",
-    generating_summary: "\u6B63\u5728\u751F\u6210\u7EC3\u4E60\u603B\u7ED3",
-    awaiting_next: "\u70B9\u8BC4\u8BB2\u89E3\u5B8C\u6210",
+    ready_for_question: "\u51C6\u5907\u51FA\u9898",
+    solving: "\u5237\u9898\u4E2D",
+    ready_for_next: "\u53EF\u62BD\u4E0B\u4E00\u9898",
+    answerable: "\u7B49\u5F85\u56DE\u7B54",
+    needs_evaluation: "\u5F85\u8BC4\u4EF7",
+    needs_explanation: "\u5F85\u8BB2\u89E3",
+    reviewed: "\u70B9\u8BC4\u8BB2\u89E3\u5B8C\u6210",
     completed: "\u7EC3\u4E60\u5DF2\u7ED3\u675F",
     idle: "\u672A\u9009\u62E9\u7EC3\u4E60"
   };
-  return h("span", { className: `di-phase di-phase-${phase || "idle"}` }, labels[phase] || phase);
+  return h("span", { className: `di-phase di-phase-${stage || "idle"}` }, labels[stage] || stage);
 }
 function ScoreRail({ score, compact = false }) {
   const normalized = Number.isFinite(Number(score)) ? Math.max(0, Math.min(10, Number(score))) : null;
@@ -680,7 +680,7 @@ function LeetcodeCatalog({ sessionId }) {
     }))
   );
 }
-function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, phase, nextRequested, onRun, onNext, onExplain }) {
+function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, nextRequested, onRun, onNext, onExplain }) {
   const saved = catalogProblem(catalog, question.leetcode.slug);
   const problem = { ...question.leetcode, completed: saved?.completed === true };
   return h(
@@ -712,7 +712,7 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
         }, problem.completed ? "\u6807\u8BB0\u672A\u5B8C\u6210" : "\u6807\u8BB0\u5B8C\u6210"),
         h(Button, { disabled: nextRequested, onClick: onNext }, nextRequested ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898"),
         h(Button, {
-          busy: command.busy === "question.reveal" || phase === "generating_explanation",
+          busy: command.busy === "question.reveal",
           onClick: () => onExplain(question)
         }, "\u8BB2\u89E3")
       ) : null
@@ -777,7 +777,7 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = "",
     }
   };
   const catalog = catalogQuery.data?.resource?.data;
-  const active = live ? sessionQuery.loading || Boolean(session?.selected && session?.phase !== "completed" && sessionQuestion?.id === current.id) : true;
+  const active = live ? sessionQuery.loading || Boolean(session?.selected && session?.stage !== "completed" && sessionQuestion?.id === current.id) : true;
   return h(LeetcodeQuestionCard, {
     question: current,
     catalog,
@@ -785,7 +785,6 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = "",
     active,
     expanded: showExplanation,
     command,
-    phase: live ? session?.phase : null,
     nextRequested,
     onRun: run,
     onNext: next,
@@ -796,16 +795,16 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = "",
 // src/client/features/question-actions.js
 function isArtifactQuestionCurrent(session, artifact) {
   return Boolean(
-    session?.selected && session.practice?.id === artifact?.practiceId && session.questionId === artifact?.questionId
+    session?.selected && session.practice?.id === artifact?.practiceId && session.currentQuestionId === artifact?.questionId
   );
 }
 function getArtifactQuestionActions(session, artifact) {
   const current = isArtifactQuestionCurrent(session, artifact);
   return {
-    canReveal: current && session.phase === "awaiting_answer",
-    canContinue: current && session.phase === "awaiting_next",
-    canRetry: current && session.phase === "awaiting_next",
-    canFinish: current && session.phase === "awaiting_next"
+    canReveal: current && session.stage === "answerable",
+    canContinue: current && session.stage === "reviewed",
+    canRetry: current && session.stage === "reviewed",
+    canFinish: current && session.stage === "reviewed"
   };
 }
 
@@ -818,7 +817,7 @@ function CompactResultCard({ title, detail, tone = "quiet" }) {
       "div",
       { className: "di-card-head" },
       h("div", { className: "di-title" }, title),
-      h(PhaseBadge, { phase: tone === "completed" ? "completed" : "awaiting_next" })
+      h(PhaseBadge, { stage: tone === "completed" ? "completed" : "reviewed" })
     ),
     detail ? h("div", { className: "di-card-body" }, detail) : null
   );
@@ -987,7 +986,7 @@ function PracticeSummaryCard({ artifact, revision }) {
       "header",
       { className: "di-card-head" },
       h("div", { className: "di-title" }, "\u7EC3\u4E60\u603B\u7ED3"),
-      h(PhaseBadge, { phase: "completed" })
+      h(PhaseBadge, { stage: "completed" })
     ),
     h(
       "div",
@@ -1312,7 +1311,7 @@ function PracticeLibrary({
     const result = await run("session.start", payload);
     if (!result) return;
     setCreating(false);
-    setSelectedId(result.artifact?.practiceId || result.resource?.data?.practice?.id || null);
+    setSelectedId(result.resource?.data?.practice?.id || result.resource?.data?.id || null);
     interviewApi.navigateWorkspace("active");
   };
   const activate = async (practice) => {
@@ -1543,7 +1542,7 @@ function TimelinePanel({ sessionId, revisionSignal }) {
     h("div", { className: "di-time-list" }, practice.questions.map((question) => {
       const active = selection?.questionId === question.id;
       return h("div", {
-        className: `di-time-item${session.questionId === question.id ? " is-current" : ""}${active ? " has-view" : ""}`,
+        className: `di-time-item${session.currentQuestionId === question.id ? " is-current" : ""}${active ? " has-view" : ""}`,
         key: question.id
       }, h(
         "button",
@@ -1798,34 +1797,7 @@ var INTERVIEW_TOOL_NAMES = Object.freeze([
   "interview_show_practice",
   "interview_show_practice_list",
   "interview_show_insights",
-  "interview_show_leetcode_catalog",
-  "interview_start_practice",
-  "interview_update_practice",
-  "interview_continue_practice",
-  "interview_render_current_artifact",
-  "interview_select_practice",
-  "interview_reopen_practice",
-  "interview_finish_practice",
-  "interview_complete_summary",
-  "interview_present_question",
-  "interview_get_question",
-  "interview_update_question",
-  "interview_delete_question",
-  "interview_open_question",
-  "interview_request_next",
-  "interview_retry_question",
-  "interview_reveal_answer",
-  "interview_submit_answer",
-  "interview_save_evaluation",
-  "interview_complete_review",
-  "interview_list_practices",
-  "interview_read_practice_context",
-  "interview_get_practice",
-  "interview_get_insights",
-  "interview_get_leetcode_catalog",
-  "interview_set_leetcode_completion",
-  "interview_export_practices",
-  "interview_delete_practice"
+  "interview_show_leetcode_catalog"
 ]);
 
 // src/client/shared/styles.js
@@ -1838,7 +1810,7 @@ var STYLE_TEXT = `
 .di-card-body{padding:24px}.di-title{font-size:18px;font-weight:var(--di-weight-title)}.di-meta{font-size:12px;line-height:1.5;color:var(--di-muted)}.di-markdown strong,.di-markdown b,.di-markdown h1,.di-markdown h2,.di-markdown h3,.di-markdown h4,.di-markdown h5,.di-markdown h6{font-weight:inherit}
 .di-question-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:30px;padding:26px 34px}.di-question-main{min-width:0}.di-question-text{font-size:19px;font-weight:var(--di-weight-title);line-height:1.55;color:var(--di-ink)}.di-question-text p{margin:0}.di-answer-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:140px;padding:12px 18px!important;border-color:var(--di-blue)!important;color:var(--di-blue)!important;background:var(--di-white)!important;font-size:15px!important}
 .di-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--di-line);border-radius:8px;padding:9px 13px;background:var(--di-white);color:var(--di-ink);font:var(--di-weight-text) 13px/1 "Segoe UI Variable","Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,box-shadow .15s ease}.di-button:hover:not(:disabled){transform:translateY(-1px);border-color:#b8c6e6;box-shadow:0 4px 12px rgba(36,92,255,.08)}.di-button:focus-visible,.di-input:focus-visible,.di-custom-select-trigger:focus-visible,.di-history-topic:focus-visible{outline:3px solid rgba(36,92,255,.18);outline-offset:2px}.di-button:disabled{opacity:.55;cursor:not-allowed}.di-button.is-primary{background:var(--di-blue);border-color:var(--di-blue);color:#fff}.di-button.is-danger{color:var(--di-red);border-color:#ffd9dc;background:#fffafa}
-.di-phase{display:inline-flex;border:1px solid var(--di-line);border-radius:999px;padding:5px 9px;font-size:11px;font-weight:var(--di-weight-text);color:var(--di-muted);white-space:nowrap}.di-phase-awaiting_answer,.di-phase-awaiting_solution{border-color:#b9c8ff;color:var(--di-blue);background:var(--di-blue-soft)}.di-phase-generating_explanation{border-color:#ffe1a3;color:#a76500;background:#fffaf0}.di-phase-awaiting_next{border-color:#bde6cf;color:var(--di-green);background:var(--di-green-soft)}.di-phase-completed{color:var(--di-muted);background:var(--di-paper)}
+.di-phase{display:inline-flex;border:1px solid var(--di-line);border-radius:999px;padding:5px 9px;font-size:11px;font-weight:var(--di-weight-text);color:var(--di-muted);white-space:nowrap}.di-phase-answerable,.di-phase-solving{border-color:#b9c8ff;color:var(--di-blue);background:var(--di-blue-soft)}.di-phase-needs_evaluation,.di-phase-needs_explanation{border-color:#ffe1a3;color:#a76500;background:#fffaf0}.di-phase-reviewed,.di-phase-ready_for_next{border-color:#bde6cf;color:var(--di-green);background:var(--di-green-soft)}.di-phase-completed{color:var(--di-muted);background:var(--di-paper)}
 .di-review-card{display:flex;flex-direction:column}.di-review-score{display:flex;align-items:center;gap:18px;padding:20px 28px;border-bottom:1px solid var(--di-line);background:#fbfcfe}.di-review-check{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;color:#fff;background:var(--di-green);box-shadow:0 0 0 7px var(--di-green-soft)}.di-review-score-summary{display:flex;align-items:baseline;gap:12px}.di-review-score-label{font-size:14px;font-weight:var(--di-weight-text)}.di-review-score-value{display:flex;align-items:baseline;gap:7px}.di-review-score-number{font-size:30px;font-weight:var(--di-weight-text);line-height:1;color:var(--di-green)}.di-review-score-value>span:last-child{font-size:15px;color:var(--di-muted)}.di-stars{display:flex;gap:4px;margin-left:auto}.di-star{font-size:23px;line-height:1;background:linear-gradient(90deg,var(--di-amber) var(--di-star-fill),#dfe4ec var(--di-star-fill));background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent}.di-review-content{min-width:0;padding:26px 28px}.di-review-section+.di-review-section{margin-top:20px}.di-review-section h3{margin:0 0 9px;font-size:15px;font-weight:var(--di-weight-text)}.di-feedback-banner{padding:12px 15px;border:1px solid #e0f0e7;border-radius:9px;background:var(--di-green-soft);font-size:14px;line-height:1.65}.di-dimensions{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}.di-dimensions>span{display:inline-flex;gap:8px;padding:6px 9px;border-radius:6px;background:var(--di-paper);font-size:12px;color:var(--di-muted)}.di-dimension-score{color:var(--di-ink)}.di-explanation-copy{font-size:14px;line-height:1.75}.di-explanation-copy p,.di-explanation-copy ul,.di-explanation-copy ol{margin-top:6px;margin-bottom:6px}.di-memorize-box{margin-top:18px;padding:14px 15px;border:1px solid #dcefe5;border-radius:9px;background:linear-gradient(100deg,#f2faf6,#f8fbf9)}.di-memorize-label{margin-bottom:5px;font-size:13px;font-weight:var(--di-weight-text);color:#116d40}.di-memorize-copy{font-size:14px;line-height:1.65}.di-review-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:15px;border-top:1px solid var(--di-line)}
 .di-score-row{display:flex;align-items:center;gap:12px}.di-score-number{font-size:27px;font-weight:var(--di-weight-text)}.di-score-rail{display:inline-grid;grid-template-columns:repeat(10,8px);gap:3px}.di-score-rail i{display:block;height:15px;border-radius:2px;background:#e8ebf2}.di-score-rail.is-compact{grid-template-columns:repeat(10,5px);gap:2px}.di-score-rail.is-compact i{height:9px}.di-score-rail i.is-good{background:var(--di-green)}.di-score-rail i.is-mid{background:var(--di-amber)}.di-score-rail i.is-low{background:var(--di-red)}
 .di-section{margin-top:16px;padding-top:14px;border-top:1px solid var(--di-line)}.di-section-label{margin-bottom:8px;font-size:12px;font-weight:var(--di-weight-text);color:var(--di-muted)}.di-attempt{margin-top:12px;padding:12px 14px;border-left:3px solid var(--di-blue);background:var(--di-paper);border-radius:0 7px 7px 0}.di-attempt-head{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px;color:var(--di-muted)}.di-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}

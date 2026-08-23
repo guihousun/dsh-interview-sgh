@@ -7,7 +7,6 @@ function clone(value) {
 export class InMemoryInterviewRepository {
   constructor() {
     this.practices = new Map()
-    this.cursors = new Map()
     this.bindings = new Map()
     this.leetcodeProgress = new Map()
   }
@@ -23,28 +22,15 @@ export class InMemoryInterviewRepository {
       .map(clone)
   }
 
-  async getCursor(sessionId) { return clone(this.cursors.get(sessionId) || null) }
-
-  async getCursorByPractice(practiceId) {
-    return clone([...this.cursors.values()].find((cursor) => cursor.practiceId === practiceId) || null)
-  }
-
   async getSessionBinding(sessionId) { return clone(this.bindings.get(sessionId) || null) }
 
   async getSessionBindingByPractice(practiceId) {
     return clone([...this.bindings.values()].find((binding) => binding.practiceId === practiceId) || null)
   }
 
-  async commit({ practice, practices = [], cursor, binding, unbindSessionId }) {
+  async commit({ practice, practices = [], binding, unbindSessionId }) {
     for (const item of [...practices, ...(practice ? [practice] : [])]) this.practices.set(item.id, clone(item))
-    if (unbindSessionId) this.cursors.delete(unbindSessionId)
     if (unbindSessionId) this.bindings.delete(unbindSessionId)
-    if (cursor) {
-      for (const [sessionId, selected] of this.cursors) {
-        if (selected.practiceId === cursor.practiceId) this.cursors.delete(sessionId)
-      }
-      this.cursors.set(cursor.sessionId, clone(cursor))
-    }
     if (binding) {
       for (const [sessionId, selected] of this.bindings) {
         if (selected.practiceId === binding.practiceId) this.bindings.delete(sessionId)
@@ -55,10 +41,8 @@ export class InMemoryInterviewRepository {
 
   async deletePractice(id) {
     this.practices.delete(id)
-    for (const [sessionId, cursor] of this.cursors) if (cursor.practiceId === id) this.cursors.delete(sessionId)
+    for (const [sessionId, binding] of this.bindings) if (binding.practiceId === id) this.bindings.delete(sessionId)
   }
-
-  async clearCursor(sessionId) { this.cursors.delete(sessionId) }
 
   async clearSessionBinding(sessionId) { this.bindings.delete(sessionId) }
 

@@ -49,13 +49,13 @@ function requiredSessionId(value) {
   return value.trim()
 }
 
-export function registerApiRoutes(hostCtx, { application, coordinator, exporter }) {
+export function registerApiRoutes(hostCtx, { application, eventBridge, exporter }) {
   const register = (path, handler) => hostCtx.effect(() => hostCtx.webServer.register({ kind: 'exact', path, handler }))
 
   register('/interview/api/session', async (request, response) => {
     if (request.method !== 'GET') return sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '仅支持 GET' } })
     try {
-      sendJson(response, 200, await application.getSession(requiredSessionId(query(request).get('session'))))
+      sendJson(response, 200, await application.readAtomicSession(requiredSessionId(query(request).get('session'))))
     } catch (error) {
       const output = errorResponse(error); sendJson(response, output.status, output.body)
     }
@@ -102,7 +102,7 @@ export function registerApiRoutes(hostCtx, { application, coordinator, exporter 
     if (request.method !== 'POST') return sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '仅支持 POST' } })
     try {
       const body = await readJsonBody(request)
-      const result = await dispatchCommand(coordinator, requiredSessionId(body.session), body.command, body.payload)
+      const result = await dispatchCommand({ application, eventBridge }, requiredSessionId(body.session), body.command, body.payload)
       sendJson(response, 200, result)
     } catch (error) {
       const output = errorResponse(error); sendJson(response, output.status, output.body)

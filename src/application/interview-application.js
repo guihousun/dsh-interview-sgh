@@ -1,46 +1,14 @@
 import { DomainError, assertDomain } from '../domain/errors.js'
 import { LEETCODE_TOP_100, LEETCODE_TOP_100_GROUPS, LEETCODE_TOP_100_SOURCE, leetcodeTop100Problem } from '../domain/leetcode-top-100.js'
 import {
-  askQuestion as addQuestion,
-  completeLeetcodePractice,
-  completePractice,
-  createPractice,
-  deleteQuestion as removeQuestion,
-  evaluateAnswer as addEvaluation,
-  findQuestion,
-  reopenPractice,
-  saveExplanation as addExplanation,
-  submitAnswer as addAnswer,
-  updatePractice as revisePractice,
-  updateQuestion as reviseQuestion,
+  askQuestion, completeLeetcodePractice, completePractice, createPractice, deleteQuestion,
+  evaluateAnswer, findQuestion, reopenPractice, saveExplanation, submitAnswer,
+  updatePractice, updateQuestion,
 } from '../domain/practice.js'
 import {
-  CONTINUATION_ACTIONS,
-  continuationFor,
-  createCursor,
-  cursorForQuestion,
-  finishPractice,
-  markAnswerEvaluated,
-  markAnswerRevealed,
-  markAnswerSubmitted,
-  markExplanationSaved,
-  markNextRequested,
-  markPracticeCompleted,
-  markPracticeFinishRequested,
-  markLeetcodeProblemPresented,
-  markQuestionAsked,
-  markQuestionRetried,
-  transferCursor,
-  WORKFLOW_PHASES,
-} from '../domain/workflow.js'
-import {
-  clearSessionQuestion,
-  createSessionBinding,
-  focusSessionQuestion,
-  transferSessionBinding,
+  clearSessionQuestion, createSessionBinding, focusSessionQuestion, transferSessionBinding,
 } from '../domain/session.js'
-import { buildInsights, toPracticeDetailDto, toPracticeSummaryDto, toQuestionDto, toSessionContextDto, toSessionDto } from './dto.js'
-import { AGENT_TASK_TYPES, ARTIFACT_DELIVERY_REASONS, agentTask } from './agent-tasks.js'
+import { buildInsights, toPracticeDetailDto, toPracticeSummaryDto, toQuestionDto, toSessionContextDto } from './dto.js'
 import { validateApplicationPorts } from './ports.js'
 
 function requiredId(value, name) {
@@ -57,31 +25,37 @@ export class InterviewApplication {
     this.clock = validated.clock
     this.ids = validated.ids
     this.random = validated.random
-    this.pendingNextRequests = new Map()
   }
 
   async #practice(practiceId) {
-    const practice = await this.repository.getPractice(requiredId(practiceId, 'practiceId'))
-    if (!practice) throw new DomainError('PRACTICE_NOT_FOUND', `找不到练习：${practiceId}`)
+    const id = requiredId(practiceId, 'practiceId')
+    const practice = await this.repository.getPractice(id)
+    if (!practice) throw new DomainError('PRACTICE_NOT_FOUND', `找不到练习：${id}`)
     return practice
   }
 
-  async #context(sessionId) {
-    const cursor = await this.repository.getCursor(requiredId(sessionId, 'sessionId'))
-    if (!cursor) throw new DomainError('SESSION_NOT_SELECTED', '当前会话未选择练习')
-    const practice = await this.#practice(cursor.practiceId)
-    return { cursor, practice }
-  }
-
-  async #atomicContext(sessionId) {
-    const binding = await this.repository.getSessionBinding(requiredId(sessionId, 'sessionId'))
+  async #session(sessionId) {
+    const id = requiredId(sessionId, 'sessionId')
+    const binding = await this.repository.getSessionBinding(id)
     if (!binding) throw new DomainError('SESSION_NOT_SELECTED', '当前会话未选择练习')
-    const practice = await this.#practice(binding.practiceId)
-    return { binding, practice }
+    return { binding, practice: await this.#practice(binding.practiceId) }
   }
 
   async #publish(events) {
     if (events.length) await this.events.publish(events)
+  }
+
+  #result(kind, data, binding = null, { events = [], references = {} } = {}) {
+    return {
+      resource: { kind, data },
+      references: {
+        ...(binding?.practiceId ? { practiceId: binding.practiceId } : {}),
+        ...(binding?.currentQuestionId ? { questionId: binding.currentQuestionId } : {}),
+        ...references,
+      },
+      events,
+      revision: binding?.revision ?? 0,
+    }
   }
 
   async #leetcodeProgress() {
@@ -96,10 +70,7 @@ export class InterviewApplication {
   async #drawLeetcodeQuestion(practice, binding, now, { excludedSlugs = [] } = {}) {
     assertDomain(practice.mode === 'leetcode', 'INVALID_PRACTICE_MODE', '只有刷力扣模式可以从题库抽题')
     const progress = await this.#leetcodeProgress()
-    const used = new Set([
-      ...practice.questions.map((question) => question.leetcode?.slug).filter(Boolean),
-      ...excludedSlugs,
-    ])
+    const used = new Set([...practice.questions.map((question) => question.leetcode?.slug).filter(Boolean), ...excludedSlugs])
     const incomplete = (problem) => progress.get(problem.slug)?.completed !== true
     const pools = [
       LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug) && incomplete(problem)),
@@ -111,91 +82,10 @@ export class InterviewApplication {
     const randomValue = Number(this.random.next())
     assertDomain(Number.isFinite(randomValue) && randomValue >= 0 && randomValue < 1, 'INVALID_RANDOM_VALUE', '随机数必须位于 [0, 1) 区间')
     const problem = candidates[Math.floor(randomValue * candidates.length)]
-    const added = addQuestion(practice, {
-      id: this.ids.next('question'),
-      prompt: `${problem.id}. ${problem.title}`,
-      leetcode: problem,
-      now,
+    const added = askQuestion(practice, {
+      id: this.ids.next('question'), prompt: `${problem.id}. ${problem.title}`, leetcode: problem, now,
     })
-    return {
-      ...added,
-      binding: focusSessionQuestion(binding, added.question.id, now),
-    }
-  }
-
-  async #cursorForQuestion(cursor, question, now) {
-    if (!question.leetcode) return cursorForQuestion(cursor, question, now)
-    const progress = await this.#leetcodeProgress()
-    return cursorForQuestion(cursor, question, now, {
-      leetcodeCompleted: progress.get(question.leetcode.slug)?.completed === true,
-    })
-  }
-
-  async #drawLeetcodeProblem(practice, cursor, now, { excludedSlugs = [] } = {}) {
-    assertDomain(practice.mode === 'leetcode', 'INVALID_PRACTICE_MODE', '只有刷力扣模式可以从题库抽题')
-    const progress = await this.#leetcodeProgress()
-    const used = new Set([
-      ...practice.questions.map((question) => question.leetcode?.slug).filter(Boolean),
-      ...excludedSlugs,
-    ])
-    const incomplete = (problem) => progress.get(problem.slug)?.completed !== true
-    const pools = [
-      LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug) && incomplete(problem)),
-      LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug)),
-      LEETCODE_TOP_100.filter(incomplete),
-      LEETCODE_TOP_100,
-    ]
-    const candidates = pools.find((pool) => pool.length > 0)
-    const randomValue = Number(this.random.next())
-    assertDomain(Number.isFinite(randomValue) && randomValue >= 0 && randomValue < 1, 'INVALID_RANDOM_VALUE', '随机数必须位于 [0, 1) 区间')
-    const problem = candidates[Math.floor(randomValue * candidates.length)]
-    const added = addQuestion(practice, {
-      id: this.ids.next('question'),
-      prompt: `${problem.id}. ${problem.title}`,
-      leetcode: problem,
-      now,
-    })
-    const nextCursor = markLeetcodeProblemPresented(cursor, added.question.id, now)
-    return { ...added, cursor: nextCursor }
-  }
-
-  async #replaceLeetcodePractice(sessionId, cursor, practice, now) {
-    const previousSlug = practice.questions[0]?.leetcode?.slug
-    const completed = completeLeetcodePractice(practice, { now })
-    let nextPractice = createPractice({
-      id: this.ids.next('practice'),
-      mode: 'leetcode',
-      config: practice.config,
-      now,
-    })
-    let nextCursor = createCursor({ sessionId, practiceId: nextPractice.id, now })
-    const drawn = await this.#drawLeetcodeProblem(nextPractice, nextCursor, now, {
-      excludedSlugs: previousSlug ? [previousSlug] : [],
-    })
-    nextPractice = drawn.practice
-    nextCursor = drawn.cursor
-    const events = [
-      { type: 'practice.completed', sessionId, practiceId: practice.id, summaryKind: 'leetcode' },
-      { type: 'practice.started', sessionId, practiceId: nextPractice.id, mode: 'leetcode' },
-      { type: 'leetcode.problem_drawn', sessionId, practiceId: nextPractice.id, questionId: drawn.question.id },
-    ]
-    const agentTasks = [agentTask(AGENT_TASK_TYPES.DELIVER_ARTIFACT, {
-      sessionId, practiceId: nextPractice.id, questionId: drawn.question.id, reason: ARTIFACT_DELIVERY_REASONS.NEXT_REQUESTED,
-    })]
-    await this.repository.commit({ practices: [completed, nextPractice], cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('question', toQuestionDto(drawn.question), nextCursor, { events, agentTasks })
-  }
-
-  #result(kind, data, cursor, { events = [], agentTasks = [], references: explicitReferences = {} } = {}) {
-    const questionId = cursor?.currentQuestionId || cursor?.questionId
-    const references = {
-      ...(cursor?.practiceId ? { practiceId: cursor.practiceId } : {}),
-      ...(questionId ? { questionId } : {}),
-      ...(cursor?.attemptId ? { attemptId: cursor.attemptId } : {}),
-      ...explicitReferences,
-    }
-    return { resource: { kind, data }, references, events, agentTasks, revision: cursor?.revision ?? 0 }
+    return { ...added, binding: focusSessionQuestion(binding, added.question.id, now) }
   }
 
   async createAtomicPractice(sessionId, input) {
@@ -210,11 +100,12 @@ export class InterviewApplication {
 
   async readAtomicSession(sessionId) {
     const binding = await this.repository.getSessionBinding(requiredId(sessionId, 'sessionId'))
-    if (!binding) return this.#result('session-context', toSessionContextDto(null, null), null)
+    if (!binding) return this.#result('session-context', toSessionContextDto(null, null))
     const practice = await this.#practice(binding.practiceId)
     const question = practice.questions.find((item) => item.id === binding.currentQuestionId) || null
-    const leetcodeCompleted = await this.#leetcodeCompleted(question)
-    return this.#result('session-context', toSessionContextDto(binding, practice, { leetcodeCompleted }), binding)
+    return this.#result('session-context', toSessionContextDto(binding, practice, {
+      leetcodeCompleted: await this.#leetcodeCompleted(question),
+    }), binding)
   }
 
   async bindAtomicPractice(sessionId, practiceId) {
@@ -224,22 +115,19 @@ export class InterviewApplication {
     let binding = existing
       ? transferSessionBinding(existing, sessionId, now)
       : createSessionBinding({ sessionId, practiceId: practice.id, now })
-    if (!existing && practice.questions.length) {
-      binding = focusSessionQuestion(binding, practice.questions.at(-1).id, now)
-    }
+    if (!existing && practice.questions.length) binding = focusSessionQuestion(binding, practice.questions.at(-1).id, now)
     await this.repository.commit({ binding })
     const question = practice.questions.find((item) => item.id === binding.currentQuestionId) || null
-    const data = toSessionContextDto(binding, practice, {
+    return this.#result('session-context', toSessionContextDto(binding, practice, {
       leetcodeCompleted: await this.#leetcodeCompleted(question),
-    })
-    return this.#result('session-context', data, binding)
+    }), binding)
   }
 
   async createAtomicQuestion(sessionId, { prompt }) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
+    const { binding, practice } = await this.#session(sessionId)
     assertDomain(practice.mode !== 'leetcode', 'LEETCODE_QUESTION_MANAGED_BY_CATALOG', '力扣题必须由固定题库抽取')
-    const added = addQuestion(practice, { id: this.ids.next('question'), prompt, now })
+    const added = askQuestion(practice, { id: this.ids.next('question'), prompt, now })
     const nextBinding = focusSessionQuestion(binding, added.question.id, now)
     const events = [{ type: 'question.created', sessionId, practiceId: practice.id, questionId: added.question.id }]
     await this.repository.commit({ practice: added.practice, binding: nextBinding })
@@ -249,8 +137,8 @@ export class InterviewApplication {
 
   async focusAtomicQuestion(sessionId, questionId) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
-    const question = findQuestion(practice, questionId)
+    const { binding, practice } = await this.#session(sessionId)
+    const question = findQuestion(practice, requiredId(questionId, 'questionId'))
     const nextBinding = focusSessionQuestion(binding, question.id, now)
     await this.repository.commit({ binding: nextBinding })
     return this.#result('question-detail', toQuestionDto(question), nextBinding)
@@ -258,31 +146,23 @@ export class InterviewApplication {
 
   async deleteAtomicQuestion(sessionId, questionId) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
-    const removed = removeQuestion(practice, { questionId, now })
-    const nextBinding = binding.currentQuestionId === questionId
-      ? clearSessionQuestion(binding, now)
-      : binding
+    const { binding, practice } = await this.#session(sessionId)
+    const id = requiredId(questionId, 'questionId')
+    const removed = deleteQuestion(practice, { questionId: id, now })
+    const nextBinding = binding.currentQuestionId === id ? clearSessionQuestion(binding, now) : binding
     await this.repository.commit({ practice: removed.practice, binding: nextBinding })
-    return this.#result('question-deleted', { practiceId: practice.id, questionId }, nextBinding, {
-      references: { practiceId: practice.id, questionId },
+    return this.#result('question-deleted', { practiceId: practice.id, questionId: id }, nextBinding, {
+      references: { practiceId: practice.id, questionId: id },
     })
   }
 
   async createAtomicAttempt(sessionId, { questionId, answer }) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
+    const { binding, practice } = await this.#session(sessionId)
     const targetId = questionId || binding.currentQuestionId
     assertDomain(Boolean(targetId), 'QUESTION_NOT_FOCUSED', '必须指定需要回答的题目')
-    const added = addAnswer(practice, {
-      questionId: targetId,
-      attemptId: this.ids.next('attempt'),
-      answer,
-      now,
-    })
-    const nextBinding = binding.currentQuestionId === targetId
-      ? binding
-      : focusSessionQuestion(binding, targetId, now)
+    const added = submitAnswer(practice, { questionId: targetId, attemptId: this.ids.next('attempt'), answer, now })
+    const nextBinding = binding.currentQuestionId === targetId ? binding : focusSessionQuestion(binding, targetId, now)
     await this.repository.commit({ practice: added.practice, binding: nextBinding })
     return this.#result('attempt-detail', { questionId: targetId, ...added.attempt }, nextBinding, {
       references: { attemptId: added.attempt.id },
@@ -291,10 +171,10 @@ export class InterviewApplication {
 
   async createAtomicEvaluation(sessionId, input) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
+    const { binding, practice } = await this.#session(sessionId)
     const questionId = requiredId(input.questionId, 'questionId')
     const attemptId = requiredId(input.attemptId, 'attemptId')
-    const added = addEvaluation(practice, { ...input, questionId, attemptId, now })
+    const added = evaluateAnswer(practice, { ...input, questionId, attemptId, now })
     await this.repository.commit({ practice: added.practice })
     return this.#result('evaluation-detail', { questionId, attemptId, ...added.evaluation }, binding, {
       references: { attemptId },
@@ -303,16 +183,16 @@ export class InterviewApplication {
 
   async createAtomicExplanation(sessionId, input) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
+    const { binding, practice } = await this.#session(sessionId)
     const questionId = requiredId(input.questionId, 'questionId')
-    const added = addExplanation(practice, { ...input, questionId, replace: input.replace === true, now })
+    const added = saveExplanation(practice, { ...input, questionId, replace: input.replace === true, now })
     await this.repository.commit({ practice: added.practice })
     return this.#result('explanation-detail', { questionId, ...added.explanation }, binding)
   }
 
   async completeAtomicPractice(sessionId, input = {}) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
+    const { binding, practice } = await this.#session(sessionId)
     const completed = practice.mode === 'leetcode'
       ? completeLeetcodePractice(practice, { now })
       : completePractice(practice, { ...input, now })
@@ -333,7 +213,7 @@ export class InterviewApplication {
 
   async drawAtomicLeetcode(sessionId) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
+    const { binding, practice } = await this.#session(sessionId)
     const drawn = await this.#drawLeetcodeQuestion(practice, binding, now)
     await this.repository.commit({ practice: drawn.practice, binding: drawn.binding })
     return this.#result('question-detail', toQuestionDto(drawn.question), drawn.binding)
@@ -341,13 +221,11 @@ export class InterviewApplication {
 
   async drawNextAtomicLeetcode(sessionId) {
     const now = this.clock.now()
-    const { binding, practice } = await this.#atomicContext(sessionId)
+    const { binding, practice } = await this.#session(sessionId)
     assertDomain(practice.mode === 'leetcode', 'LEETCODE_PRACTICE_REQUIRED', '当前练习不是力扣模式')
     const previousSlug = practice.questions[0]?.leetcode?.slug
     const completed = completeLeetcodePractice(practice, { now })
-    const nextPractice = createPractice({
-      id: this.ids.next('practice'), mode: 'leetcode', config: practice.config, now,
-    })
+    const nextPractice = createPractice({ id: this.ids.next('practice'), mode: 'leetcode', config: practice.config, now })
     const nextBinding = createSessionBinding({ sessionId, practiceId: nextPractice.id, now })
     const drawn = await this.#drawLeetcodeQuestion(nextPractice, nextBinding, now, {
       excludedSlugs: previousSlug ? [previousSlug] : [],
@@ -356,429 +234,46 @@ export class InterviewApplication {
     return this.#result('question-detail', toQuestionDto(drawn.question), drawn.binding)
   }
 
-  async startPractice(sessionId, input) {
-    const now = this.clock.now()
-    let practice = createPractice({ ...input, id: this.ids.next('practice'), now })
-    let cursor = createCursor({ sessionId, practiceId: practice.id, now })
-    if (practice.mode === 'leetcode') {
-      const drawn = await this.#drawLeetcodeProblem(practice, cursor, now)
-      practice = drawn.practice
-      cursor = drawn.cursor
-      const events = [
-        { type: 'practice.started', sessionId, practiceId: practice.id, mode: practice.mode },
-        { type: 'leetcode.problem_drawn', sessionId, practiceId: practice.id, questionId: drawn.question.id },
-      ]
-      const agentTasks = [agentTask(AGENT_TASK_TYPES.DELIVER_ARTIFACT, {
-        sessionId, practiceId: practice.id, questionId: drawn.question.id, reason: ARTIFACT_DELIVERY_REASONS.PRACTICE_STARTED,
-      })]
-      await this.repository.commit({ practice, cursor })
-      await this.#publish(events)
-      return this.#result('question', toQuestionDto(drawn.question), cursor, { events, agentTasks })
-    }
-    const events = [{ type: 'practice.started', sessionId, practiceId: practice.id, mode: practice.mode }]
-    const agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_QUESTION, {
-      sessionId, practiceId: practice.id, reason: 'practice_started',
-    })]
-    await this.repository.commit({ practice, cursor })
-    await this.#publish(events)
-    return this.#result('practice-started', toSessionDto(cursor, practice), cursor, { events, agentTasks })
-  }
-
   async updatePractice(practiceId, input) {
     const now = this.clock.now()
-    const current = await this.#practice(practiceId)
-    const practice = revisePractice(current, { ...input, now })
+    const practice = updatePractice(await this.#practice(practiceId), { ...input, now })
     await this.repository.commit({ practice })
     return this.#result('practice-detail', toPracticeDetailDto(practice), null, { references: { practiceId: practice.id } })
   }
 
-  async getSession(sessionId) {
-    const cursor = await this.repository.getCursor(requiredId(sessionId, 'sessionId'))
-    const practice = cursor ? await this.repository.getPractice(cursor.practiceId) : null
-    return this.#result('session', toSessionDto(cursor, practice), cursor)
-  }
-
-  async renderCurrentArtifact(sessionId, { reason } = {}) {
-    const cursor = await this.repository.getCursor(requiredId(sessionId, 'sessionId'))
-    assertDomain(Boolean(cursor), 'SESSION_NOT_SELECTED', '当前会话还没有选择练习')
-    const practice = await this.#practice(cursor.practiceId)
-    assertDomain(
-      Object.values(ARTIFACT_DELIVERY_REASONS).includes(reason),
-      'INVALID_ARTIFACT_DELIVERY',
-      '无效的交互产物展示原因',
-    )
-    const question = cursor.questionId ? findQuestion(practice, cursor.questionId) : null
-    const displayable = Boolean(question) && (
-      [WORKFLOW_PHASES.AWAITING_ANSWER, WORKFLOW_PHASES.AWAITING_SOLUTION].includes(cursor.phase)
-      || (cursor.phase === WORKFLOW_PHASES.AWAITING_NEXT && question.explanation)
-    )
-    assertDomain(displayable, 'ARTIFACT_NOT_READY', '当前阶段没有可展示的题目或点评讲解')
-    return this.#result('artifact-delivery', {
-      ...toSessionDto(cursor, practice),
-      deliveryReason: reason,
-    }, cursor)
-  }
-
-  async continuePractice(sessionId) {
-    const selected = await this.repository.getCursor(requiredId(sessionId, 'sessionId'))
-    if (!selected) {
-      return this.#result('continuation', {
-        selected: false,
-        phase: 'idle',
-        resumeAction: 'select_practice',
-      }, null)
-    }
-
-    const practice = await this.#practice(selected.practiceId)
-    let cursor = selected
-    let resumeAction = continuationFor(cursor)
-    let agentTasks = []
-    let question = null
-    let attempt = null
-
-    if (practice.mode === 'leetcode' && resumeAction === CONTINUATION_ACTIONS.REQUEST_NEXT) {
-      const now = this.clock.now()
-      const next = await this.#replaceLeetcodePractice(sessionId, cursor, practice, now)
-      const nextCursor = await this.repository.getCursor(sessionId)
-      return this.#result('continuation', {
-        selected: true,
-        phase: nextCursor.phase,
-        resumeAction: CONTINUATION_ACTIONS.SHOW_CURRENT_QUESTION,
-        deliveryReason: ARTIFACT_DELIVERY_REASONS.NEXT_REQUESTED,
-        practiceId: next.references.practiceId,
-        questionId: next.references.questionId,
-        question: next.resource.data,
-      }, nextCursor, {
-        events: next.events,
-        agentTasks: next.agentTasks,
-      })
-    }
-
-    if (resumeAction === CONTINUATION_ACTIONS.REQUEST_NEXT) {
-      cursor = markNextRequested(cursor, this.clock.now())
-      resumeAction = CONTINUATION_ACTIONS.GENERATE_QUESTION
-    }
-
-    if (cursor.questionId) question = findQuestion(practice, cursor.questionId)
-    if (resumeAction === CONTINUATION_ACTIONS.GENERATE_EXPLANATION && question?.leetcode) {
-      resumeAction = CONTINUATION_ACTIONS.GENERATE_LEETCODE_EXPLANATION
-    }
-    const questionRequired = [
-      CONTINUATION_ACTIONS.SHOW_CURRENT_QUESTION,
-      CONTINUATION_ACTIONS.EVALUATE_ANSWER,
-      CONTINUATION_ACTIONS.GENERATE_EXPLANATION,
-      CONTINUATION_ACTIONS.GENERATE_LEETCODE_EXPLANATION,
-    ].includes(resumeAction)
-    assertDomain(!questionRequired || Boolean(question), 'QUESTION_NOT_FOCUSED', '找不到当前待恢复题目')
-    if (resumeAction === CONTINUATION_ACTIONS.EVALUATE_ANSWER) {
-      attempt = question?.attempts.find((item) => item.id === cursor.attemptId) || null
-      assertDomain(Boolean(attempt) && !attempt.evaluation, 'ATTEMPT_NOT_FOCUSED', '找不到当前待评价作答')
-    }
-
-    if (resumeAction === CONTINUATION_ACTIONS.GENERATE_QUESTION) {
-      agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_QUESTION, {
-        sessionId, practiceId: practice.id, reason: 'practice_continued',
-      })]
-    } else if (resumeAction === CONTINUATION_ACTIONS.EVALUATE_ANSWER) {
-      agentTasks = [agentTask(AGENT_TASK_TYPES.EVALUATE_ANSWER, {
-        sessionId, practiceId: practice.id, questionId: question.id, attemptId: attempt.id,
-      })]
-    } else if (resumeAction === CONTINUATION_ACTIONS.GENERATE_EXPLANATION) {
-      agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_REVIEW, {
-        sessionId, practiceId: practice.id, questionId: question.id, attemptId: cursor.attemptId,
-      })]
-    } else if (resumeAction === CONTINUATION_ACTIONS.GENERATE_LEETCODE_EXPLANATION) {
-      agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_LEETCODE_EXPLANATION, {
-        sessionId, practiceId: practice.id, questionId: question.id,
-      })]
-    } else if (resumeAction === CONTINUATION_ACTIONS.GENERATE_SUMMARY) {
-      agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_SUMMARY, {
-        sessionId, practiceId: practice.id, reason: 'practice_continued',
-      })]
-    } else if (resumeAction === CONTINUATION_ACTIONS.SHOW_CURRENT_QUESTION) {
-      agentTasks = [agentTask(AGENT_TASK_TYPES.DELIVER_ARTIFACT, {
-        sessionId, practiceId: practice.id, questionId: question.id,
-        reason: ARTIFACT_DELIVERY_REASONS.PRACTICE_CONTINUED,
-      })]
-    }
-
-    if (cursor !== selected) await this.repository.commit({ cursor })
-    return this.#result('continuation', {
-      selected: true,
-      phase: cursor.phase,
-      resumeAction,
-      practiceId: practice.id,
-      questionId: cursor.questionId,
-      attemptId: cursor.attemptId,
-      ...(question ? { question: toQuestionDto(question) } : {}),
-      ...(attempt ? { attempt: { id: attempt.id, sequence: attempt.sequence, answer: attempt.answer } } : {}),
-    }, cursor, { agentTasks })
-  }
-
-  async selectPractice(sessionId, practiceId) {
-    const now = this.clock.now()
-    const practice = await this.#practice(practiceId)
-    assertDomain(practice.status === 'active', 'PRACTICE_NOT_ACTIVE', '已结束练习必须先重新打开')
-    const boundCursor = await this.repository.getCursorByPractice(practice.id)
-    let cursor = boundCursor
-      ? transferCursor(boundCursor, sessionId, now)
-      : createCursor({ sessionId, practiceId: practice.id, now })
-    const latestQuestion = practice.questions.at(-1) || null
-    if (!boundCursor && latestQuestion) cursor = await this.#cursorForQuestion(cursor, latestQuestion, now)
-    const events = [{ type: 'practice.selected', sessionId, practiceId: practice.id, phase: cursor.phase }]
-    await this.repository.commit({ cursor })
-    await this.#publish(events)
-    return this.#result('session', toSessionDto(cursor, practice), cursor, { events })
-  }
-
-  async askQuestion(sessionId, input) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    const added = addQuestion(practice, { id: this.ids.next('question'), prompt: input.prompt, now })
-    const nextCursor = markQuestionAsked(cursor, added.question.id, now)
-    const events = [{ type: 'question.asked', sessionId, practiceId: practice.id, questionId: added.question.id }]
-    await this.repository.commit({ practice: added.practice, cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('question', toQuestionDto(added.question), nextCursor, { events })
-  }
-
-  async openQuestion(sessionId, questionId) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    const question = findQuestion(practice, questionId)
-    const nextCursor = practice.status === 'completed'
-      ? { ...cursor, questionId: question.id, attemptId: question.attempts.at(-1)?.id || null, phase: WORKFLOW_PHASES.COMPLETED, revision: cursor.revision + 1, updatedAt: now }
-      : await this.#cursorForQuestion(cursor, question, now)
-    await this.repository.commit({ cursor: nextCursor })
-    return this.#result('question', toQuestionDto(question), nextCursor)
-  }
-
   async getQuestion(practiceId, questionId) {
     const practice = await this.#practice(practiceId)
-    const question = findQuestion(practice, questionId)
-    return this.#result('question-detail', toQuestionDto(question), null, { references: { practiceId: practice.id, questionId: question.id } })
+    const id = requiredId(questionId, 'questionId')
+    return this.#result('question-detail', toQuestionDto(findQuestion(practice, id)), null, {
+      references: { practiceId: practice.id, questionId: id },
+    })
   }
 
   async updateQuestion(practiceId, questionId, input) {
     const now = this.clock.now()
-    const current = await this.#practice(practiceId)
-    const updated = reviseQuestion(current, { questionId, prompt: input.prompt, now })
-    await this.repository.commit({ practice: updated.practice })
-    return this.#result('question-detail', toQuestionDto(updated.question), null, { references: { practiceId: current.id, questionId: updated.question.id } })
-  }
-
-  async deleteQuestion(practiceId, questionId, sessionId = null) {
-    const now = this.clock.now()
-    const current = await this.#practice(practiceId)
-    const removed = removeQuestion(current, { questionId, now })
-    let cursor = null
-    if (sessionId) {
-      const selected = await this.repository.getCursor(requiredId(sessionId, 'sessionId'))
-      if (selected?.practiceId === current.id && selected.questionId === questionId) {
-        cursor = createCursor({ sessionId, practiceId: current.id, now })
-        const latestQuestion = removed.practice.questions.at(-1) || null
-        if (latestQuestion) cursor = await this.#cursorForQuestion(cursor, latestQuestion, now)
-        if (removed.practice.status === 'completed') cursor = { ...cursor, phase: WORKFLOW_PHASES.COMPLETED, revision: cursor.revision + 1 }
-      }
-    }
-    await this.repository.commit({ practice: removed.practice, cursor })
-    return this.#result('question-deleted', { practiceId: current.id, questionId }, cursor, { references: { practiceId: current.id, questionId } })
-  }
-
-  async submitAnswer(sessionId, input) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    const questionId = input.questionId || cursor.questionId
-    assertDomain(Boolean(questionId) && questionId === cursor.questionId, 'QUESTION_NOT_FOCUSED', '只能回答当前题目')
-    const added = addAnswer(practice, {
-      questionId,
-      attemptId: this.ids.next('attempt'),
-      answer: input.answer,
-      now,
+    const practice = await this.#practice(practiceId)
+    const revised = updateQuestion(practice, { questionId: requiredId(questionId, 'questionId'), prompt: input.prompt, now })
+    await this.repository.commit({ practice: revised.practice })
+    return this.#result('question-detail', toQuestionDto(revised.question), null, {
+      references: { practiceId: practice.id, questionId: revised.question.id },
     })
-    const nextCursor = markAnswerSubmitted(cursor, added.attempt.id, now)
-    const events = [{ type: 'answer.submitted', sessionId, practiceId: practice.id, questionId, attemptId: added.attempt.id }]
-    await this.repository.commit({ practice: added.practice, cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('attempt', { questionId, ...added.attempt }, nextCursor, { events })
   }
 
-  async revealAnswer(sessionId, input = {}) {
+  async deleteQuestion(practiceId, questionId) {
     const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    const questionId = input.questionId || cursor.questionId
-    assertDomain(Boolean(questionId) && questionId === cursor.questionId, 'QUESTION_NOT_FOCUSED', '只能查看或讲解当前题目')
-    const question = findQuestion(practice, questionId)
-    const explanationType = question.leetcode ? 'leetcode_solution' : 'interview_review'
-    const reviewReady = Boolean(question.explanation)
-    const nextCursor = markAnswerRevealed(cursor, now, { reviewReady })
-    const events = [{
-      type: question.leetcode ? 'leetcode.explanation_requested' : 'answer.revealed',
-      sessionId, practiceId: practice.id, questionId, reviewReady,
-    }]
-    const taskType = question.leetcode
-      ? AGENT_TASK_TYPES.GENERATE_LEETCODE_EXPLANATION
-      : AGENT_TASK_TYPES.GENERATE_REVIEW
-    const agentTasks = reviewReady
-      ? [agentTask(AGENT_TASK_TYPES.DELIVER_ARTIFACT, {
-          sessionId, practiceId: practice.id, questionId,
-          reason: ARTIFACT_DELIVERY_REASONS.ANSWER_REVEALED,
-        })]
-      : [agentTask(taskType, {
-          sessionId, practiceId: practice.id, questionId,
-          ...(question.leetcode ? {} : { reason: 'answer_revealed' }),
-        })]
-    await this.repository.commit({ cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('answer-revealed', { questionId, reviewReady, explanationType }, nextCursor, { events, agentTasks })
-  }
-
-  async evaluateAnswer(sessionId, input) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    const questionId = input.questionId || cursor.questionId
-    const attemptId = input.attemptId || cursor.attemptId
-    assertDomain(Boolean(questionId) && Boolean(attemptId) && questionId === cursor.questionId && attemptId === cursor.attemptId, 'ATTEMPT_NOT_FOCUSED', '只能评价当前作答')
-    const reviewReady = Boolean(findQuestion(practice, questionId).explanation)
-    const added = addEvaluation(practice, { ...input, questionId, attemptId, now })
-    const nextCursor = markAnswerEvaluated(cursor, now, { reviewReady })
-    const events = [{ type: 'answer.evaluated', sessionId, practiceId: practice.id, questionId, attemptId }]
-    await this.repository.commit({ practice: added.practice, cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('evaluation', { questionId, attemptId, reviewReady, ...added.evaluation }, nextCursor, { events })
-  }
-
-  async saveExplanation(sessionId, input) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    const questionId = input.questionId || cursor.questionId
-    assertDomain(questionId === cursor.questionId, 'QUESTION_NOT_FOCUSED', '只能保存当前题目的讲解')
-    const question = findQuestion(practice, questionId)
-    const added = addExplanation(practice, { ...input, questionId, now })
-    const nextCursor = markExplanationSaved(cursor, now)
-    const events = [{ type: 'review.completed', sessionId, practiceId: practice.id, questionId, attemptId: cursor.attemptId }]
-    await this.repository.commit({ practice: added.practice, cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('explanation', {
-      questionId,
-      explanationType: question.leetcode ? 'leetcode_solution' : 'interview_review',
-      ...added.explanation,
-    }, nextCursor, { events })
-  }
-
-  requestNextQuestion(sessionId) {
-    const normalizedSessionId = requiredId(sessionId, 'sessionId')
-    const pending = this.pendingNextRequests.get(normalizedSessionId)
-    if (pending) return pending
-    const operation = this.#requestNextQuestion(normalizedSessionId)
-      .finally(() => this.pendingNextRequests.delete(normalizedSessionId))
-    this.pendingNextRequests.set(normalizedSessionId, operation)
-    return operation
-  }
-
-  async #requestNextQuestion(sessionId) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    if (practice.mode === 'leetcode') {
-      return this.#replaceLeetcodePractice(sessionId, cursor, practice, now)
-    }
-    const nextCursor = markNextRequested(cursor, now)
-    const events = [{ type: 'question.next_requested', sessionId, practiceId: practice.id }]
-    const agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_QUESTION, {
-      sessionId, practiceId: practice.id, reason: 'next_requested',
-    })]
-    await this.repository.commit({ cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('question-requested', toSessionDto(nextCursor, practice), nextCursor, { events, agentTasks })
-  }
-
-  async retryQuestion(sessionId, questionId) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    assertDomain(practice.status === 'active', 'PRACTICE_NOT_ACTIVE', '已结束练习必须先重新打开')
-    findQuestion(practice, questionId)
-    const nextCursor = markQuestionRetried(cursor, questionId, now)
-    const events = [{ type: 'question.retry_requested', sessionId, practiceId: practice.id, questionId }]
-    const agentTasks = [agentTask(AGENT_TASK_TYPES.DELIVER_ARTIFACT, {
-      sessionId, practiceId: practice.id, questionId,
-      reason: ARTIFACT_DELIVERY_REASONS.QUESTION_RETRIED,
-    })]
-    await this.repository.commit({ cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('question-retried', toSessionDto(nextCursor, practice), nextCursor, { events, agentTasks })
-  }
-
-  async requestPracticeSummary(sessionId) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    if (practice.mode === 'leetcode') {
-      const completed = completeLeetcodePractice(practice, { now })
-      const nextCursor = finishPractice(cursor, now)
-      const events = [{ type: 'practice.completed', sessionId, practiceId: practice.id, summaryKind: 'leetcode' }]
-      await this.repository.commit({ practice: completed, unbindSessionId: cursor.sessionId })
-      await this.#publish(events)
-      return this.#result('practice-summary', toPracticeDetailDto(completed), nextCursor, { events })
-    }
-    const nextCursor = markPracticeFinishRequested(cursor, now)
-    const events = [{ type: 'practice.finish_requested', sessionId, practiceId: practice.id }]
-    const agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_SUMMARY, { sessionId, practiceId: practice.id })]
-    await this.repository.commit({ cursor: nextCursor })
-    await this.#publish(events)
-    return this.#result('summary-requested', toPracticeDetailDto(practice), nextCursor, { events, agentTasks })
-  }
-
-  async completePractice(sessionId, input) {
-    const now = this.clock.now()
-    const { cursor, practice } = await this.#context(sessionId)
-    const completed = completePractice(practice, { ...input, now })
-    const nextCursor = markPracticeCompleted(cursor, now)
-    const events = [{ type: 'practice.completed', sessionId, practiceId: practice.id }]
-    await this.repository.commit({ practice: completed, unbindSessionId: cursor.sessionId })
-    await this.#publish(events)
-    return this.#result('practice-summary', toPracticeDetailDto(completed), nextCursor, { events })
-  }
-
-  async reopenPractice(sessionId, practiceId) {
-    const now = this.clock.now()
-    const practice = reopenPractice(await this.#practice(practiceId), now)
-    let cursor = createCursor({ sessionId, practiceId: practice.id, now })
-    const latestQuestion = practice.questions.at(-1) || null
-    if (latestQuestion) cursor = await this.#cursorForQuestion(cursor, latestQuestion, now)
-    const resumeAction = continuationFor(cursor)
-    const events = [{ type: 'practice.reopened', sessionId, practiceId: practice.id }]
-    let agentTasks = []
-    if (resumeAction === CONTINUATION_ACTIONS.GENERATE_QUESTION) {
-      agentTasks = [agentTask(AGENT_TASK_TYPES.GENERATE_QUESTION, {
-        sessionId, practiceId: practice.id, reason: 'practice_reopened',
-      })]
-    } else if (resumeAction === CONTINUATION_ACTIONS.EVALUATE_ANSWER) {
-      const attempt = latestQuestion?.attempts.find((item) => item.id === cursor.attemptId)
-      assertDomain(Boolean(attempt), 'ATTEMPT_NOT_FOCUSED', '找不到重新打开后待评价的作答')
-      agentTasks = [agentTask(AGENT_TASK_TYPES.EVALUATE_ANSWER, {
-        sessionId, practiceId: practice.id, questionId: latestQuestion.id, attemptId: attempt.id,
-      })]
-    } else if (resumeAction === CONTINUATION_ACTIONS.GENERATE_EXPLANATION) {
-      const taskType = latestQuestion?.leetcode
-        ? AGENT_TASK_TYPES.GENERATE_LEETCODE_EXPLANATION
-        : AGENT_TASK_TYPES.GENERATE_REVIEW
-      agentTasks = [agentTask(taskType, {
-        sessionId, practiceId: practice.id, questionId: latestQuestion.id,
-        ...(cursor.attemptId ? { attemptId: cursor.attemptId } : {}),
-      })]
-    }
-    await this.repository.commit({ practice, cursor })
-    await this.#publish(events)
-    return this.#result('practice-reopened', {
-      ...toSessionDto(cursor, practice),
-      resumeAction: latestQuestion?.leetcode && resumeAction === CONTINUATION_ACTIONS.GENERATE_EXPLANATION
-        ? CONTINUATION_ACTIONS.GENERATE_LEETCODE_EXPLANATION
-        : resumeAction,
-    }, cursor, { events, agentTasks })
+    const practice = await this.#practice(practiceId)
+    const id = requiredId(questionId, 'questionId')
+    const removed = deleteQuestion(practice, { questionId: id, now })
+    const binding = await this.repository.getSessionBindingByPractice(practice.id)
+    const nextBinding = binding?.currentQuestionId === id ? clearSessionQuestion(binding, now) : binding
+    await this.repository.commit({ practice: removed.practice, ...(nextBinding ? { binding: nextBinding } : {}) })
+    return this.#result('question-deleted', { practiceId: practice.id, questionId: id }, nextBinding, {
+      references: { practiceId: practice.id, questionId: id },
+    })
   }
 
   async listPractices(filters = {}) {
-    const practices = await this.repository.listPractices(filters)
-    return this.#result('practice-list', practices.map(toPracticeSummaryDto), null)
+    return this.#result('practice-list', (await this.repository.listPractices(filters)).map(toPracticeSummaryDto))
   }
 
   async getPractice(practiceId) {
@@ -787,12 +282,11 @@ export class InterviewApplication {
   }
 
   async getInsights() {
-    const practices = await this.repository.listPractices({})
-    return this.#result('insights', buildInsights(practices), null)
+    return this.#result('insights', buildInsights(await this.repository.listPractices({})))
   }
 
   async getLeetcodeCatalog() {
-    const progress = new Map((await this.repository.listLeetcodeProgress()).map((item) => [item.slug, item]))
+    const progress = await this.#leetcodeProgress()
     let completedCount = 0
     const groups = LEETCODE_TOP_100_GROUPS.map((group) => ({
       category: group.category,
@@ -803,40 +297,25 @@ export class InterviewApplication {
         return { ...problem, completed, completedAt: completed ? saved.completedAt : null }
       }),
     }))
-    return this.#result('leetcode-catalog', {
-      source: LEETCODE_TOP_100_SOURCE,
-      total: 100,
-      completedCount,
-      groups,
-    }, null)
+    return this.#result('leetcode-catalog', { source: LEETCODE_TOP_100_SOURCE, total: 100, completedCount, groups })
   }
 
-  async setLeetcodeProblemCompletion(slug, completed, sessionId = null) {
+  async setLeetcodeProblemCompletion(slug, completed) {
     const problem = leetcodeTop100Problem(requiredId(slug, 'slug'))
     assertDomain(Boolean(problem), 'LEETCODE_PROBLEM_NOT_FOUND', `力扣热题 100 中不存在题目：${String(slug)}`)
     assertDomain(typeof completed === 'boolean', 'LEETCODE_COMPLETION_REQUIRED', '必须明确提供是否完成')
     const now = this.clock.now()
     const progress = { slug: problem.slug, completed, completedAt: completed ? now : null, updatedAt: now }
     await this.repository.saveLeetcodeProgress(progress)
-    let cursor = null
-    if (sessionId) {
-      const selected = await this.repository.getCursor(requiredId(sessionId, 'sessionId'))
-      const practice = selected ? await this.repository.getPractice(selected.practiceId) : null
-      const question = practice?.questions.find((item) => item.id === selected.questionId) || null
-      if (question?.leetcode?.slug === problem.slug && practice.status === 'active') {
-        cursor = cursorForQuestion(selected, question, now, { leetcodeCompleted: completed })
-        await this.repository.commit({ cursor })
-      }
-    }
-    return this.#result('leetcode-progress', { ...problem, ...progress }, cursor, { references: { problemSlug: problem.slug } })
+    return this.#result('leetcode-progress', { ...problem, ...progress }, null, { references: { problemSlug: problem.slug } })
   }
 
   async deletePractice(practiceId, sessionId = null) {
     const practice = await this.#practice(practiceId)
     await this.repository.deletePractice(practice.id)
     if (sessionId) {
-      const cursor = await this.repository.getCursor(requiredId(sessionId, 'sessionId'))
-      if (cursor?.practiceId === practice.id) await this.repository.clearCursor(sessionId)
+      const binding = await this.repository.getSessionBinding(requiredId(sessionId, 'sessionId'))
+      if (binding?.practiceId === practice.id) await this.repository.clearSessionBinding(sessionId)
     }
     return this.#result('practice-deleted', { practiceId: practice.id }, null, { references: { practiceId: practice.id } })
   }
@@ -846,7 +325,6 @@ export class InterviewApplication {
       ? await Promise.all(input.practiceIds.map((id) => this.#practice(id)))
       : await this.repository.listPractices(input.scope === 'all' ? {} : input.filters || {})
     assertDomain(practices.length > 0, 'NOTHING_TO_EXPORT', '没有可导出的练习')
-    const files = await this.exporter.export(practices, input)
-    return this.#result('export', files, null)
+    return this.#result('export', await this.exporter.export(practices, input))
   }
 }

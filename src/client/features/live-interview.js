@@ -10,7 +10,7 @@ export function CompactResultCard({ title, detail, tone = 'quiet' }) {
   return h('div', { className: 'di-card' },
     h('div', { className: 'di-card-head' },
       h('div', { className: 'di-title' }, title),
-      h(PhaseBadge, { phase: tone === 'completed' ? 'completed' : 'awaiting_next' })),
+      h(PhaseBadge, { stage: tone === 'completed' ? 'completed' : 'reviewed' })),
     detail ? h('div', { className: 'di-card-body' }, detail) : null)
 }
 
@@ -151,7 +151,7 @@ export function PracticeSummaryCard({ artifact, revision }) {
   return h(ArtifactState, { query, missing: '找不到练习总结' }, summary ? h('article', { className: 'di-card', 'aria-label': '练习总结' },
     h('header', { className: 'di-card-head' },
       h('div', { className: 'di-title' }, '练习总结'),
-      h(PhaseBadge, { phase: 'completed' })),
+      h(PhaseBadge, { stage: 'completed' })),
     h('div', { className: 'di-card-body' },
       leetcode
         ? h(React.Fragment, null,

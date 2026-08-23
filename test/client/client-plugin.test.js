@@ -68,38 +68,38 @@ test('Client 只使用 DSH 当前会话身份且不共享练习游标', () => {
 
 test('工具视图只按结构化 artifact 渲染用户可见卡片', () => {
   const { plugin } = loadPlugin()
-  assert.equal(plugin.resolveToolView('interview_start_practice', { argsRaw: '{}' }).kind, 'hidden')
-  assert.equal(plugin.resolveToolView('interview_start_practice', settled({ revision: 1, artifact: null })).kind, 'hidden')
+  assert.equal(plugin.resolveToolView('interview_practice', { argsRaw: '{}' }).kind, 'hidden')
+  assert.equal(plugin.resolveToolView('interview_practice', settled({ revision: 1, artifact: null })).kind, 'hidden')
 
-  const question = plugin.resolveToolView('interview_present_question', settled({
+  const question = plugin.resolveToolView('interview_show_question', settled({
     revision: 2,
     artifact: { kind: 'question', practiceId: 'p1', questionId: 'q1' },
   }))
   assert.deepEqual(JSON.parse(JSON.stringify(question)), {
-    kind: 'question', practiceId: 'p1', questionId: 'q1', revision: 2, toolName: 'interview_present_question',
+    kind: 'question', practiceId: 'p1', questionId: 'q1', revision: 2, toolName: 'interview_show_question',
   })
 
-  const review = plugin.resolveToolView('interview_complete_review', settled({
+  const review = plugin.resolveToolView('interview_show_review', settled({
     revision: 5,
     artifact: { kind: 'review', practiceId: 'p1', questionId: 'q1', attemptId: 'a1' },
   }))
   assert.deepEqual(JSON.parse(JSON.stringify(review)), {
-    kind: 'review', practiceId: 'p1', questionId: 'q1', attemptId: 'a1', revision: 5, toolName: 'interview_complete_review',
+    kind: 'review', practiceId: 'p1', questionId: 'q1', attemptId: 'a1', revision: 5, toolName: 'interview_show_review',
   })
 
-  const recoverable = plugin.resolveToolView('interview_present_question', settled({
+  const recoverable = plugin.resolveToolView('interview_show_question', settled({
     revision: 0,
     artifact: null,
     error: { audience: 'agent', recoverable: true },
   }))
   assert.equal(recoverable.kind, 'hidden')
 
-  const failed = plugin.resolveToolView('interview_present_question', {
+  const failed = plugin.resolveToolView('interview_show_question', {
     kind: 'tool-result', isError: true, content: [{ type: 'text', text: 'schema validation failed' }],
   })
   assert.equal(failed.kind, 'error')
 
-  const invalidArguments = plugin.resolveToolView('interview_present_question', {
+  const invalidArguments = plugin.resolveToolView('interview_question', {
     kind: 'tool-result',
     isError: true,
     error: { code: 'INVALID_ARGS' },
@@ -113,11 +113,11 @@ test('Client 与服务端共享交互协议版本并拒绝过期结果', () => {
   const artifact = { kind: 'question', practiceId: 'p1', questionId: 'q1' }
 
   assert.equal(
-    plugin.resolveToolView('interview_present_question', settled({ revision: 1, artifact })).kind,
+    plugin.resolveToolView('interview_show_question', settled({ revision: 1, artifact })).kind,
     'question',
   )
   assert.equal(
-    plugin.resolveToolView('interview_present_question', {
+    plugin.resolveToolView('interview_show_question', {
       kind: 'tool-result',
       content: [{ type: 'text', text: JSON.stringify({ protocol: 'dsh-interview/interaction-v1', revision: 1, artifact }) }],
     }).kind,

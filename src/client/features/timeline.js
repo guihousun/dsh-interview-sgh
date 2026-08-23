@@ -70,7 +70,7 @@ export function TimelinePanel({ sessionId, revisionSignal }) {
   h('div', { className: 'di-time-list' }, practice.questions.map((question) => {
     const active = selection?.questionId === question.id
     return h('div', {
-      className: `di-time-item${session.questionId === question.id ? ' is-current' : ''}${active ? ' has-view' : ''}`,
+      className: `di-time-item${session.currentQuestionId === question.id ? ' is-current' : ''}${active ? ' has-view' : ''}`,
       key: question.id,
     }, h('button', {
       className: 'di-time-node',

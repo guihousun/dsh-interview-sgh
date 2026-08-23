@@ -1,11 +1,9 @@
 import { InterviewApplication } from '../../application/interview-application.js'
-import { InterviewCoordinator } from '../../application/interview-coordinator.js'
 import { MarkdownPracticeExporter } from '../../infrastructure/markdown-practice-exporter.js'
 import { SqliteInterviewRepository } from '../../infrastructure/sqlite-interview-repository.js'
 import { createSystemPorts } from '../../infrastructure/system-ports.js'
 import { registerApiRoutes } from '../http/api-routes.js'
 import { AgentEventBridge } from './agent-event-bridge.js'
-import { createToolDefinitions } from './tool-definitions.js'
 import { createAtomicToolDefinitions } from './atomic-tool-definitions.js'
 import { createPresentationToolDefinitions } from './presentation-tool-definitions.js'
 
@@ -25,10 +23,8 @@ export function createRuntime(ctx, options = {}) {
     random: options.random || system.random,
   })
   const eventBridge = new AgentEventBridge(ctx)
-  const coordinator = options.coordinator || new InterviewCoordinator({ application, eventBridge })
   return {
     application,
-    coordinator,
     repository,
     exporter,
     eventBridge,
@@ -37,7 +33,6 @@ export function createRuntime(ctx, options = {}) {
 
 export function apply(ctx) {
   const runtime = createRuntime(ctx)
-  for (const tool of createToolDefinitions(runtime.coordinator)) ctx.tools.register(tool)
   for (const tool of createAtomicToolDefinitions(runtime.application)) ctx.tools.register(tool)
   for (const tool of createPresentationToolDefinitions(runtime.application)) ctx.tools.register(tool)
 

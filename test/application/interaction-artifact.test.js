@@ -1,39 +1,22 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { INTERVIEW_ACTIONS } from '../../src/application/interview-actions.js'
-import {
-  ARTIFACT_KINDS,
-  artifactForSession,
-  assertInteractionArtifactContract,
-  createInteractionArtifact,
-} from '../../src/application/interaction-artifact.js'
+import { ARTIFACT_KINDS, createInteractionArtifact } from '../../src/application/interaction-artifact.js'
+import { createPresentationResult } from '../../src/application/presentation-result.js'
 
-test('题目、点评和总结产物强制校验领域引用', () => {
-  assert.throws(() => createInteractionArtifact(ARTIFACT_KINDS.QUESTION, { practiceId: 'p1' }), /questionId/)
-  assert.throws(() => createInteractionArtifact(ARTIFACT_KINDS.REVIEW, { questionId: 'q1' }), /practiceId/)
-  assert.throws(() => createInteractionArtifact(ARTIFACT_KINDS.FINISHED), /practiceId/)
+test('展示产物只校验展示所需资源引用', () => {
+  assert.deepEqual(createInteractionArtifact(ARTIFACT_KINDS.QUESTION, {
+    practiceId: 'practice-1', questionId: 'question-1',
+  }), { kind: 'question', practiceId: 'practice-1', questionId: 'question-1' })
+  assert.throws(() => createInteractionArtifact(ARTIFACT_KINDS.REVIEW, { practiceId: 'practice-1' }), /questionId/)
 })
 
-test('会话阶段只能物化对应的当前业务产物', () => {
-  const references = { practiceId: 'p1', questionId: 'q1', attemptId: 'a1' }
-  const currentQuestion = { id: 'q1', explanation: { detail: '讲解' } }
-  assert.equal(artifactForSession({ selected: true, phase: 'awaiting_answer', currentQuestion }, references).kind, 'question')
-  assert.deepEqual(artifactForSession({ selected: true, phase: 'awaiting_next', currentQuestion }, references), {
-    kind: 'review', practiceId: 'p1', questionId: 'q1', attemptId: 'a1',
+test('展示结果不携带业务动作或工作流阶段', () => {
+  const result = createPresentationResult({
+    kind: ARTIFACT_KINDS.QUESTION,
+    references: { practiceId: 'practice-1', questionId: 'question-1' },
+    text: '题目已展示，请开始作答。',
   })
-  assert.equal(artifactForSession({ selected: true, phase: 'generating_explanation', currentQuestion }, references), null)
-})
-
-test('内容完成动作必须返回匹配的 UI 产物和固定辅助文本', () => {
-  assert.throws(() => assertInteractionArtifactContract(INTERVIEW_ACTIONS.PRESENT_QUESTION, {
-    state: 'awaiting_answer', artifact: null, assistantResponse: { mode: 'continue' },
-  }), /必须产生 question/)
-  assert.throws(() => assertInteractionArtifactContract(INTERVIEW_ACTIONS.COMPLETE_REVIEW, {
-    state: 'awaiting_next',
-    artifact: createInteractionArtifact(ARTIFACT_KINDS.REVIEW, { practiceId: 'p1', questionId: 'q1' }),
-    assistantResponse: { mode: 'continue' },
-  }), /固定辅助文本/)
-  assert.throws(() => assertInteractionArtifactContract(INTERVIEW_ACTIONS.RENDER_CURRENT_ARTIFACT, {
-    state: 'awaiting_answer', artifact: null, assistantResponse: { mode: 'exact' },
-  }), /必须产生交互产物/)
+  assert.equal(result.action, 'presentation.question')
+  assert.equal('phase' in result, false)
+  assert.equal('agentTasks' in result, false)
 })

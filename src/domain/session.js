@@ -70,7 +70,7 @@ const READ_OPERATIONS = Object.freeze([
   'session.read',
   'practice.read',
   'question.read',
-  'question.present',
+  'ui.show_question',
 ])
 
 export function allowedOperationsFor({ practice, question = null, leetcodeCompleted = false }) {

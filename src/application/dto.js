@@ -55,27 +55,6 @@ export function toPracticeDetailDto(practice) {
   }
 }
 
-export function toSessionDto(cursor, practice) {
-  if (!cursor || !practice) return {
-    selected: false,
-    phase: 'idle',
-    revision: 0,
-    practice: null,
-    currentQuestion: null,
-  }
-  const question = practice.questions.find((item) => item.id === cursor.questionId) || null
-  return {
-    selected: true,
-    sessionId: cursor.sessionId,
-    phase: cursor.phase,
-    revision: cursor.revision,
-    questionId: cursor.questionId,
-    attemptId: cursor.attemptId,
-    practice: toPracticeDetailDto(practice),
-    currentQuestion: question ? toQuestionDto(question) : null,
-  }
-}
-
 export function toSessionContextDto(binding, practice, { leetcodeCompleted = false } = {}) {
   if (!binding || !practice) return {
     selected: false,
