@@ -205,10 +205,10 @@ export function evaluateAnswer(practice, { questionId, attemptId, score, feedbac
   return { practice: withUpdatedAt(practice, now, { questions }), evaluation }
 }
 
-export function saveExplanation(practice, { questionId, detail, memorizationPoints, now }) {
+export function saveExplanation(practice, { questionId, detail, memorizationPoints, replace = false, now }) {
   activePractice(practice)
   const target = findQuestion(practice, questionId)
-  assertDomain(!target.explanation, 'EXPLANATION_ALREADY_EXISTS', '该题已经存在讲解')
+  assertDomain(replace || !target.explanation, 'EXPLANATION_ALREADY_EXISTS', '该题已经存在讲解')
   const normalizedDetail = requiredText(detail, 'INVALID_EXPLANATION', '讲解内容不能为空')
   if (target.leetcode) {
     const selectedLanguage = leetcodeLanguageDefinition(practice.config.language)

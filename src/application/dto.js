@@ -1,5 +1,6 @@
 import { INTERVIEW_MODES } from '../domain/modes.js'
 import { summarizePractice } from '../domain/practice.js'
+import { allowedOperationsFor, deriveSessionStage } from '../domain/session.js'
 
 function toSavedSummaryDto(summary) {
   if (!summary) return null
@@ -70,6 +71,28 @@ export function toSessionDto(cursor, practice) {
     revision: cursor.revision,
     questionId: cursor.questionId,
     attemptId: cursor.attemptId,
+    practice: toPracticeDetailDto(practice),
+    currentQuestion: question ? toQuestionDto(question) : null,
+  }
+}
+
+export function toSessionContextDto(binding, practice, { leetcodeCompleted = false } = {}) {
+  if (!binding || !practice) return {
+    selected: false,
+    stage: 'idle',
+    revision: 0,
+    practice: null,
+    currentQuestion: null,
+    allowedOperations: ['practice.create', 'practice.list', 'session.bind'],
+  }
+  const question = practice.questions.find((item) => item.id === binding.currentQuestionId) || null
+  return {
+    selected: true,
+    sessionId: binding.sessionId,
+    revision: binding.revision,
+    currentQuestionId: binding.currentQuestionId,
+    stage: deriveSessionStage({ practice, question, leetcodeCompleted }),
+    allowedOperations: allowedOperationsFor({ practice, question, leetcodeCompleted }),
     practice: toPracticeDetailDto(practice),
     currentQuestion: question ? toQuestionDto(question) : null,
   }

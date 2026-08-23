@@ -33,7 +33,13 @@ import {
   transferCursor,
   WORKFLOW_PHASES,
 } from '../domain/workflow.js'
-import { buildInsights, toPracticeDetailDto, toPracticeSummaryDto, toQuestionDto, toSessionDto } from './dto.js'
+import {
+  clearSessionQuestion,
+  createSessionBinding,
+  focusSessionQuestion,
+  transferSessionBinding,
+} from '../domain/session.js'
+import { buildInsights, toPracticeDetailDto, toPracticeSummaryDto, toQuestionDto, toSessionContextDto, toSessionDto } from './dto.js'
 import { AGENT_TASK_TYPES, ARTIFACT_DELIVERY_REASONS, agentTask } from './agent-tasks.js'
 import { validateApplicationPorts } from './ports.js'
 
@@ -67,12 +73,54 @@ export class InterviewApplication {
     return { cursor, practice }
   }
 
+  async #atomicContext(sessionId) {
+    const binding = await this.repository.getSessionBinding(requiredId(sessionId, 'sessionId'))
+    if (!binding) throw new DomainError('SESSION_NOT_SELECTED', '当前会话未选择练习')
+    const practice = await this.#practice(binding.practiceId)
+    return { binding, practice }
+  }
+
   async #publish(events) {
     if (events.length) await this.events.publish(events)
   }
 
   async #leetcodeProgress() {
     return new Map((await this.repository.listLeetcodeProgress()).map((item) => [item.slug, item]))
+  }
+
+  async #leetcodeCompleted(question) {
+    if (!question?.leetcode) return false
+    return (await this.#leetcodeProgress()).get(question.leetcode.slug)?.completed === true
+  }
+
+  async #drawLeetcodeQuestion(practice, binding, now, { excludedSlugs = [] } = {}) {
+    assertDomain(practice.mode === 'leetcode', 'INVALID_PRACTICE_MODE', '只有刷力扣模式可以从题库抽题')
+    const progress = await this.#leetcodeProgress()
+    const used = new Set([
+      ...practice.questions.map((question) => question.leetcode?.slug).filter(Boolean),
+      ...excludedSlugs,
+    ])
+    const incomplete = (problem) => progress.get(problem.slug)?.completed !== true
+    const pools = [
+      LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug) && incomplete(problem)),
+      LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug)),
+      LEETCODE_TOP_100.filter(incomplete),
+      LEETCODE_TOP_100,
+    ]
+    const candidates = pools.find((pool) => pool.length > 0)
+    const randomValue = Number(this.random.next())
+    assertDomain(Number.isFinite(randomValue) && randomValue >= 0 && randomValue < 1, 'INVALID_RANDOM_VALUE', '随机数必须位于 [0, 1) 区间')
+    const problem = candidates[Math.floor(randomValue * candidates.length)]
+    const added = addQuestion(practice, {
+      id: this.ids.next('question'),
+      prompt: `${problem.id}. ${problem.title}`,
+      leetcode: problem,
+      now,
+    })
+    return {
+      ...added,
+      binding: focusSessionQuestion(binding, added.question.id, now),
+    }
   }
 
   async #cursorForQuestion(cursor, question, now) {
@@ -140,13 +188,172 @@ export class InterviewApplication {
   }
 
   #result(kind, data, cursor, { events = [], agentTasks = [], references: explicitReferences = {} } = {}) {
+    const questionId = cursor?.currentQuestionId || cursor?.questionId
     const references = {
       ...(cursor?.practiceId ? { practiceId: cursor.practiceId } : {}),
-      ...(cursor?.questionId ? { questionId: cursor.questionId } : {}),
+      ...(questionId ? { questionId } : {}),
       ...(cursor?.attemptId ? { attemptId: cursor.attemptId } : {}),
       ...explicitReferences,
     }
     return { resource: { kind, data }, references, events, agentTasks, revision: cursor?.revision ?? 0 }
+  }
+
+  async createAtomicPractice(sessionId, input) {
+    const now = this.clock.now()
+    const practice = createPractice({ ...input, id: this.ids.next('practice'), now })
+    const binding = createSessionBinding({ sessionId, practiceId: practice.id, now })
+    const events = [{ type: 'practice.created', sessionId, practiceId: practice.id, mode: practice.mode }]
+    await this.repository.commit({ practice, binding })
+    await this.#publish(events)
+    return this.#result('practice-detail', toPracticeDetailDto(practice), binding, { events })
+  }
+
+  async readAtomicSession(sessionId) {
+    const binding = await this.repository.getSessionBinding(requiredId(sessionId, 'sessionId'))
+    if (!binding) return this.#result('session-context', toSessionContextDto(null, null), null)
+    const practice = await this.#practice(binding.practiceId)
+    const question = practice.questions.find((item) => item.id === binding.currentQuestionId) || null
+    const leetcodeCompleted = await this.#leetcodeCompleted(question)
+    return this.#result('session-context', toSessionContextDto(binding, practice, { leetcodeCompleted }), binding)
+  }
+
+  async bindAtomicPractice(sessionId, practiceId) {
+    const now = this.clock.now()
+    const practice = await this.#practice(practiceId)
+    const existing = await this.repository.getSessionBindingByPractice(practice.id)
+    let binding = existing
+      ? transferSessionBinding(existing, sessionId, now)
+      : createSessionBinding({ sessionId, practiceId: practice.id, now })
+    if (!existing && practice.questions.length) {
+      binding = focusSessionQuestion(binding, practice.questions.at(-1).id, now)
+    }
+    await this.repository.commit({ binding })
+    const question = practice.questions.find((item) => item.id === binding.currentQuestionId) || null
+    const data = toSessionContextDto(binding, practice, {
+      leetcodeCompleted: await this.#leetcodeCompleted(question),
+    })
+    return this.#result('session-context', data, binding)
+  }
+
+  async createAtomicQuestion(sessionId, { prompt }) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    assertDomain(practice.mode !== 'leetcode', 'LEETCODE_QUESTION_MANAGED_BY_CATALOG', '力扣题必须由固定题库抽取')
+    const added = addQuestion(practice, { id: this.ids.next('question'), prompt, now })
+    const nextBinding = focusSessionQuestion(binding, added.question.id, now)
+    const events = [{ type: 'question.created', sessionId, practiceId: practice.id, questionId: added.question.id }]
+    await this.repository.commit({ practice: added.practice, binding: nextBinding })
+    await this.#publish(events)
+    return this.#result('question-detail', toQuestionDto(added.question), nextBinding, { events })
+  }
+
+  async focusAtomicQuestion(sessionId, questionId) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    const question = findQuestion(practice, questionId)
+    const nextBinding = focusSessionQuestion(binding, question.id, now)
+    await this.repository.commit({ binding: nextBinding })
+    return this.#result('question-detail', toQuestionDto(question), nextBinding)
+  }
+
+  async deleteAtomicQuestion(sessionId, questionId) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    const removed = removeQuestion(practice, { questionId, now })
+    const nextBinding = binding.currentQuestionId === questionId
+      ? clearSessionQuestion(binding, now)
+      : binding
+    await this.repository.commit({ practice: removed.practice, binding: nextBinding })
+    return this.#result('question-deleted', { practiceId: practice.id, questionId }, nextBinding, {
+      references: { practiceId: practice.id, questionId },
+    })
+  }
+
+  async createAtomicAttempt(sessionId, { questionId, answer }) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    const targetId = questionId || binding.currentQuestionId
+    assertDomain(Boolean(targetId), 'QUESTION_NOT_FOCUSED', '必须指定需要回答的题目')
+    const added = addAnswer(practice, {
+      questionId: targetId,
+      attemptId: this.ids.next('attempt'),
+      answer,
+      now,
+    })
+    const nextBinding = binding.currentQuestionId === targetId
+      ? binding
+      : focusSessionQuestion(binding, targetId, now)
+    await this.repository.commit({ practice: added.practice, binding: nextBinding })
+    return this.#result('attempt-detail', { questionId: targetId, ...added.attempt }, nextBinding, {
+      references: { attemptId: added.attempt.id },
+    })
+  }
+
+  async createAtomicEvaluation(sessionId, input) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    const questionId = requiredId(input.questionId, 'questionId')
+    const attemptId = requiredId(input.attemptId, 'attemptId')
+    const added = addEvaluation(practice, { ...input, questionId, attemptId, now })
+    await this.repository.commit({ practice: added.practice })
+    return this.#result('evaluation-detail', { questionId, attemptId, ...added.evaluation }, binding, {
+      references: { attemptId },
+    })
+  }
+
+  async createAtomicExplanation(sessionId, input) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    const questionId = requiredId(input.questionId, 'questionId')
+    const added = addExplanation(practice, { ...input, questionId, replace: input.replace === true, now })
+    await this.repository.commit({ practice: added.practice })
+    return this.#result('explanation-detail', { questionId, ...added.explanation }, binding)
+  }
+
+  async completeAtomicPractice(sessionId, input = {}) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    const completed = practice.mode === 'leetcode'
+      ? completeLeetcodePractice(practice, { now })
+      : completePractice(practice, { ...input, now })
+    await this.repository.commit({ practice: completed, unbindSessionId: binding.sessionId })
+    return this.#result('practice-detail', toPracticeDetailDto(completed), binding)
+  }
+
+  async reopenAtomicPractice(sessionId, practiceId) {
+    const now = this.clock.now()
+    const practice = reopenPractice(await this.#practice(practiceId), now)
+    let binding = createSessionBinding({ sessionId, practiceId: practice.id, now })
+    if (practice.questions.length) binding = focusSessionQuestion(binding, practice.questions.at(-1).id, now)
+    await this.repository.commit({ practice, binding })
+    return this.#result('session-context', toSessionContextDto(binding, practice, {
+      leetcodeCompleted: await this.#leetcodeCompleted(practice.questions.at(-1) || null),
+    }), binding)
+  }
+
+  async drawAtomicLeetcode(sessionId) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    const drawn = await this.#drawLeetcodeQuestion(practice, binding, now)
+    await this.repository.commit({ practice: drawn.practice, binding: drawn.binding })
+    return this.#result('question-detail', toQuestionDto(drawn.question), drawn.binding)
+  }
+
+  async drawNextAtomicLeetcode(sessionId) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#atomicContext(sessionId)
+    assertDomain(practice.mode === 'leetcode', 'LEETCODE_PRACTICE_REQUIRED', '当前练习不是力扣模式')
+    const previousSlug = practice.questions[0]?.leetcode?.slug
+    const completed = completeLeetcodePractice(practice, { now })
+    const nextPractice = createPractice({
+      id: this.ids.next('practice'), mode: 'leetcode', config: practice.config, now,
+    })
+    const nextBinding = createSessionBinding({ sessionId, practiceId: nextPractice.id, now })
+    const drawn = await this.#drawLeetcodeQuestion(nextPractice, nextBinding, now, {
+      excludedSlugs: previousSlug ? [previousSlug] : [],
+    })
+    await this.repository.commit({ practices: [completed, drawn.practice], binding: drawn.binding })
+    return this.#result('question-detail', toQuestionDto(drawn.question), drawn.binding)
   }
 
   async startPractice(sessionId, input) {
