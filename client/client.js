@@ -1292,10 +1292,20 @@ function PracticeLibrary({
   const normalizedQuery = queryText.trim();
   const modeFilter = MODE_OPTIONS.some((option) => option.value === mode) ? mode : void 0;
   const filters = { query: normalizedQuery || void 0, mode: modeFilter, status: effectiveStatus };
-  const list = useInterviewQuery(`practices:${normalizedQuery}:${modeFilter || "all"}:${effectiveStatus}`, () => interviewApi.practices(filters), [normalizedQuery, modeFilter, effectiveStatus]);
+  const list = useInterviewQuery(
+    `practices:${normalizedQuery}:${modeFilter || "all"}:${effectiveStatus}`,
+    () => interviewApi.practices(filters),
+    [normalizedQuery, modeFilter, effectiveStatus],
+    { cache: false }
+  );
   const practices = list.data?.resource?.data || [];
   const visibleSelectedId = practices.some((practice) => practice.id === selectedId) ? selectedId : null;
-  const detail = useInterviewQuery(`practice:${visibleSelectedId || "none"}`, () => visibleSelectedId ? interviewApi.practice(visibleSelectedId) : Promise.resolve(null), [visibleSelectedId]);
+  const detail = useInterviewQuery(
+    `practice:${visibleSelectedId || "none"}`,
+    () => visibleSelectedId ? interviewApi.practice(visibleSelectedId) : Promise.resolve(null),
+    [visibleSelectedId],
+    { cache: false }
+  );
   const selected = detail.data?.resource?.data || null;
   const run = (name2, payload) => command.run(name2, payload).catch(() => null);
   const createPractice = async (payload) => {
@@ -1432,7 +1442,7 @@ function PracticeLibrary({
   );
 }
 function InsightsCard() {
-  const query = useInterviewQuery("insights", () => interviewApi.insights(), []);
+  const query = useInterviewQuery("insights", () => interviewApi.insights(), [], { cache: false });
   if (query.loading && !query.data) return h("div", { className: "di-card" }, h(Loading));
   if (query.error) return h("div", { className: "di-card" }, h(ErrorNotice, null, query.error));
   const insight = query.data?.resource?.data;
