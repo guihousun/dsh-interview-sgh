@@ -34,7 +34,7 @@ test('工具优先使用 DSH 会话头中的稳定会话 ID', () => {
 test('DSH 暴露无 command 联合的原子面试工具', () => {
   const fixture = toolFixture()
   const definitions = createToolDefinitions(fixture.coordinator)
-  assert.deepEqual(definitions.map((tool) => tool.name), INTERVIEW_TOOL_NAMES)
+  assert.deepEqual(definitions.map((tool) => tool.name), Object.keys(fixture.tools))
   assert.ok(definitions.every((tool) => tool.parameters.type === 'object'), '所有函数参数 Schema 顶层必须声明 type: object')
   assert.ok(definitions.every((tool) => !Object.hasOwn(tool.parameters.properties || {}, 'command')))
   assert.ok(definitions.every((tool) => tool.description.endsWith('调用后必须严格执行返回的 assistantInstruction。')))

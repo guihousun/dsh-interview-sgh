@@ -1785,6 +1785,20 @@ function WorkspaceDock({ sessionId }) {
 
 // src/protocol/interview-tool-names.js
 var INTERVIEW_TOOL_NAMES = Object.freeze([
+  "interview_session",
+  "interview_practice",
+  "interview_question",
+  "interview_attempt",
+  "interview_evaluation",
+  "interview_explanation",
+  "interview_leetcode",
+  "interview_show_question",
+  "interview_show_review",
+  "interview_show_summary",
+  "interview_show_practice",
+  "interview_show_practice_list",
+  "interview_show_insights",
+  "interview_show_leetcode_catalog",
   "interview_start_practice",
   "interview_update_practice",
   "interview_continue_practice",

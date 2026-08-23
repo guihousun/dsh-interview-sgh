@@ -7,6 +7,7 @@ import { registerApiRoutes } from '../http/api-routes.js'
 import { AgentEventBridge } from './agent-event-bridge.js'
 import { createToolDefinitions } from './tool-definitions.js'
 import { createAtomicToolDefinitions } from './atomic-tool-definitions.js'
+import { createPresentationToolDefinitions } from './presentation-tool-definitions.js'
 
 export const name = 'dsh-interview'
 export const inject = ['tools']
@@ -38,6 +39,7 @@ export function apply(ctx) {
   const runtime = createRuntime(ctx)
   for (const tool of createToolDefinitions(runtime.coordinator)) ctx.tools.register(tool)
   for (const tool of createAtomicToolDefinitions(runtime.application)) ctx.tools.register(tool)
+  for (const tool of createPresentationToolDefinitions(runtime.application)) ctx.tools.register(tool)
 
   ctx.inject(['webServer'], (hostCtx) => {
     registerApiRoutes(hostCtx, runtime)
