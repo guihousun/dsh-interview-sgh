@@ -51,6 +51,17 @@ async function sessionRevisionFor(application, sessionId, practiceId, questionId
 
 const definitions = [
   presentationTool({
+    name: 'interview_show_practice_setup',
+    description: '展示可交互的新建练习配置卡片。用户要求新建或开始一条新练习时必须调用本工具，让用户在卡片中明确选择全部配置；禁止通过普通 Assistant Text 逐项询问配置，禁止自行填写默认值或提前创建练习。本工具只展示配置 UI，用户点击“开始练习”后才会创建练习。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute() {
+      return createPresentationResult({
+        kind: ARTIFACT_KINDS.PRACTICE_SETUP,
+        text: '练习配置已展示，请完成配置。',
+      })
+    },
+  }),
+  presentationTool({
     name: 'interview_show_question',
     description: '展示数据库中已经存在的一道题目卡片。当用户需要查看、回答、继续或重新作答某道题，或者新题创建后需要呈现时，必须调用本工具。禁止使用普通 Assistant Text 输出或复述题目。本工具只展示，不创建、修改或聚焦题目。',
     parameters: practiceQuestionParameters,

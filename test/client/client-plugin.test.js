@@ -71,6 +71,14 @@ test('工具视图只按结构化 artifact 渲染用户可见卡片', () => {
   assert.equal(plugin.resolveToolView('interview_practice', { argsRaw: '{}' }).kind, 'hidden')
   assert.equal(plugin.resolveToolView('interview_practice', settled({ revision: 1, artifact: null })).kind, 'hidden')
 
+  const setup = plugin.resolveToolView('interview_show_practice_setup', settled({
+    revision: 0,
+    artifact: { kind: 'practice-setup', presentationId: 'setup-1' },
+  }))
+  assert.deepEqual(JSON.parse(JSON.stringify(setup)), {
+    kind: 'practice-setup', presentationId: 'setup-1', revision: 0, toolName: 'interview_show_practice_setup',
+  })
+
   const question = plugin.resolveToolView('interview_show_question', settled({
     revision: 2,
     artifact: { kind: 'question', practiceId: 'p1', questionId: 'q1' },
@@ -242,7 +250,7 @@ test('任一流程操作都会消费并锁定整张卡片', () => {
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
   const transition = readFileSync(new URL('../../src/client/shared/card-transition.js', import.meta.url), 'utf8')
   assert.match(transition, /consumedRef\.current = true/)
-  assert.match(transition, /setConsumedBy\(command\)/)
+  assert.match(transition, /setConsumedBy\(action\)/)
   assert.match(transition, /const locked = disabled \|\| Boolean\(consumedBy\)/)
   assert.doesNotMatch(transition, /catch|setConsumedBy\(''\)/)
   assert.match(liveInterview, /transition\.run\('question\.reveal'\)/)
@@ -250,6 +258,17 @@ test('任一流程操作都会消费并锁定整张卡片', () => {
   assert.match(liveInterview, /transition\.run\('question\.retry'\)/)
   assert.match(liveInterview, /transition\.run\('session\.finish'\)/)
   assert.doesNotMatch(liveInterview, /revealRequestedRef|nextRequestedRef|nextRequested/)
+})
+
+test('新建练习配置卡复用工作台表单且提交后消费整张卡片', () => {
+  const config = readFileSync(new URL('../../src/client/features/practice-config.js', import.meta.url), 'utf8')
+  const entry = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')
+  assert.match(config, /export function PracticeConfigForm/)
+  assert.match(config, /export function PracticeSetupCard/)
+  assert.match(config, /lifecycle\.enter\('session\.start'/)
+  assert.match(config, /disabled: lifecycle\.locked/)
+  assert.match(config, /submitLabel: lifecycle\.consumedBy \? '已提交' : '开始练习'/)
+  assert.match(entry, /case 'practice-setup': return h\(PracticeSetupCard/)
 })
 
 test('每次展示卡片都绕过资源缓存并使用独立展示标识', () => {

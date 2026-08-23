@@ -8,11 +8,12 @@ export const ATOMIC_INTERVIEW_POLICY = [
 ].join('')
 
 export const ATOMIC_CONFIGURATION_POLICY = [
+  '用户要求新建或开始一条新练习时，必须调用 interview_show_practice_setup 展示配置卡片，不要通过文本收集配置，也不要提前调用 create。',
   '创建练习时禁止任何默认值。',
   '背八股 bagu 和场景题 scenario 必须明确提供 topic。',
   '刷力扣 leetcode 必须明确提供 language，只能是 cpp、java、python、c、go。',
   '模拟面试 mock 必须明确提供 resume、interviewer_style、coding、difficulty。',
-  '缺少字段时只询问缺少项，不得自行补全。',
+  '只有配置卡提交或用户明确要求绕过配置 UI 时，create 才能接收完整配置；缺少字段不得自行补全。',
 ].join('')
 
 export const ATOMIC_QUESTION_POLICY = [

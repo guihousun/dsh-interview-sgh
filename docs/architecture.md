@@ -119,6 +119,13 @@ AI 只看到按资源分组的七个业务工具：
 这些工具只读写业务数据，不返回 UI 产物。复杂用户意图由 AI 组合：
 
 ```text
+“新建练习”
+→ interview_show_practice_setup
+→ 用户在配置卡提交完整配置
+→ HTTP session.start
+→ question.generate / leetcode.draw
+→ interview_show_question
+
 “这题出过了”
 → interview_question delete
 → interview_question create
@@ -139,10 +146,11 @@ AI 只看到按资源分组的七个业务工具：
 
 ## 独立展示工具
 
-展示工具只根据资源 ID 读取已保存数据，不产生业务副作用：
+展示工具不产生业务副作用。内容卡根据资源 ID 读取已保存数据；新建练习配置卡只收集用户输入，提交后通过 HTTP 命令进入业务层：
 
 | 工具 | UI 载体 |
 | --- | --- |
+| `interview_show_practice_setup` | 新建练习配置卡片 |
 | `interview_show_question` | 题目卡片 |
 | `interview_show_review` | 点评讲解卡片 |
 | `interview_show_summary` | 练习总结卡片 |

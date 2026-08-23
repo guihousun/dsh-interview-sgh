@@ -1,6 +1,8 @@
 import React from 'react'
 import { LEETCODE_LANGUAGES } from '../../domain/leetcode-languages.js'
-import { Button, h, Select } from '../shared/ui.js'
+import { useCommand } from '../shared/hooks.js'
+import { useCardLifecycle } from '../shared/card-transition.js'
+import { Button, ErrorNotice, h, Select } from '../shared/ui.js'
 
 export const PRACTICE_MODE_OPTIONS = Object.freeze([
   { value: 'bagu', label: '背八股' },
@@ -65,4 +67,20 @@ export function PracticeConfigForm({
     h('div', { className: 'di-actions di-field-wide' },
       onCancel ? h(Button, { disabled, onClick: onCancel }, '取消') : null,
       h(Button, { tone: 'primary', disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? '保存配置' : '开始练习'))))
+}
+
+export function PracticeSetupCard({ sessionId }) {
+  const command = useCommand(sessionId)
+  const lifecycle = useCardLifecycle(false)
+  const start = (payload) => lifecycle.enter('session.start', () => command.run('session.start', payload))
+
+  return h('article', { className: 'di-card di-setup-card', 'aria-label': '新建练习配置' },
+    h('header', { className: 'di-card-head' }, h('div', { className: 'di-title' }, '新建练习')),
+    h(PracticeConfigForm, {
+      busy: command.busy === 'session.start',
+      disabled: lifecycle.locked,
+      onSubmit: start,
+      submitLabel: lifecycle.consumedBy ? '已提交' : '开始练习',
+    }),
+    h(ErrorNotice, null, command.error))
 }

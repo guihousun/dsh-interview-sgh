@@ -1,22 +1,29 @@
 import React from 'react'
 
-export function useCardTransition(runCommand, artifact, disabled = false) {
+export function useCardLifecycle(disabled = false) {
   const consumedRef = React.useRef(false)
   const [consumedBy, setConsumedBy] = React.useState('')
   const locked = disabled || Boolean(consumedBy)
 
-  const run = React.useCallback(async (command, payload = {}) => {
+  const enter = React.useCallback(async (action, task) => {
     if (disabled || consumedRef.current) return null
     consumedRef.current = true
-    setConsumedBy(command)
-    return runCommand(command, {
-      ...payload,
-      practiceId: artifact.practiceId,
-      questionId: artifact.questionId,
-      presentationId: artifact.presentationId,
-      sessionRevision: artifact.sessionRevision,
-    })
-  }, [runCommand, artifact.practiceId, artifact.questionId, artifact.presentationId, artifact.sessionRevision, disabled])
+    setConsumedBy(action)
+    return task()
+  }, [disabled])
 
-  return { locked, consumedBy, run }
+  return { locked, consumedBy, enter }
+}
+
+export function useCardTransition(runCommand, artifact, disabled = false) {
+  const lifecycle = useCardLifecycle(disabled)
+  const run = React.useCallback((command, payload = {}) => lifecycle.enter(command, () => runCommand(command, {
+    ...payload,
+    practiceId: artifact.practiceId,
+    questionId: artifact.questionId,
+    presentationId: artifact.presentationId,
+    sessionRevision: artifact.sessionRevision,
+  })), [runCommand, lifecycle.enter, artifact.practiceId, artifact.questionId, artifact.presentationId, artifact.sessionRevision])
+
+  return { ...lifecycle, run }
 }

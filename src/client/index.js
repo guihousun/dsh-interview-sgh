@@ -7,6 +7,7 @@ import {
   ToolErrorCard,
 } from './features/live-interview.js'
 import { InsightsCard, PracticeLibrary } from './features/practice-library.js'
+import { PracticeSetupCard } from './features/practice-config.js'
 import { TimelinePanel } from './features/timeline.js'
 import { LeetcodeCatalog } from './features/leetcode.js'
 import { WorkspaceDock } from './features/workspace-dock.js'
@@ -31,6 +32,7 @@ function ToolResourceView({ toolName, sessionId, block }) {
   const view = resolveToolView(toolName, block)
   switch (view.kind) {
     case 'error': return h(ToolErrorCard, { message: view.message })
+    case 'practice-setup': return h(PracticeSetupCard, { key: view.presentationId, sessionId })
     case 'question': return h(QuestionResourceCard, { key: view.presentationId, artifact: view, revision: view.revision, sessionId })
     case 'review': return h(ReviewResourceCard, { key: view.presentationId, artifact: view, revision: view.revision, sessionId })
     case 'library': return h(PracticeLibrary, { sessionId, initialPracticeId: view.practiceId })

@@ -4,6 +4,7 @@ import { ARTIFACT_KINDS, createInteractionArtifact } from '../../src/application
 import { createPresentationResult } from '../../src/application/presentation-result.js'
 
 test('展示产物只校验展示所需资源引用', () => {
+  assert.deepEqual(createInteractionArtifact(ARTIFACT_KINDS.PRACTICE_SETUP), { kind: 'practice-setup' })
   assert.deepEqual(createInteractionArtifact(ARTIFACT_KINDS.QUESTION, {
     practiceId: 'practice-1', questionId: 'question-1',
   }), { kind: 'question', practiceId: 'practice-1', questionId: 'question-1' })

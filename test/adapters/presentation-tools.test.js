@@ -52,6 +52,16 @@ test('展示工具与业务工具独立且只通过资源 ID 读取权威数据'
   assert.match(review.assistantInstruction, /禁止复述卡片内容/)
 })
 
+test('新建练习先展示空白配置卡且不创建业务数据', async () => {
+  const context = fixture()
+  const result = await context.tools.interview_show_practice_setup.execute({}, context.exec)
+  assert.equal(result.artifact.kind, 'practice-setup')
+  assert.equal(typeof result.artifact.presentationId, 'string')
+  assert.deepEqual((await context.application.listPractices()).resource.data, [])
+  assert.match(context.tools.interview_show_practice_setup.description, /必须调用本工具/)
+  assert.match(context.tools.interview_show_practice_setup.description, /禁止自行填写默认值/)
+})
+
 test('展示工具不创建或修改业务数据', async () => {
   const context = fixture()
   const ids = await reviewedQuestion(context)
@@ -89,4 +99,5 @@ test('各类展示工具的描述明确禁止普通文本代替 UI', () => {
   assert.match(context.tools.interview_show_question.description, /禁止使用普通 Assistant Text/)
   assert.match(context.tools.interview_show_review.description, /禁止使用普通 Assistant Text/)
   assert.match(context.tools.interview_show_summary.description, /禁止使用普通 Assistant Text/)
+  assert.match(context.tools.interview_show_practice_setup.description, /禁止通过普通 Assistant Text/)
 })

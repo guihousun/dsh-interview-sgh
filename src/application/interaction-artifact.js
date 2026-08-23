@@ -1,4 +1,5 @@
 export const ARTIFACT_KINDS = Object.freeze({
+  PRACTICE_SETUP: 'practice-setup',
   QUESTION: 'question',
   REVIEW: 'review',
   LIBRARY: 'library',
