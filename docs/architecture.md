@@ -1,46 +1,33 @@
 # dsh-interview 开发者架构说明
 
-## 设计原则
+## 设计目标
 
-dsh-interview 是后端编排的 AI 面试练习插件。系统遵守以下边界：
+dsh-interview 把 AI 当作能够组合领域能力的执行者，而不是把所有用户表达预先枚举成命令。
 
-- 后端状态机决定业务流程、数据写入和唯一下一动作；
-- Agent 只负责出题、评价、讲解和总结等需要模型能力的内容生成；
-- UI 是业务产物的交互载体，不从文本猜测状态，也不自行推进流程；
-- Agent 工具与可视化 UI 复用同一应用用例和领域模型；
-- SQLite 是练习、题目、作答和会话游标的权威数据源。
+- 业务层提供练习、题目、作答、评价、讲解和力扣记录的原子操作；
+- AI 根据用户意图和数据库事实组合原子操作；
+- UI 是内容的展示载体，与业务写入完全分离；
+- 会话只保存练习绑定和当前题指针，不保存工作流阶段或待恢复任务；
+- 失败就是本次请求失败，用户再次发起请求即可，不持久化 `pendingTask`；
+- 当前版本不兼容旧工具协议，也不迁移旧数据库。
 
-当前版本不提供旧协议兼容或旧数据库迁移。
-
-## 运行时全景
+## 系统全景
 
 ```text
-自然语言
-  → DSH 原子工具 ───────────────┐
-                                │
-可视化操作                      ▼
-  → HTTP command ───────→ InterviewCoordinator
-                                │
-                                ▼
-                       InterviewApplication
-                                │
-                       Domain + Repository
-                                │
-             ┌──────────────────┼──────────────────┐
-             ▼                  ▼                  ▼
-        业务 events        Agent tasks      InteractionResult
-                                │                  │
-                                ▼                  ▼
-                       AgentEventBridge     Tool result / HTTP
-                                │                  │
-                                ▼                  ▼
-                         DSH followup       React artifact card
+自然语言 ─→ DSH 原子业务工具 ─┐
+                              ├─→ InterviewApplication ─→ Domain ─→ SQLite
+工作台操作 ─→ HTTP command ───┘             │
+                                            ├─→ Markdown Exporter
+                                            └─→ 业务 events
+
+需要模型生成的 UI 操作
+  ─→ 一次性 Agent followup
+  ─→ AI 读取权威数据并组合原子业务工具
+  ─→ AI 调用独立展示工具
+  ─→ React 根据资源 ID 渲染卡片
 ```
 
-两种入口的区别只在适配层：
-
-- Agent 工具调用后，模型根据 `nextAction` 继续必要的内容生成工具链；
-- UI 命令完成本地业务动作后，由协调器投递 `agentTasks`，在需要模型参与或需要把正式卡片追加到对话末尾时唤醒 Agent。
+自然语言和工作台共用应用层。工作台中的搜索、筛选、编辑、删除、导出、绑定和力扣完成标记直接执行本地操作；出题、评价、讲解和普通练习总结才会发起一次性 AI 请求。
 
 ## 依赖方向
 
@@ -48,116 +35,130 @@ dsh-interview 是后端编排的 AI 面试练习插件。系统遵守以下边�
 adapters ─→ application ─→ domain
    │              │
    │              └─→ ports ← infrastructure
-   └─→ client（仅通过 HTTP DTO 和交互协议通信）
+   └─→ client（只通过 HTTP DTO 与交互协议通信）
 ```
-
-依赖只能向内。领域层不认识 DSH、React、HTTP、SQLite 或文件系统。
 
 ```text
 src/
-├── domain/          练习聚合、值对象、模式规则、状态机和领域错误
-├── application/     应用用例、协调器、交互结果、Agent 任务、DTO 和端口
-├── infrastructure/  SQLite Repository、Markdown 导出、时钟、UUID 和随机源
+├── domain/          练习聚合、会话绑定、模式规则和领域错误
+├── application/     原子应用操作、DTO、展示结果和端口
+├── infrastructure/  SQLite、Markdown 导出、时钟、ID 与随机源
 ├── adapters/
-│   ├── dsh/         原子工具、提示词策略和 Agent 事件桥接
-│   └── http/        UI 查询接口与命令分发
-├── client/          React 卡片、工作台、时间轴、API Client 和共享组件
-└── protocol/        Host 与 Client 共享的工具名和交互协议版本
+│   ├── dsh/         原子业务工具、展示工具、提示策略和一次性事件桥
+│   └── http/        工作台查询与命令分发
+├── client/          对话卡片、工作台、时间轴和 API Client
+└── protocol/        Host 与 Client 共享的工具名和协议常量
 ```
 
-## 领域数据与会话游标
+领域层不知道 DSH、HTTP、React、SQLite 或文件系统。适配层不得绕过应用层直接修改数据库。
 
-`Practice` 是聚合根，内部保存模式配置、题目、历次作答、评价、讲解和总结。核心层级如下：
+## 领域模型
+
+`Practice` 是聚合根：
 
 ```text
 Practice
+├── mode / config / status / summary
 └── Question
     ├── Attempt 1 ─→ Evaluation
     ├── Attempt 2 ─→ Evaluation
     └── Explanation
 ```
 
-重新作答会新增 `Attempt`，不会覆盖旧回答及其评分。直接看答案只保存 `Explanation`，不会伪造作答或评价。
+- 重新作答追加 `Attempt`，不会覆盖旧回答及其评价；
+- 一道题只有一份当前讲解，明确执行 replace 才能替换；
+- 直接看答案只创建 `Explanation`，不会伪造 `Attempt` 或 `Evaluation`；
+- 力扣是一题一练习，下一题会完成旧练习并创建新的练习；
+- 非力扣练习结束时保存总体总结，力扣只保存本题汇总。
 
-`SessionCursor` 保存某个 DSH 会话正在处理的练习、题目、作答、阶段和修订号。数据库同时约束：
+## 会话绑定与派生状态
 
-- 一个会话最多绑定一个练习；
-- 一个练习最多绑定一个会话；
-- 后切换的会话接管练习并释放旧会话；
-- 结束练习后解除会话绑定；
-- 删除练习通过外键级联删除题目、作答和游标。
+`SessionBinding` 只有五个字段：
 
-SQLite 表包括 `practices`、`questions`、`attempts`、`session_cursors` 和 `leetcode_progress`。Repository 开启外键、WAL 和事务，应用层的一次业务操作负责同时保存聚合与游标。
-
-## 统一动作入口
-
-所有业务入口先映射为 `INTERVIEW_ACTIONS`，再由 `InterviewCoordinator` 统一执行：
-
-```text
-输入
-→ 校验原子工具 Schema 或 UI command
-→ Coordinator 标记来源 agent / ui
-→ Application 加载聚合与游标
-→ Domain 校验阶段并执行行为
-→ Repository 持久化
-→ 生成 events、agentTasks 和资源引用
-→ InteractionResult 映射状态、下一动作与 UI 产物
+```json
+{
+  "sessionId": "session-id",
+  "practiceId": "practice-id",
+  "currentQuestionId": "question-id",
+  "revision": 3,
+  "updatedAt": 1234567890
+}
 ```
 
-查询通过 Repository 生成只读 DTO，不得依赖查询副作用修改当前练习、焦点题目或流程阶段。
+数据库通过唯一约束保证一个会话最多绑定一个练习、一个练习最多绑定一个会话。后切换的会话接管练习，练习完成或删除后解除绑定。
 
-## 三类输出必须分离
+系统不存储 `phase`。读会话时根据练习事实派生 `stage`：
 
-一次应用操作可能产生三种不同输出，它们不能互相替代。
+| 派生阶段 | 数据事实 |
+| --- | --- |
+| `ready_for_question` | 进行中且没有当前题 |
+| `answerable` | 普通题存在，尚无待处理作答和讲解 |
+| `needs_evaluation` | 最新作答没有评价 |
+| `needs_explanation` | 最新作答已评价但题目没有讲解 |
+| `reviewed` | 普通题已有讲解 |
+| `solving` | 当前力扣题未标记完成 |
+| `ready_for_next` | 当前力扣题已标记完成 |
+| `completed` | 练习已结束 |
 
-### 业务事件 `events`
+`stage` 是只读投影，不是流程锁。领域操作根据自身不变量校验数据，例如已结束练习不能作答、已评价的作答不能再次评价、力扣题不能由 AI 创建。
 
-描述已经发生的领域事实，用于应用内部观察，不负责唤醒模型，也不决定 UI 卡片。
+## 原子业务工具
 
-### Agent 任务 `agentTasks`
+AI 只看到按资源分组的七个业务工具：
 
-描述接下来必须由模型完成的工作。目前包括：
+| 工具 | 原子操作 |
+| --- | --- |
+| `interview_session` | read、bind |
+| `interview_practice` | create、read、list、update、complete、reopen、delete、export、insights |
+| `interview_question` | create、read、list、update、delete、focus |
+| `interview_attempt` | create、list |
+| `interview_evaluation` | create |
+| `interview_explanation` | create、replace |
+| `interview_leetcode` | catalog、draw、draw_next、set_completion |
 
-- `question.generate`：生成一道题；
-- `answer.evaluate`：评价一次正式作答；
-- `review.generate`：生成知识点讲解和“直接背”；
-- `leetcode.explain`：按配置语言生成算法讲解和代码；
-- `practice.summarize`：根据完整历史生成练习总结；
-- `artifact.deliver`：不修改业务，只把权威 UI 产物投递到对话最新位置。
-
-### 交互产物 `artifact`
-
-描述当前工具调用必须承载的 UI。它只包含产物类型和权威资源 ID，不携带由模型临时拼接的展示正文。
-
-```text
-question           题目卡片
-review             点评讲解卡片
-finished           结束总结卡片
-library            练习档案
-insights           能力复盘
-leetcode-catalog   力扣热题目录
-deleted/exported   操作结果
-```
-
-题目、点评讲解和结束总结分别只能出现在与其匹配的工作流阶段。应用层会强制校验动作、状态、引用和产物类型的一致性。
-
-## 交互协议
-
-Host 与 Client 共享协议常量：
+这些工具只读写业务数据，不返回 UI 产物。复杂用户意图由 AI 组合：
 
 ```text
-dsh-interview/interaction-v2
+“这题出过了”
+→ interview_question delete
+→ interview_question create
+→ interview_show_question
+
+“重新做第二题”
+→ interview_question focus
+→ interview_show_question
+
+“我来回答”
+→ interview_attempt create
+→ interview_evaluation create
+→ interview_explanation create
+→ interview_show_review
 ```
 
-结构化结果的核心字段如下：
+不再存在继续、下一题、重新出题或恢复之类的服务端流程宏命令。它们是 AI 根据数据事实组合出的用户意图。
+
+## 独立展示工具
+
+展示工具只根据资源 ID 读取已保存数据，不产生业务副作用：
+
+| 工具 | UI 载体 |
+| --- | --- |
+| `interview_show_question` | 题目卡片 |
+| `interview_show_review` | 点评讲解卡片 |
+| `interview_show_summary` | 练习总结卡片 |
+| `interview_show_practice` | 单条练习档案 |
+| `interview_show_practice_list` | 练习工作台 |
+| `interview_show_insights` | 能力洞察 |
+| `interview_show_leetcode_catalog` | 热题 100 |
+
+工具描述明确规定：用户需要查看对应内容时必须调用展示工具，禁止使用普通 Assistant Text 代替。业务操作本身不强制展示；只有当前用户意图需要 UI 时，AI 才在业务操作后调用展示工具。
+
+`dsh-interview/interaction-v2` 只负责把展示产物交给 Client：
 
 ```json
 {
   "protocol": "dsh-interview/interaction-v2",
-  "action": "question.present",
-  "revision": 3,
-  "state": "awaiting_answer",
-  "nextAction": "wait_for_user",
+  "action": "presentation.question",
   "artifact": {
     "kind": "question",
     "practiceId": "practice-id",
@@ -165,139 +166,101 @@ dsh-interview/interaction-v2
   },
   "assistantResponse": {
     "mode": "exact",
-    "text": "已出题，请开始作答。",
-    "mustNotRepeatArtifact": true
+    "text": "题目已展示，请开始作答。"
   }
 }
 ```
 
-- `state`：后端权威工作流状态；
-- `nextAction`：Agent 唯一允许执行的下一动作；
-- `artifact`：Client 要渲染的产物类型和资源引用；
-- `revision`：资源刷新与请求合并使用的单调修订号；
-- `assistantResponse`：普通 Assistant Text 的输出策略；
-- `context`：仅在模型继续生成时提供的必要上下文；
-- `error.audience`：区分 Agent 可恢复错误与用户、系统错误。
+Client 不从工具参数或 Assistant Text 重建内容，而是用 `artifact` 中的资源 ID 查询最新 DTO。
 
-前后端从 `src/protocol/interaction-protocol.js` 引用同一个版本常量。Client 只接受当前版本，不进行版本协商或旧协议转换；协议不匹配的历史工具结果不会进入卡片渲染。
+## UI 命令与一次性 AI 请求
 
-只要存在 `artifact`，`assistantResponse.mode` 必须为 `exact`。模型只能输出后端规定的简短状态文本，不得复述题目、点评、讲解或总结。
-
-## Agent 内容生成链路
-
-### 新建非力扣练习并出题
+HTTP command 不是对 AI 暴露的业务协议，只是工作台内部交互适配。可纯本地完成的命令直接调用应用层；需要 AI 生成内容时投递一次性 followup：
 
 ```text
-interview_start_practice
-→ nextAction = generate_question
-→ interview_read_practice_context
-→ Agent 根据模式专属配置生成一道简洁题目
-→ interview_present_question
-→ 保存 Question
-→ artifact.kind = question
+新建普通练习 → practice.create → 一次性 question.generate
+下一题       → 一次性 question.generate
+看答案       → 一次性 review.generate
+结束普通练习 → 一次性 practice.summarize
+切换练习     → session.bind → 一次性切换确认
+力扣下一题   → leetcode.draw_next → 一次性 question.show
 ```
 
-### 用户正式作答
+一次性请求只存在于当前函数调用中。系统不保存队列、不保存 `pendingTask`、不自动重试。投递或模型生成失败时，已完成的原子业务事实仍保持有效；用户再次点击或发送消息即可重新发起。
+
+## 典型练习流转
+
+### 普通知识练习
 
 ```text
-interview_submit_answer
-→ 保存新的 Attempt
-→ interview_read_practice_context
-→ interview_save_evaluation
-→ 保存 Evaluation
-→ interview_complete_review
-→ 保存 Explanation
-→ artifact.kind = review
+practice.create
+→ question.create
+→ show_question
+→ attempt.create
+→ evaluation.create
+→ explanation.create
+→ show_review
+├─ question.focus → show_question        重新作答
+├─ question.create → show_question       下一题
+└─ practice.complete → show_summary      结束练习
 ```
 
-如果该题已有参考讲解，重新作答后只生成新的评价，并复用已有讲解生成点评讲解卡片。
-
-### 用户直接看答案
+### 直接看答案
 
 ```text
-interview_reveal_answer
-→ interview_read_practice_context
-→ interview_complete_review
-→ artifact.kind = review（无 attemptId）
+show_question
+→ explanation.create
+→ show_review
 ```
 
-### 继续练习
-
-用户表达“继续”时只调用 `interview_continue_practice`。后端根据游标决定：
-
-- 恢复当前题目；
-- 恢复尚未完成的评价或讲解；
-- 生成下一题；
-- 恢复总结；
-- 要求选择练习或确认重新打开。
-
-模型不得根据聊天文本自行猜测当前题目或阶段。
-
-### UI 操作后的正式卡片投递
+### 刷力扣
 
 ```text
-UI command
-→ 后端完成业务动作并确定当前产物
-→ agentTasks: artifact.deliver
-→ Agent 只调用 interview_render_current_artifact
-→ 卡片出现在当前对话最新位置
+practice.create
+→ leetcode.draw
+→ show_question
+├─ leetcode.set_completion
+├─ explanation.create → show_review
+└─ leetcode.draw_next
+   → 完成旧练习 + 创建新练习 + 抽取题目
+   → show_question
 ```
 
-`interview_render_current_artifact` 是只读投递动作，不允许代替继续、下一题、重答、看答案等业务动作。
+### 用户说“继续”
 
-## 力扣流程
+AI 先调用 `interview_session read`，再依据真实数据选择操作：没有题则创建题目；当前题可回答则展示题目；有未评价作答则补齐评价和讲解；已有讲解则展示点评讲解；力扣题则展示当前题。不存在固定的 continue 后端事件，也不从历史 Assistant Text 猜测状态。
 
-刷力扣是一题一练习。题目从内置热题 100 快照随机抽取，不由模型生成：
+## 持久化
 
-```text
-新建力扣练习
-→ 后端随机抽题并保存规范元数据
-→ question 卡片
-→ 用户前往力扣作答或请求讲解
-→ leetcode.explain
-→ 按练习配置语言保存一份完整讲解和代码
-```
+SQLite 表包括：
 
-抽取下一题会归档上一条力扣练习并创建一条新练习。力扣结束不调用模型分析，只保存本次题目汇总。
+- `practices`
+- `questions`
+- `attempts`
+- `session_bindings`
+- `leetcode_progress`
 
-## Client 渲染
+Repository 开启外键、WAL 和事务。练习聚合和会话绑定在同一应用操作中提交。当前开发版本不会创建、读取或迁移旧的 `session_cursors` 表。
 
-工具卡片的解析顺序固定为：
+## 错误边界
 
-```text
-tool-result
-→ 检查调用状态和错误受众
-→ 校验 interaction protocol
-→ 读取 artifact
-→ 根据 kind 选择 React 卡片
-→ 使用资源 ID 通过只读 HTTP API 获取最新 DTO
-```
+- JSON Schema 拒绝工具参数形状错误；
+- Domain 使用稳定错误码保护业务不变量；
+- HTTP 将领域错误映射为 400，将未知错误隐藏为统一 500；
+- 展示工具拒绝不存在或尚未保存的资源；
+- AI 生成失败不写恢复任务，不在后续会话自动执行旧请求。
 
-Client 不解析 Agent 提示词，不从工具参数重建题目，也不把 Assistant Text 当业务数据。工作台是独立的本地管理界面；题目、点评讲解和总结必须由对应的对话卡片承载。
+## 扩展方式
 
-资源请求使用稳定键、`revision` 和合并缓存，避免同一批刷新重复查询。命令通过统一 `useCommand` 防止执行期间重复点击。
+新增资源能力时：
 
-## 错误与恢复
+1. 在领域层添加不变量与纯函数；
+2. 在应用层添加单一原子操作；
+3. 在对应资源工具的 operation 中暴露；
+4. 只有确实需要新 UI 载体时才新增展示工具和卡片；
+5. 为领域、应用、适配器和端到端链路补充测试。
 
-- Agent 参数或阶段错误：返回 `audience=agent` 的可恢复协议错误，不渲染错误卡片；Agent 调用 `interview_continue_practice` 从权威状态恢复。
-- 用户操作错误：由 HTTP 或工具返回稳定领域错误码，可展示给用户。
-- 系统错误：隐藏内部异常细节，统一返回 `INTERNAL_ERROR`。
-
-恢复流程始终重新读取 SQLite 中的聚合和游标，不从历史 Assistant Text 推断状态。
-
-## 扩展规则
-
-新增模式或流程动作时应按顺序修改：
-
-1. 在领域层定义配置、状态转换和不变量；
-2. 在应用层添加用例及返回的资源引用、事件和 Agent 任务；
-3. 在协调器中映射原子动作；
-4. 在交互结果中定义状态、下一动作、产物和固定辅助文本；
-5. 为 Agent 工具和 UI command 分别增加薄适配；
-6. 为新产物增加 Client 卡片和只读 DTO；
-7. 覆盖领域、应用、协议、Client 和端到端测试。
-
-不要在 UI 中复制状态机，不要用提示词代替领域校验，也不要让展示工具产生业务副作用。
+不要新增描述用户话术的动作枚举，不要把 UI 产物塞进业务写操作，也不要用持久化待办弥补一次 AI 请求失败。
 
 ## 验证
 
@@ -305,4 +268,4 @@ Client 不解析 Agent 提示词，不从工具参数重建题目，也不把 As
 npm run verify
 ```
 
-该命令依次构建 Client、运行全部自动化测试，并检查 Host、适配器和构建产物的 JavaScript 语法。
+该命令构建 Client、运行全部测试，并检查 Host、适配器与构建产物的 JavaScript 语法。
