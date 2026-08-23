@@ -74,6 +74,28 @@ test('聚焦历史题只改变当前题指针并保留全部作答', async () =>
   assert.equal(session.resource.data.currentQuestion.attempts.length, 1)
 })
 
+test('展示卡片消费后会推进会话版本且不能重复消费', async () => {
+  const fixture = applicationFixture()
+  await fixture.application.createAtomicPractice('session-1', { mode: 'bagu', config: { topic: 'JVM' } })
+  await fixture.application.createAtomicQuestion('session-1', { prompt: '什么是类加载？' })
+  const before = (await fixture.application.readAtomicSession('session-1')).resource.data
+  const input = {
+    presentationId: 'presentation-1',
+    practiceId: before.practice.id,
+    questionId: before.currentQuestionId,
+    sessionRevision: before.revision,
+  }
+
+  await fixture.application.consumeAtomicPresentation('session-1', input)
+  const after = (await fixture.application.readAtomicSession('session-1')).resource.data
+  assert.equal(after.revision, before.revision + 1)
+  assert.equal(after.currentQuestionId, before.currentQuestionId)
+  await assert.rejects(
+    fixture.application.consumeAtomicPresentation('session-1', input),
+    /这张卡片已经完成/,
+  )
+})
+
 test('力扣抽题与随机下一题是无待办的原子操作', async () => {
   const fixture = applicationFixture()
   await fixture.application.createAtomicPractice('leetcode-session', {

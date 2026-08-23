@@ -52,6 +52,10 @@ export function clearSessionQuestion(binding, now) {
   return revise(binding, { currentQuestionId: null }, now)
 }
 
+export function consumeSessionBinding(binding, now) {
+  return revise(binding, {}, now)
+}
+
 export function deriveSessionStage({ practice, question = null, leetcodeCompleted = false }) {
   assertDomain(practice && typeof practice === 'object', 'PRACTICE_REQUIRED', '练习不能为空')
   if (practice.status === 'completed') return SESSION_STAGES.COMPLETED

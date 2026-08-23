@@ -4,6 +4,7 @@ import { useCommand, useInterviewQuery } from '../shared/hooks.js'
 import { Button, ErrorNotice, h, Loading, Markdown } from '../shared/ui.js'
 import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
+import { useCardTransition } from '../shared/card-transition.js'
 
 const DIFFICULTY = Object.freeze({
   easy: { label: '简单', tone: 'easy' },
@@ -85,7 +86,7 @@ export function LeetcodeCatalog({ sessionId }) {
     })))
 }
 
-function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, nextRequested, onRun, onNext, onExplain }) {
+function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, transition, onRun, onNext, onExplain }) {
   const saved = catalogProblem(catalog, question.leetcode.slug)
   const problem = { ...question.leetcode, completed: saved?.completed === true }
   return h('article', { className: `di-card di-lc-problem-card${active ? ' is-active' : ' is-history'}`, 'aria-label': active ? '当前力扣题目' : '历史力扣题目' },
@@ -100,11 +101,13 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
         h('a', { className: 'di-button is-primary', href: problem.url, target: '_blank', rel: 'noreferrer' }, '打开题目 ↗'),
         active ? h(React.Fragment, null,
           h(Button, {
+            disabled: transition.locked,
             busy: command.busy === 'leetcode.set-completion',
             onClick: () => onRun('leetcode.set-completion', { slug: problem.slug, completed: !problem.completed }),
           }, problem.completed ? '标记未完成' : '标记完成'),
-          h(Button, { disabled: nextRequested, onClick: onNext }, nextRequested ? '已出下一题' : '随机下一题'),
+          h(Button, { disabled: transition.locked, onClick: onNext }, transition.consumedBy === 'question.next' ? '已出下一题' : '随机下一题'),
           h(Button, {
+            disabled: transition.locked,
             busy: command.busy === 'question.reveal',
             onClick: () => onExplain(question),
           }, '讲解')) : null),
@@ -121,23 +124,23 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
         : null)
 }
 
-export function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = '', live = false, resourceRevision = 0 }) {
-  const sessionQuery = useInterviewQuery(`session:${sessionId}`, () => interviewApi.session(sessionId), [sessionId, resourceRevision], { version: resourceRevision })
+export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, language = '', resourceRevision = 0 }) {
+  const sessionQuery = useInterviewQuery(`session:${sessionId}:${artifact.presentationId}`, () => interviewApi.session(sessionId), [sessionId, artifact.presentationId, resourceRevision], { version: resourceRevision, cache: false })
   const catalogQuery = useInterviewQuery('leetcode-catalog-current', () => interviewApi.leetcodeCatalog(), [], { cache: false })
   const command = useCommand(sessionId)
   const session = sessionQuery.data?.resource?.data
-  const sessionQuestion = session?.currentQuestion?.leetcode ? session.currentQuestion : null
-  const current = live
-    ? sessionQuestion || initialQuestion
-    : initialQuestion
+  const current = initialQuestion
   const [showExplanation, setShowExplanation] = React.useState(false)
-  const nextRequestedRef = React.useRef(false)
-  const [nextRequested, setNextRequested] = React.useState(false)
+  const artifactActive = Boolean(
+    session?.selected
+    && session.practice?.id === artifact.practiceId
+    && session.currentQuestionId === artifact.questionId
+    && session.revision === artifact.sessionRevision,
+  )
+  const transition = useCardTransition(command.run, artifact, !artifactActive)
 
   React.useEffect(() => {
     setShowExplanation(false)
-    nextRequestedRef.current = false
-    setNextRequested(false)
   }, [current?.id])
 
   if (sessionQuery.loading && !current) return h('div', { className: 'di-card' }, h(Loading))
@@ -159,25 +162,13 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, languag
       setShowExplanation((value) => !value)
       return
     }
-    const result = await run('question.reveal', { questionId: current.id })
-    if (result) setShowExplanation(true)
+    await transition.run('question.reveal')
   }
 
-  const next = async () => {
-    if (nextRequestedRef.current) return
-    nextRequestedRef.current = true
-    setNextRequested(true)
-    const result = await run('question.next')
-    if (!result) {
-      nextRequestedRef.current = false
-      setNextRequested(false)
-    }
-  }
+  const next = () => transition.run('question.next')
 
   const catalog = catalogQuery.data?.resource?.data
-  const active = live
-    ? sessionQuery.loading || Boolean(session?.selected && session?.stage !== 'completed' && sessionQuestion?.id === current.id)
-    : true
+  const active = artifactActive
   return h(LeetcodeQuestionCard, {
     question: current,
     catalog,
@@ -185,7 +176,7 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, languag
     active,
     expanded: showExplanation,
     command,
-    nextRequested,
+    transition,
     onRun: run,
     onNext: next,
     onExplain: explain,

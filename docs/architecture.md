@@ -161,8 +161,10 @@ AI 只看到按资源分组的七个业务工具：
   "action": "presentation.question",
   "artifact": {
     "kind": "question",
+    "presentationId": "presentation-id",
     "practiceId": "practice-id",
-    "questionId": "question-id"
+    "questionId": "question-id",
+    "sessionRevision": 3
   },
   "assistantResponse": {
     "mode": "exact",
@@ -172,6 +174,8 @@ AI 只看到按资源分组的七个业务工具：
 ```
 
 Client 不从工具参数或 Assistant Text 重建内容，而是用 `artifact` 中的资源 ID 查询最新 DTO。
+
+题目卡和点评卡都是一次性流程载体。用户点击“看答案”“下一题”“重新作答”或“结束练习”中的任一操作时，Client 立即消费并锁定整张卡片，而不是分别管理按钮状态。命令会携带 `presentationId`、练习 ID、题目 ID 和展示时的 `sessionRevision`；应用层只接受与当前会话绑定完全一致的展示版本，并在接受后推进修订号。这样旧卡片自然成为只读历史，新步骤必须通过新的展示工具生成新卡片。
 
 ## UI 命令与一次性 AI 请求
 
@@ -186,7 +190,7 @@ HTTP command 不是对 AI 暴露的业务协议，只是工作台内部交互适
 力扣下一题   → leetcode.draw_next → 一次性 question.show
 ```
 
-一次性请求只存在于当前函数调用中。系统不保存队列、不保存 `pendingTask`、不自动重试。投递或模型生成失败时，已完成的原子业务事实仍保持有效；用户再次点击或发送消息即可重新发起。
+一次性请求只存在于当前函数调用中。系统不保存队列、不保存 `pendingTask`、不自动重试。卡片操作一经接受，该卡片就永久进入历史状态；投递或模型生成失败时，已完成的原子业务事实仍保持有效，用户可以通过自然语言重新发起意图，由系统展示新的流程卡片。
 
 ## 典型练习流转
 

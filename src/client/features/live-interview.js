@@ -5,6 +5,7 @@ import { Button, Empty, ErrorNotice, h, Icon, Loading, Markdown, PhaseBadge, Sta
 import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { LeetcodeProblemCard } from './leetcode.js'
 import { getArtifactQuestionActions } from './question-actions.js'
+import { useCardTransition } from '../shared/card-transition.js'
 
 export function CompactResultCard({ title, detail, tone = 'quiet' }) {
   return h('div', { className: 'di-card' },
@@ -14,56 +15,30 @@ export function CompactResultCard({ title, detail, tone = 'quiet' }) {
     detail ? h('div', { className: 'di-card-body' }, detail) : null)
 }
 
-export function QuestionResultCard({ sessionId, question, answerDisabled = false }) {
+export function QuestionResultCard({ sessionId, question, artifact, answerDisabled = false }) {
   if (!question) return null
   const command = useCommand(sessionId)
-  const revealRequestedRef = React.useRef(false)
-  const [revealRequested, setRevealRequested] = React.useState(false)
-  const revealAnswer = async () => {
-    if (revealRequestedRef.current) return
-    revealRequestedRef.current = true
-    setRevealRequested(true)
-    try {
-      await command.run('question.reveal', { questionId: question.id })
-    } catch {
-      revealRequestedRef.current = false
-      setRevealRequested(false)
-    }
-  }
+  const transition = useCardTransition(command.run, artifact, answerDisabled)
   return h('article', { className: 'di-card di-question-card', 'aria-label': '面试题' },
     h('div', { className: 'di-question-main' },
       h('div', { className: 'di-question-text' }, h(Markdown, null, question.prompt))),
     h(Button, {
       className: 'di-answer-button',
-      disabled: answerDisabled || revealRequested,
+      disabled: transition.locked,
       busy: command.busy === 'question.reveal',
-      onClick: revealAnswer,
+      onClick: () => transition.run('question.reveal'),
       'aria-label': '查看本题答案',
     }, h(Icon, { name: 'eye' }), '看答案'),
     h(ErrorNotice, null, command.error))
 }
 
-export function ReviewResultCard({ sessionId, question, attempt, actionsDisabled = false }) {
+export function ReviewResultCard({ sessionId, question, attempt, artifact, actionsDisabled = false }) {
   if (!question || !question.explanation || (attempt && !attempt.evaluation)) return null
   const command = useCommand(sessionId)
-  const run = (name, payload) => command.run(name, payload).catch(() => {})
-  const retry = () => run('question.retry', { questionId: question.id })
+  const transition = useCardTransition(command.run, artifact, actionsDisabled)
   const evaluation = attempt?.evaluation || null
   const explanation = question.explanation
   const isLeetcode = Boolean(question.leetcode)
-  const nextRequestedRef = React.useRef(false)
-  const [nextRequested, setNextRequested] = React.useState(false)
-  const next = async () => {
-    if (nextRequestedRef.current) return
-    nextRequestedRef.current = true
-    setNextRequested(true)
-    try {
-      await command.run('question.next')
-    } catch {
-      nextRequestedRef.current = false
-      setNextRequested(false)
-    }
-  }
   return h('article', { id: `di-review-${question.id}`, className: 'di-card di-review-card', 'aria-label': isLeetcode ? '题目讲解' : '点评讲解' },
     evaluation ? h('header', { className: 'di-review-score' },
       h('span', { className: 'di-review-check' }, h(Icon, { name: 'check', size: 22 })),
@@ -90,10 +65,10 @@ export function ReviewResultCard({ sessionId, question, attempt, actionsDisabled
       h(ErrorNotice, null, command.error),
       h('div', { className: 'di-review-actions' },
         isLeetcode
-          ? h(Button, { tone: 'primary', disabled: actionsDisabled || nextRequested, onClick: next }, nextRequested ? '已出下一题' : '随机下一题')
-          : h(Button, { tone: 'primary', disabled: actionsDisabled || nextRequested, busy: command.busy === 'question.next', onClick: next }, '下一题'),
-        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === 'question.retry', onClick: retry }, h(Icon, { name: 'swap' }), '重新作答') : null,
-        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === 'session.finish', onClick: () => run('session.finish') }, '结束练习') : null)))
+          ? h(Button, { tone: 'primary', disabled: transition.locked, onClick: () => transition.run('question.next') }, transition.consumedBy === 'question.next' ? '已出下一题' : '随机下一题')
+          : h(Button, { tone: 'primary', disabled: transition.locked, busy: command.busy === 'question.next', onClick: () => transition.run('question.next') }, '下一题'),
+        !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === 'question.retry', onClick: () => transition.run('question.retry') }, h(Icon, { name: 'swap' }), '重新作答') : null,
+        !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === 'session.finish', onClick: () => transition.run('session.finish') }, '结束练习') : null)))
 }
 
 export function ToolErrorCard({ message }) {
@@ -136,8 +111,8 @@ export function QuestionResourceCard({ artifact, revision, sessionId }) {
   const actions = getArtifactQuestionActions(session, artifact)
   return h(ArtifactState, { query, missing: '找不到题目卡片数据' }, question
     ? question.leetcode
-      ? h(LeetcodeProblemCard, { sessionId, initialQuestion: question, language: practice.config?.language, resourceRevision: revision })
-      : h(QuestionResultCard, { sessionId, question, answerDisabled: !actions.canReveal })
+      ? h(LeetcodeProblemCard, { sessionId, initialQuestion: question, artifact, language: practice.config?.language, resourceRevision: revision })
+      : h(QuestionResultCard, { sessionId, question, artifact, answerDisabled: !actions.canReveal })
     : null)
 }
 
@@ -151,7 +126,7 @@ export function ReviewResourceCard({ artifact, revision, sessionId }) {
   const complete = question?.explanation && (!artifact.attemptId || attempt?.evaluation)
   const actions = getArtifactQuestionActions(session, artifact)
   return h(ArtifactState, { query, missing: '找不到讲解数据' }, complete
-    ? h(ReviewResultCard, { sessionId, question, attempt, actionsDisabled: !actions.canContinue })
+    ? h(ReviewResultCard, { sessionId, question, attempt, artifact, actionsDisabled: !actions.canContinue })
     : null)
 }
 

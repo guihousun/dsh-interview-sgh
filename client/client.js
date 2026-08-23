@@ -37,10 +37,10 @@ __export(index_exports, {
   resolveToolView: () => resolveToolView
 });
 module.exports = __toCommonJS(index_exports);
-var import_react8 = __toESM(require("react"), 1);
+var import_react9 = __toESM(require("react"), 1);
 
 // src/client/features/live-interview.js
-var import_react4 = __toESM(require("react"), 1);
+var import_react5 = __toESM(require("react"), 1);
 
 // src/client/shared/api.js
 var cache = /* @__PURE__ */ new Map();
@@ -558,7 +558,7 @@ var LEETCODE_TOP_100 = Object.freeze(LEETCODE_TOP_100_GROUPS.flatMap((group) => 
 var PROBLEM_BY_SLUG = new Map(LEETCODE_TOP_100.map((problem) => [problem.slug, problem]));
 
 // src/client/features/leetcode.js
-var import_react3 = __toESM(require("react"), 1);
+var import_react4 = __toESM(require("react"), 1);
 
 // src/domain/leetcode-languages.js
 var DEFINITIONS = [
@@ -575,6 +575,27 @@ function leetcodeLanguageDefinition(id) {
 }
 function leetcodeLanguageLabel(id) {
   return leetcodeLanguageDefinition(id)?.label || String(id || "");
+}
+
+// src/client/shared/card-transition.js
+var import_react3 = __toESM(require("react"), 1);
+function useCardTransition(runCommand, artifact, disabled = false) {
+  const consumedRef = import_react3.default.useRef(false);
+  const [consumedBy, setConsumedBy] = import_react3.default.useState("");
+  const locked = disabled || Boolean(consumedBy);
+  const run = import_react3.default.useCallback(async (command, payload = {}) => {
+    if (disabled || consumedRef.current) return null;
+    consumedRef.current = true;
+    setConsumedBy(command);
+    return runCommand(command, {
+      ...payload,
+      practiceId: artifact.practiceId,
+      questionId: artifact.questionId,
+      presentationId: artifact.presentationId,
+      sessionRevision: artifact.sessionRevision
+    });
+  }, [runCommand, artifact.practiceId, artifact.questionId, artifact.presentationId, artifact.sessionRevision, disabled]);
+  return { locked, consumedBy, run };
 }
 
 // src/client/features/leetcode.js
@@ -603,7 +624,7 @@ function CompletionButton({ problem, pending, onToggle }) {
 function LeetcodeCatalog({ sessionId }) {
   const query = useInterviewQuery("leetcode-catalog", () => interviewApi.leetcodeCatalog(), [], { cache: false });
   const command = useCommand(sessionId);
-  const [pendingSlug, setPendingSlug] = import_react3.default.useState("");
+  const [pendingSlug, setPendingSlug] = import_react4.default.useState("");
   if (query.loading && !query.data) return h("div", { className: "di-lc-catalog" }, h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u529B\u6263\u70ED\u9898 100\u2026" }));
   if (query.error) return h("div", { className: "di-lc-catalog" }, h(ErrorNotice, null, query.error));
   const catalog = query.data?.resource?.data;
@@ -680,7 +701,7 @@ function LeetcodeCatalog({ sessionId }) {
     }))
   );
 }
-function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, nextRequested, onRun, onNext, onExplain }) {
+function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, transition, onRun, onNext, onExplain }) {
   const saved = catalogProblem(catalog, question.leetcode.slug);
   const problem = { ...question.leetcode, completed: saved?.completed === true };
   return h(
@@ -704,14 +725,16 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
       { className: "di-lc-problem-actions" },
       h("a", { className: "di-button is-primary", href: problem.url, target: "_blank", rel: "noreferrer" }, "\u6253\u5F00\u9898\u76EE \u2197"),
       active ? h(
-        import_react3.default.Fragment,
+        import_react4.default.Fragment,
         null,
         h(Button, {
+          disabled: transition.locked,
           busy: command.busy === "leetcode.set-completion",
           onClick: () => onRun("leetcode.set-completion", { slug: problem.slug, completed: !problem.completed })
         }, problem.completed ? "\u6807\u8BB0\u672A\u5B8C\u6210" : "\u6807\u8BB0\u5B8C\u6210"),
-        h(Button, { disabled: nextRequested, onClick: onNext }, nextRequested ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898"),
+        h(Button, { disabled: transition.locked, onClick: onNext }, transition.consumedBy === "question.next" ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898"),
         h(Button, {
+          disabled: transition.locked,
           busy: command.busy === "question.reveal",
           onClick: () => onExplain(question)
         }, "\u8BB2\u89E3")
@@ -732,20 +755,19 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
     ) : null
   );
 }
-function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = "", live = false, resourceRevision = 0 }) {
-  const sessionQuery = useInterviewQuery(`session:${sessionId}`, () => interviewApi.session(sessionId), [sessionId, resourceRevision], { version: resourceRevision });
+function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, language = "", resourceRevision = 0 }) {
+  const sessionQuery = useInterviewQuery(`session:${sessionId}:${artifact.presentationId}`, () => interviewApi.session(sessionId), [sessionId, artifact.presentationId, resourceRevision], { version: resourceRevision, cache: false });
   const catalogQuery = useInterviewQuery("leetcode-catalog-current", () => interviewApi.leetcodeCatalog(), [], { cache: false });
   const command = useCommand(sessionId);
   const session = sessionQuery.data?.resource?.data;
-  const sessionQuestion = session?.currentQuestion?.leetcode ? session.currentQuestion : null;
-  const current = live ? sessionQuestion || initialQuestion : initialQuestion;
-  const [showExplanation, setShowExplanation] = import_react3.default.useState(false);
-  const nextRequestedRef = import_react3.default.useRef(false);
-  const [nextRequested, setNextRequested] = import_react3.default.useState(false);
-  import_react3.default.useEffect(() => {
+  const current = initialQuestion;
+  const [showExplanation, setShowExplanation] = import_react4.default.useState(false);
+  const artifactActive = Boolean(
+    session?.selected && session.practice?.id === artifact.practiceId && session.currentQuestionId === artifact.questionId && session.revision === artifact.sessionRevision
+  );
+  const transition = useCardTransition(command.run, artifact, !artifactActive);
+  import_react4.default.useEffect(() => {
     setShowExplanation(false);
-    nextRequestedRef.current = false;
-    setNextRequested(false);
   }, [current?.id]);
   if (sessionQuery.loading && !current) return h("div", { className: "di-card" }, h(Loading));
   if (!current?.leetcode) return null;
@@ -763,21 +785,11 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = "",
       setShowExplanation((value) => !value);
       return;
     }
-    const result = await run("question.reveal", { questionId: current.id });
-    if (result) setShowExplanation(true);
+    await transition.run("question.reveal");
   };
-  const next = async () => {
-    if (nextRequestedRef.current) return;
-    nextRequestedRef.current = true;
-    setNextRequested(true);
-    const result = await run("question.next");
-    if (!result) {
-      nextRequestedRef.current = false;
-      setNextRequested(false);
-    }
-  };
+  const next = () => transition.run("question.next");
   const catalog = catalogQuery.data?.resource?.data;
-  const active = live ? sessionQuery.loading || Boolean(session?.selected && session?.stage !== "completed" && sessionQuestion?.id === current.id) : true;
+  const active = artifactActive;
   return h(LeetcodeQuestionCard, {
     question: current,
     catalog,
@@ -785,7 +797,7 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = "",
     active,
     expanded: showExplanation,
     command,
-    nextRequested,
+    transition,
     onRun: run,
     onNext: next,
     onExplain: explain
@@ -822,22 +834,10 @@ function CompactResultCard({ title, detail, tone = "quiet" }) {
     detail ? h("div", { className: "di-card-body" }, detail) : null
   );
 }
-function QuestionResultCard({ sessionId, question, answerDisabled = false }) {
+function QuestionResultCard({ sessionId, question, artifact, answerDisabled = false }) {
   if (!question) return null;
   const command = useCommand(sessionId);
-  const revealRequestedRef = import_react4.default.useRef(false);
-  const [revealRequested, setRevealRequested] = import_react4.default.useState(false);
-  const revealAnswer = async () => {
-    if (revealRequestedRef.current) return;
-    revealRequestedRef.current = true;
-    setRevealRequested(true);
-    try {
-      await command.run("question.reveal", { questionId: question.id });
-    } catch {
-      revealRequestedRef.current = false;
-      setRevealRequested(false);
-    }
-  };
+  const transition = useCardTransition(command.run, artifact, answerDisabled);
   return h(
     "article",
     { className: "di-card di-question-card", "aria-label": "\u9762\u8BD5\u9898" },
@@ -848,36 +848,21 @@ function QuestionResultCard({ sessionId, question, answerDisabled = false }) {
     ),
     h(Button, {
       className: "di-answer-button",
-      disabled: answerDisabled || revealRequested,
+      disabled: transition.locked,
       busy: command.busy === "question.reveal",
-      onClick: revealAnswer,
+      onClick: () => transition.run("question.reveal"),
       "aria-label": "\u67E5\u770B\u672C\u9898\u7B54\u6848"
     }, h(Icon, { name: "eye" }), "\u770B\u7B54\u6848"),
     h(ErrorNotice, null, command.error)
   );
 }
-function ReviewResultCard({ sessionId, question, attempt, actionsDisabled = false }) {
+function ReviewResultCard({ sessionId, question, attempt, artifact, actionsDisabled = false }) {
   if (!question || !question.explanation || attempt && !attempt.evaluation) return null;
   const command = useCommand(sessionId);
-  const run = (name2, payload) => command.run(name2, payload).catch(() => {
-  });
-  const retry = () => run("question.retry", { questionId: question.id });
+  const transition = useCardTransition(command.run, artifact, actionsDisabled);
   const evaluation = attempt?.evaluation || null;
   const explanation = question.explanation;
   const isLeetcode = Boolean(question.leetcode);
-  const nextRequestedRef = import_react4.default.useRef(false);
-  const [nextRequested, setNextRequested] = import_react4.default.useState(false);
-  const next = async () => {
-    if (nextRequestedRef.current) return;
-    nextRequestedRef.current = true;
-    setNextRequested(true);
-    try {
-      await command.run("question.next");
-    } catch {
-      nextRequestedRef.current = false;
-      setNextRequested(false);
-    }
-  };
   return h(
     "article",
     { id: `di-review-${question.id}`, className: "di-card di-review-card", "aria-label": isLeetcode ? "\u9898\u76EE\u8BB2\u89E3" : "\u70B9\u8BC4\u8BB2\u89E3" },
@@ -928,9 +913,9 @@ function ReviewResultCard({ sessionId, question, attempt, actionsDisabled = fals
       h(
         "div",
         { className: "di-review-actions" },
-        isLeetcode ? h(Button, { tone: "primary", disabled: actionsDisabled || nextRequested, onClick: next }, nextRequested ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898") : h(Button, { tone: "primary", disabled: actionsDisabled || nextRequested, busy: command.busy === "question.next", onClick: next }, "\u4E0B\u4E00\u9898"),
-        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === "question.retry", onClick: retry }, h(Icon, { name: "swap" }), "\u91CD\u65B0\u4F5C\u7B54") : null,
-        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === "session.finish", onClick: () => run("session.finish") }, "\u7ED3\u675F\u7EC3\u4E60") : null
+        isLeetcode ? h(Button, { tone: "primary", disabled: transition.locked, onClick: () => transition.run("question.next") }, transition.consumedBy === "question.next" ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898") : h(Button, { tone: "primary", disabled: transition.locked, busy: command.busy === "question.next", onClick: () => transition.run("question.next") }, "\u4E0B\u4E00\u9898"),
+        !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === "question.retry", onClick: () => transition.run("question.retry") }, h(Icon, { name: "swap" }), "\u91CD\u65B0\u4F5C\u7B54") : null,
+        !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === "session.finish", onClick: () => transition.run("session.finish") }, "\u7ED3\u675F\u7EC3\u4E60") : null
       )
     )
   );
@@ -972,7 +957,7 @@ function QuestionResourceCard({ artifact, revision, sessionId }) {
   const session = sessionQuery.data?.resource?.data;
   const question = practice?.questions?.find((item) => item.id === artifact.questionId);
   const actions = getArtifactQuestionActions(session, artifact);
-  return h(ArtifactState, { query, missing: "\u627E\u4E0D\u5230\u9898\u76EE\u5361\u7247\u6570\u636E" }, question ? question.leetcode ? h(LeetcodeProblemCard, { sessionId, initialQuestion: question, language: practice.config?.language, resourceRevision: revision }) : h(QuestionResultCard, { sessionId, question, answerDisabled: !actions.canReveal }) : null);
+  return h(ArtifactState, { query, missing: "\u627E\u4E0D\u5230\u9898\u76EE\u5361\u7247\u6570\u636E" }, question ? question.leetcode ? h(LeetcodeProblemCard, { sessionId, initialQuestion: question, artifact, language: practice.config?.language, resourceRevision: revision }) : h(QuestionResultCard, { sessionId, question, artifact, answerDisabled: !actions.canReveal }) : null);
 }
 function ReviewResourceCard({ artifact, revision, sessionId }) {
   const query = useArtifactPractice(artifact, revision);
@@ -983,7 +968,7 @@ function ReviewResourceCard({ artifact, revision, sessionId }) {
   const attempt = artifact.attemptId ? question?.attempts?.find((item) => item.id === artifact.attemptId) : null;
   const complete = question?.explanation && (!artifact.attemptId || attempt?.evaluation);
   const actions = getArtifactQuestionActions(session, artifact);
-  return h(ArtifactState, { query, missing: "\u627E\u4E0D\u5230\u8BB2\u89E3\u6570\u636E" }, complete ? h(ReviewResultCard, { sessionId, question, attempt, actionsDisabled: !actions.canContinue }) : null);
+  return h(ArtifactState, { query, missing: "\u627E\u4E0D\u5230\u8BB2\u89E3\u6570\u636E" }, complete ? h(ReviewResultCard, { sessionId, question, attempt, artifact, actionsDisabled: !actions.canContinue }) : null);
 }
 function PracticeSummaryCard({ artifact, revision }) {
   const query = useArtifactPractice(artifact, revision);
@@ -1003,7 +988,7 @@ function PracticeSummaryCard({ artifact, revision }) {
       "div",
       { className: "di-card-body" },
       leetcode ? h(
-        import_react4.default.Fragment,
+        import_react5.default.Fragment,
         null,
         h("div", { className: "di-meta" }, `\u672C\u6B21\u5171\u8BB0\u5F55 ${summary.questionCount} \u9053\u9898`),
         h("ol", null, summary.problems.map((problem) => h(
@@ -1013,7 +998,7 @@ function PracticeSummaryCard({ artifact, revision }) {
           ` \xB7 ${problem.category} \xB7 ${leetcodeDifficultyLabel(problem.difficulty)}`
         )))
       ) : h(
-        import_react4.default.Fragment,
+        import_react5.default.Fragment,
         null,
         h(Markdown, null, summary.overall),
         h(
@@ -1035,7 +1020,7 @@ function PracticeSummaryCard({ artifact, revision }) {
 }
 
 // src/client/features/practice-library.js
-var import_react5 = __toESM(require("react"), 1);
+var import_react6 = __toESM(require("react"), 1);
 var MODE_OPTIONS = [
   { value: "bagu", label: "\u80CC\u516B\u80A1" },
   { value: "mock", label: "\u6A21\u62DF\u9762\u8BD5" },
@@ -1049,13 +1034,13 @@ var DIFFICULTY_OPTIONS = [
   { value: "senior", label: "\u9AD8\u7EA7" }
 ];
 function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
-  const [mode, setMode] = import_react5.default.useState(initial?.mode || "");
-  const [topic, setTopic] = import_react5.default.useState(initial?.config?.topic || "");
-  const [resume, setResume] = import_react5.default.useState(initial?.config?.resume || "");
-  const [interviewerStyle, setInterviewerStyle] = import_react5.default.useState(initial?.config?.interviewerStyle || "");
-  const [coding, setCoding] = import_react5.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
-  const [difficulty, setDifficulty] = import_react5.default.useState(initial?.config?.difficulty || "");
-  const [language, setLanguage] = import_react5.default.useState(initial?.config?.language || "");
+  const [mode, setMode] = import_react6.default.useState(initial?.mode || "");
+  const [topic, setTopic] = import_react6.default.useState(initial?.config?.topic || "");
+  const [resume, setResume] = import_react6.default.useState(initial?.config?.resume || "");
+  const [interviewerStyle, setInterviewerStyle] = import_react6.default.useState(initial?.config?.interviewerStyle || "");
+  const [coding, setCoding] = import_react6.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
+  const [difficulty, setDifficulty] = import_react6.default.useState(initial?.config?.difficulty || "");
+  const [language, setLanguage] = import_react6.default.useState(initial?.config?.language || "");
   const topicMode = mode === "bagu" || mode === "scenario";
   const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language) : mode === "mock" && Boolean(resume.trim() && interviewerStyle.trim() && coding && difficulty);
   const submit = () => {
@@ -1084,7 +1069,7 @@ function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
       h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), onChange: setLanguage, "aria-label": "\u9009\u62E9\u7F16\u7A0B\u8BED\u8A00" })
     ) : null,
     mode === "mock" ? h(
-      import_react5.default.Fragment,
+      import_react6.default.Fragment,
       null,
       h(
         "label",
@@ -1121,12 +1106,12 @@ function PracticeForm({ initial = null, busy = false, onSubmit, onCancel }) {
 }
 function PracticeDetail({ practice, sessionId, onDeleted }) {
   const command = useCommand(sessionId);
-  const [confirming, setConfirming] = import_react5.default.useState(false);
-  const [editing, setEditing] = import_react5.default.useState(false);
-  const [editingQuestionId, setEditingQuestionId] = import_react5.default.useState(null);
-  const [questionDraft, setQuestionDraft] = import_react5.default.useState("");
-  const [deletingQuestionId, setDeletingQuestionId] = import_react5.default.useState(null);
-  const [downloads, setDownloads] = import_react5.default.useState([]);
+  const [confirming, setConfirming] = import_react6.default.useState(false);
+  const [editing, setEditing] = import_react6.default.useState(false);
+  const [editingQuestionId, setEditingQuestionId] = import_react6.default.useState(null);
+  const [questionDraft, setQuestionDraft] = import_react6.default.useState("");
+  const [deletingQuestionId, setDeletingQuestionId] = import_react6.default.useState(null);
+  const [downloads, setDownloads] = import_react6.default.useState([]);
   if (!practice) return h(Empty, { title: "\u9009\u62E9\u4E00\u6761\u7EC3\u4E60", detail: "\u53F3\u4FA7\u4F1A\u5C55\u793A\u9898\u76EE\u3001\u5386\u6B21\u4F5C\u7B54\u548C\u8BB2\u89E3\u3002" });
   const run = (name2, payload) => command.run(name2, payload).catch(() => null);
   const activate = async () => {
@@ -1255,7 +1240,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
           "div",
           { className: "di-detail-actions" },
           !question.leetcode && editingQuestionId === question.id ? h(
-            import_react5.default.Fragment,
+            import_react6.default.Fragment,
             null,
             h(Button, { tone: "primary", disabled: !questionDraft.trim(), busy: command.busy === "question.update", onClick: () => updateQuestion(question.id) }, "\u4FDD\u5B58\u9898\u76EE"),
             h(Button, { onClick: () => {
@@ -1291,12 +1276,12 @@ function PracticeLibrary({
   title = "\u7EC3\u4E60\u6863\u6848",
   allowCreate = false
 }) {
-  const [queryText, setQueryText] = import_react5.default.useState("");
-  const [mode, setMode] = import_react5.default.useState("");
-  const [selectedId, setSelectedId] = import_react5.default.useState(initialPracticeId);
-  const [confirmingId, setConfirmingId] = import_react5.default.useState(null);
-  const [downloads, setDownloads] = import_react5.default.useState([]);
-  const [creating, setCreating] = import_react5.default.useState(false);
+  const [queryText, setQueryText] = import_react6.default.useState("");
+  const [mode, setMode] = import_react6.default.useState("");
+  const [selectedId, setSelectedId] = import_react6.default.useState(initialPracticeId);
+  const [confirmingId, setConfirmingId] = import_react6.default.useState(null);
+  const [downloads, setDownloads] = import_react6.default.useState([]);
+  const [creating, setCreating] = import_react6.default.useState(false);
   const command = useCommand(sessionId);
   const effectiveStatus = statusScope === "active" ? "active" : "completed";
   const normalizedQuery = queryText.trim();
@@ -1475,7 +1460,7 @@ function InsightsCard() {
 }
 
 // src/client/features/timeline.js
-var import_react6 = __toESM(require("react"), 1);
+var import_react7 = __toESM(require("react"), 1);
 var TIMELINE_VIEWS = [
   { id: "question", label: "\u9898\u76EE" },
   { id: "attempts", label: "\u4F5C\u7B54\u8BB0\u5F55" },
@@ -1530,7 +1515,7 @@ function TimelineContent({ question, view }) {
   );
 }
 function TimelinePanel({ sessionId, revisionSignal }) {
-  const [selection, setSelection] = import_react6.default.useState(null);
+  const [selection, setSelection] = import_react7.default.useState(null);
   const sessionQuery = useInterviewQuery(`timeline-session:${sessionId}:${revisionSignal}`, () => interviewApi.session(sessionId), [sessionId, revisionSignal], { cache: false });
   const session = sessionQuery.data?.resource?.data;
   const practiceId = session?.practice?.id || null;
@@ -1593,7 +1578,7 @@ function TimelinePanel({ sessionId, revisionSignal }) {
 }
 
 // src/client/features/workspace-dock.js
-var import_react7 = __toESM(require("react"), 1);
+var import_react8 = __toESM(require("react"), 1);
 var WORKSPACE_TABS = Object.freeze([
   { id: "active", label: "\u8FDB\u884C\u4E2D", icon: "clock" },
   { id: "library", label: "\u7EC3\u4E60\u6863\u6848", icon: "archive" },
@@ -1638,15 +1623,15 @@ function WorkspaceContent({ tab, sessionId }) {
   return null;
 }
 function WorkspaceDock({ sessionId }) {
-  const [open, setOpen] = import_react7.default.useState(false);
-  const [tab, setTab] = import_react7.default.useState("active");
-  const [notice, setNotice] = import_react7.default.useState("");
-  const [launcherPosition, setLauncherPosition] = import_react7.default.useState(loadLauncherPosition);
-  const [draggingLauncher, setDraggingLauncher] = import_react7.default.useState(false);
-  const launcherRef = import_react7.default.useRef(null);
-  const launcherPositionRef = import_react7.default.useRef(launcherPosition);
-  const launcherDragRef = import_react7.default.useRef(null);
-  const suppressLauncherClickRef = import_react7.default.useRef(false);
+  const [open, setOpen] = import_react8.default.useState(false);
+  const [tab, setTab] = import_react8.default.useState("active");
+  const [notice, setNotice] = import_react8.default.useState("");
+  const [launcherPosition, setLauncherPosition] = import_react8.default.useState(loadLauncherPosition);
+  const [draggingLauncher, setDraggingLauncher] = import_react8.default.useState(false);
+  const launcherRef = import_react8.default.useRef(null);
+  const launcherPositionRef = import_react8.default.useRef(launcherPosition);
+  const launcherDragRef = import_react8.default.useRef(null);
+  const suppressLauncherClickRef = import_react8.default.useRef(false);
   launcherPositionRef.current = launcherPosition;
   const activeQuery = useInterviewQuery(
     `workspace-active-count:${open}`,
@@ -1655,7 +1640,7 @@ function WorkspaceDock({ sessionId }) {
     { cache: false }
   );
   const activeCount = activeQuery.data?.resource?.data?.length || 0;
-  import_react7.default.useEffect(() => {
+  import_react8.default.useEffect(() => {
     let timer = null;
     const unsubscribe = interviewApi.subscribeNotifications((message) => {
       if (timer) clearTimeout(timer);
@@ -1667,11 +1652,11 @@ function WorkspaceDock({ sessionId }) {
       unsubscribe();
     };
   }, []);
-  import_react7.default.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab) => {
+  import_react8.default.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab) => {
     if (WORKSPACE_TABS.some((item) => item.id === nextTab)) setTab(nextTab);
     setOpen(true);
   }), []);
-  import_react7.default.useEffect(() => {
+  import_react8.default.useEffect(() => {
     const keepLauncherInViewport = () => {
       const rect = launcherRef.current?.getBoundingClientRect();
       const current = launcherPositionRef.current;
@@ -1724,7 +1709,7 @@ function WorkspaceDock({ sessionId }) {
     setDraggingLauncher(false);
   };
   return h(
-    import_react7.default.Fragment,
+    import_react8.default.Fragment,
     null,
     h("button", {
       ref: launcherRef,

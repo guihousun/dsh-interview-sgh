@@ -204,10 +204,9 @@ test('力扣切题不使用本地临时卡片槽位', () => {
   const api = readFileSync(new URL('../../src/client/shared/api.js', import.meta.url), 'utf8')
   const index = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')
 
-  assert.match(leetcode, /run\('question\.next'\)/)
-  assert.match(leetcode, /const current = live/)
-  assert.match(leetcode, /: initialQuestion/)
-  assert.match(leetcode, /const active = live/)
+  assert.match(leetcode, /transition\.run\('question\.next'\)/)
+  assert.match(leetcode, /const current = initialQuestion/)
+  assert.match(leetcode, /const active = artifactActive/)
   assert.doesNotMatch(index, /interview-latest-question/)
   assert.doesNotMatch(api, /subscribeLocalQuestions/)
 })
@@ -216,10 +215,11 @@ test('会话中的下一题不会改变先前力扣消息卡片', () => {
   const leetcode = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
 
-  assert.match(leetcode, /live = false/)
-  assert.match(leetcode, /const current = live\s*\? sessionQuestion \|\| initialQuestion\s*:\s*initialQuestion/)
-  assert.match(leetcode, /const active = live[\s\S]*:\s*true/)
-  assert.match(liveInterview, /LeetcodeProblemCard, \{ sessionId, initialQuestion: question, language: practice\.config\?\.language/)
+  assert.match(leetcode, /const current = initialQuestion/)
+  assert.match(leetcode, /session\.revision === artifact\.sessionRevision/)
+  assert.match(leetcode, /const transition = useCardTransition\(command\.run, artifact, !artifactActive\)/)
+  assert.doesNotMatch(leetcode, /live = false|sessionQuestion/)
+  assert.match(liveInterview, /LeetcodeProblemCard, \{ sessionId, initialQuestion: question, artifact, language: practice\.config\?\.language/)
 })
 
 test('重新作答只切换题目状态且不主动打开练习工作台', () => {
@@ -232,24 +232,23 @@ test('重新作答只切换题目状态且不主动打开练习工作台', () =>
 
 test('力扣随机下一题点击后立即锁定为已出下一题', () => {
   const leetcodeSource = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
-  assert.match(leetcodeSource, /nextRequestedRef\.current = true/)
-  assert.match(leetcodeSource, /nextRequested \? '已出下一题' : '随机下一题'/)
-  assert.match(leetcodeSource, /disabled: nextRequested/)
+  assert.match(leetcodeSource, /transition\.consumedBy === 'question\.next'/)
+  assert.match(leetcodeSource, /disabled: transition\.locked/)
+  assert.doesNotMatch(leetcodeSource, /nextRequestedRef|nextRequested/)
 })
 
-test('普通练习请求下一题后锁定当前点评卡全部流程按钮', () => {
+test('任一流程操作都会消费并锁定整张卡片', () => {
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
-  assert.match(liveInterview, /disabled: actionsDisabled \|\| nextRequested, busy: command\.busy === 'question\.next', onClick: next/)
-  assert.match(liveInterview, /disabled: actionsDisabled \|\| nextRequested, busy: command\.busy === 'question\.retry'/)
-  assert.match(liveInterview, /disabled: actionsDisabled \|\| nextRequested, busy: command\.busy === 'session\.finish'/)
-})
-
-test('题目卡点击看答案后立即锁定且仅在请求失败时恢复', () => {
-  const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
-  assert.match(liveInterview, /revealRequestedRef\.current = true/)
-  assert.match(liveInterview, /setRevealRequested\(true\)/)
-  assert.match(liveInterview, /disabled: answerDisabled \|\| revealRequested/)
-  assert.match(liveInterview, /catch \{[\s\S]{0,120}revealRequestedRef\.current = false[\s\S]{0,120}setRevealRequested\(false\)/)
+  const transition = readFileSync(new URL('../../src/client/shared/card-transition.js', import.meta.url), 'utf8')
+  assert.match(transition, /consumedRef\.current = true/)
+  assert.match(transition, /setConsumedBy\(command\)/)
+  assert.match(transition, /const locked = disabled \|\| Boolean\(consumedBy\)/)
+  assert.doesNotMatch(transition, /catch|setConsumedBy\(''\)/)
+  assert.match(liveInterview, /transition\.run\('question\.reveal'\)/)
+  assert.match(liveInterview, /transition\.run\('question\.next'\)/)
+  assert.match(liveInterview, /transition\.run\('question\.retry'\)/)
+  assert.match(liveInterview, /transition\.run\('session\.finish'\)/)
+  assert.doesNotMatch(liveInterview, /revealRequestedRef|nextRequestedRef|nextRequested/)
 })
 
 test('每次展示卡片都绕过资源缓存并使用独立展示标识', () => {

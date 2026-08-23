@@ -6,7 +6,7 @@ import {
   updatePractice, updateQuestion,
 } from '../domain/practice.js'
 import {
-  clearSessionQuestion, createSessionBinding, focusSessionQuestion, transferSessionBinding,
+  clearSessionQuestion, consumeSessionBinding, createSessionBinding, focusSessionQuestion, transferSessionBinding,
 } from '../domain/session.js'
 import { buildInsights, toPracticeDetailDto, toPracticeSummaryDto, toQuestionDto, toSessionContextDto } from './dto.js'
 import { validateApplicationPorts } from './ports.js'
@@ -121,6 +121,27 @@ export class InterviewApplication {
     return this.#result('session-context', toSessionContextDto(binding, practice, {
       leetcodeCompleted: await this.#leetcodeCompleted(question),
     }), binding)
+  }
+
+  async consumeAtomicPresentation(sessionId, input) {
+    const now = this.clock.now()
+    const { binding } = await this.#session(sessionId)
+    const presentationId = requiredId(input.presentationId, 'presentationId')
+    const practiceId = requiredId(input.practiceId, 'practiceId')
+    const questionId = requiredId(input.questionId, 'questionId')
+    const revision = Number(input.sessionRevision)
+    assertDomain(Number.isInteger(revision), 'INVALID_SESSION_REVISION', '卡片缺少有效的会话修订号')
+    assertDomain(
+      binding.practiceId === practiceId
+      && binding.currentQuestionId === questionId
+      && binding.revision === revision,
+      'STALE_PRESENTATION',
+      '这张卡片已经完成，不能再次操作',
+      { presentationId, currentRevision: binding.revision, expectedRevision: revision },
+    )
+    const nextBinding = consumeSessionBinding(binding, now)
+    await this.repository.commit({ binding: nextBinding })
+    return this.#result('presentation-consumed', { presentationId }, nextBinding)
   }
 
   async createAtomicQuestion(sessionId, { prompt }) {

@@ -13,6 +13,15 @@ async function selected(application, sessionId) {
   return { result, data, practiceId: data.practice.id, questionId: data.currentQuestionId }
 }
 
+async function consumeCard(application, sessionId, payload) {
+  return application.consumeAtomicPresentation(sessionId, {
+    presentationId: payload.presentationId,
+    practiceId: payload.practiceId,
+    questionId: payload.questionId,
+    sessionRevision: payload.sessionRevision,
+  })
+}
+
 export const UI_COMMANDS = Object.freeze([
   'session.start', 'session.continue', 'session.select', 'session.reopen', 'session.finish',
   'practice.update', 'question.open', 'question.update', 'question.delete', 'question.next',
@@ -52,6 +61,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     }
     case 'session.finish': {
       const current = await selected(application, sessionId)
+      await consumeCard(application, sessionId, payload)
       if (current.data.practice.mode === 'leetcode') return application.completeAtomicPractice(sessionId)
       dispatchAgent(eventBridge, sessionId, { type: 'practice.summarize', practiceId: current.practiceId })
       return current.result
@@ -65,6 +75,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     case 'question.delete':
       return application.deleteQuestion(payload.practiceId, payload.questionId)
     case 'question.retry': {
+      await consumeCard(application, sessionId, payload)
       const result = await application.focusAtomicQuestion(sessionId, payload.questionId)
       dispatchAgent(eventBridge, sessionId, {
         type: 'question.show', practiceId: result.references.practiceId, questionId: result.references.questionId,
@@ -76,15 +87,17 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const questionId = payload.questionId || current.questionId
       const question = current.data.practice.questions.find((item) => item.id === questionId)
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
+      await consumeCard(application, sessionId, payload)
       dispatchAgent(eventBridge, sessionId, {
         type: question.explanation ? 'review.show' : 'review.generate',
         practiceId: current.practiceId,
         questionId,
       })
-      return current.result
+      return application.readAtomicSession(sessionId)
     }
     case 'question.next': {
       const current = await selected(application, sessionId)
+      await consumeCard(application, sessionId, payload)
       if (current.data.practice.mode === 'leetcode') {
         const question = await application.drawNextAtomicLeetcode(sessionId)
         dispatchAgent(eventBridge, sessionId, {
@@ -93,7 +106,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         return application.readAtomicSession(sessionId)
       }
       dispatchAgent(eventBridge, sessionId, { type: 'question.generate', practiceId: current.practiceId })
-      return current.result
+      return application.readAtomicSession(sessionId)
     }
     case 'leetcode.set-completion':
       return application.setLeetcodeProblemCompletion(payload.slug, payload.completed)
