@@ -162,7 +162,7 @@ export class InterviewApplication {
     const targetId = questionId || binding.currentQuestionId
     assertDomain(Boolean(targetId), 'QUESTION_NOT_FOCUSED', '必须指定需要回答的题目')
     const added = submitAnswer(practice, { questionId: targetId, attemptId: this.ids.next('attempt'), answer, now })
-    const nextBinding = binding.currentQuestionId === targetId ? binding : focusSessionQuestion(binding, targetId, now)
+    const nextBinding = focusSessionQuestion(binding, targetId, now)
     await this.repository.commit({ practice: added.practice, binding: nextBinding })
     return this.#result('attempt-detail', { questionId: targetId, ...added.attempt }, nextBinding, {
       references: { attemptId: added.attempt.id },

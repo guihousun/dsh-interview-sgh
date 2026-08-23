@@ -40,16 +40,30 @@ async function practiceAndQuestion(application, practiceId, questionId) {
   return { practice: result.resource.data, question }
 }
 
+async function sessionRevisionFor(application, sessionId, practiceId, questionId) {
+  const session = (await application.readAtomicSession(sessionId)).resource.data
+  return session.selected
+    && session.practice.id === practiceId
+    && session.currentQuestionId === questionId
+    ? session.revision
+    : null
+}
+
 const definitions = [
   presentationTool({
     name: 'interview_show_question',
     description: '展示数据库中已经存在的一道题目卡片。当用户需要查看、回答、继续或重新作答某道题，或者新题创建后需要呈现时，必须调用本工具。禁止使用普通 Assistant Text 输出或复述题目。本工具只展示，不创建、修改或聚焦题目。',
     parameters: practiceQuestionParameters,
-    async execute(application, args) {
+    async execute(application, args, sessionId) {
       const { practice, question } = await practiceAndQuestion(application, args.practice_id, args.question_id)
+      const sessionRevision = await sessionRevisionFor(application, sessionId, practice.id, question.id)
       return createPresentationResult({
         kind: ARTIFACT_KINDS.QUESTION,
-        references: { practiceId: practice.id, questionId: question.id },
+        references: {
+          practiceId: practice.id,
+          questionId: question.id,
+          ...(sessionRevision === null ? {} : { sessionRevision }),
+        },
         resource: { kind: 'question-detail', data: question },
         revision: practice.updatedAt,
         text: '题目已展示，请开始作答。',
@@ -69,18 +83,20 @@ const definitions = [
       required: ['practice_id', 'question_id'],
       additionalProperties: false,
     },
-    async execute(application, args) {
+    async execute(application, args, sessionId) {
       const { practice, question } = await practiceAndQuestion(application, args.practice_id, args.question_id)
       if (!question.explanation) throw new DomainError('EXPLANATION_NOT_FOUND', '当前题目还没有讲解')
       if (args.attempt_id && !question.attempts.some((item) => item.id === args.attempt_id)) {
         throw new DomainError('ATTEMPT_NOT_FOUND', `找不到作答：${String(args.attempt_id)}`)
       }
+      const sessionRevision = await sessionRevisionFor(application, sessionId, practice.id, question.id)
       return createPresentationResult({
         kind: ARTIFACT_KINDS.REVIEW,
         references: {
           practiceId: practice.id,
           questionId: question.id,
           ...(args.attempt_id ? { attemptId: args.attempt_id } : {}),
+          ...(sessionRevision === null ? {} : { sessionRevision }),
         },
         resource: { kind: 'question-detail', data: question },
         revision: practice.updatedAt,

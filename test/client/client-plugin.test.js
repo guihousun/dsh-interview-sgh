@@ -244,6 +244,14 @@ test('普通练习请求下一题后锁定当前点评卡全部流程按钮', ()
   assert.match(liveInterview, /disabled: actionsDisabled \|\| nextRequested, busy: command\.busy === 'session\.finish'/)
 })
 
+test('每次展示卡片都绕过资源缓存并使用独立展示标识', () => {
+  const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
+  const entry = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')
+  assert.match(liveInterview, /artifact\?\.presentationId/)
+  assert.match(liveInterview, /\{ version: revision, cache: false \}/)
+  assert.match(entry, /key: view\.presentationId/)
+})
+
 test('练习工作台使用模态布局、图标导航和居中删除确认', () => {
   const workspace = readFileSync(new URL('../../src/client/features/workspace-dock.js', import.meta.url), 'utf8')
   const library = readFileSync(new URL('../../src/client/features/practice-library.js', import.meta.url), 'utf8')

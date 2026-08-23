@@ -41,6 +41,8 @@ test('展示工具与业务工具独立且只通过资源 ID 读取权威数据'
   }, context.exec)
   assert.equal(question.artifact.kind, 'question')
   assert.equal(question.resource.data.prompt, '什么是 JMM？')
+  assert.equal(typeof question.artifact.presentationId, 'string')
+  assert.equal(typeof question.artifact.sessionRevision, 'number')
 
   const review = await context.tools.interview_show_review.execute({
     practice_id: ids.practiceId, question_id: ids.questionId, attempt_id: ids.attemptId,
@@ -54,7 +56,10 @@ test('展示工具不创建或修改业务数据', async () => {
   const context = fixture()
   const ids = await reviewedQuestion(context)
   const before = (await context.application.getPractice(ids.practiceId)).resource.data
-  await context.tools.interview_show_question.execute({
+  const first = await context.tools.interview_show_question.execute({
+    practice_id: ids.practiceId, question_id: ids.questionId,
+  }, context.exec)
+  const second = await context.tools.interview_show_question.execute({
     practice_id: ids.practiceId, question_id: ids.questionId,
   }, context.exec)
   await context.tools.interview_show_review.execute({
@@ -62,6 +67,7 @@ test('展示工具不创建或修改业务数据', async () => {
   }, context.exec)
   const after = (await context.application.getPractice(ids.practiceId)).resource.data
   assert.deepEqual(after, before)
+  assert.notEqual(first.artifact.presentationId, second.artifact.presentationId)
 })
 
 test('点评讲解展示拒绝尚未保存讲解的题目', async () => {

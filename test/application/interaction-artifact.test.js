@@ -17,6 +17,8 @@ test('展示结果不携带业务动作或工作流阶段', () => {
     text: '题目已展示，请开始作答。',
   })
   assert.equal(result.action, 'presentation.question')
+  assert.equal(typeof result.artifact.presentationId, 'string')
+  assert.ok(result.artifact.presentationId.length > 0)
   assert.equal('phase' in result, false)
   assert.equal('agentTasks' in result, false)
 })

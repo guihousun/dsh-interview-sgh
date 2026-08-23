@@ -23,6 +23,7 @@ test('原子操作通过真实数据推进完整知识练习', async () => {
     questionId, answer: 'Java 内存模型。',
   })
   const attemptId = attempt.resource.data.id
+  assert.ok(attempt.revision > question.revision)
   session = await fixture.application.readAtomicSession('session-1')
   assert.equal(session.resource.data.stage, 'needs_evaluation')
 

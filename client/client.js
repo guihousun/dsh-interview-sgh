@@ -795,7 +795,7 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, language = "",
 // src/client/features/question-actions.js
 function isArtifactQuestionCurrent(session, artifact) {
   return Boolean(
-    session?.selected && session.practice?.id === artifact?.practiceId && session.currentQuestionId === artifact?.questionId
+    session?.selected && session.practice?.id === artifact?.practiceId && session.currentQuestionId === artifact?.questionId && session.revision === artifact?.sessionRevision
   );
 }
 function getArtifactQuestionActions(session, artifact) {
@@ -935,18 +935,18 @@ function ToolErrorCard({ message }) {
 function useArtifactPractice(artifact, revision) {
   const practiceId = artifact?.practiceId;
   return useInterviewQuery(
-    `practice:${practiceId || "none"}`,
+    `practice:${practiceId || "none"}:${artifact?.presentationId || "none"}`,
     () => practiceId ? interviewApi.practice(practiceId) : Promise.resolve(null),
-    [practiceId, revision],
-    { version: revision }
+    [practiceId, artifact?.presentationId, revision],
+    { version: revision, cache: false }
   );
 }
-function useArtifactSession(sessionId, revision) {
+function useArtifactSession(sessionId, artifact, revision) {
   return useInterviewQuery(
-    `session:${sessionId}`,
+    `session:${sessionId}:${artifact?.presentationId || "none"}`,
     () => interviewApi.session(sessionId),
-    [sessionId, revision],
-    { version: revision }
+    [sessionId, artifact?.presentationId, revision],
+    { version: revision, cache: false }
   );
 }
 function ArtifactState({ query, children, missing }) {
@@ -956,7 +956,7 @@ function ArtifactState({ query, children, missing }) {
 }
 function QuestionResourceCard({ artifact, revision, sessionId }) {
   const query = useArtifactPractice(artifact, revision);
-  const sessionQuery = useArtifactSession(sessionId, revision);
+  const sessionQuery = useArtifactSession(sessionId, artifact, revision);
   const practice = query.data?.resource?.data;
   const session = sessionQuery.data?.resource?.data;
   const question = practice?.questions?.find((item) => item.id === artifact.questionId);
@@ -965,7 +965,7 @@ function QuestionResourceCard({ artifact, revision, sessionId }) {
 }
 function ReviewResourceCard({ artifact, revision, sessionId }) {
   const query = useArtifactPractice(artifact, revision);
-  const sessionQuery = useArtifactSession(sessionId, revision);
+  const sessionQuery = useArtifactSession(sessionId, artifact, revision);
   const practice = query.data?.resource?.data;
   const session = sessionQuery.data?.resource?.data;
   const question = practice?.questions?.find((item) => item.id === artifact.questionId);
@@ -1856,9 +1856,9 @@ function ToolResourceView({ toolName, sessionId, block }) {
     case "error":
       return h(ToolErrorCard, { message: view.message });
     case "question":
-      return h(QuestionResourceCard, { artifact: view, revision: view.revision, sessionId });
+      return h(QuestionResourceCard, { key: view.presentationId, artifact: view, revision: view.revision, sessionId });
     case "review":
-      return h(ReviewResourceCard, { artifact: view, revision: view.revision, sessionId });
+      return h(ReviewResourceCard, { key: view.presentationId, artifact: view, revision: view.revision, sessionId });
     case "library":
       return h(PracticeLibrary, { sessionId, initialPracticeId: view.practiceId });
     case "insights":

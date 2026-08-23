@@ -16,6 +16,10 @@
 - Client 改用 `stage` 与 `currentQuestionId` 控制当前卡片权限和时间轴选中态，不再依赖工作流阶段字段。
 - SQLite 新数据库只创建 `session_bindings`，不创建或迁移旧 `session_cursors`。
 
+### 修复
+
+- 修复重新作答同一道题时复用先前已锁定卡片的问题；每次展示生成独立 `presentationId`，卡片查询不再复用缓存，并通过会话修订号锁定旧卡片、激活新卡片。
+
 ### 测试
 
 - 重写应用、SQLite、HTTP 命令、展示工具和端到端测试，覆盖无阶段绑定、一次性 AI 请求和业务/UI 分离边界。

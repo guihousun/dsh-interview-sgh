@@ -2,12 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getArtifactQuestionActions, isArtifactQuestionCurrent } from '../../src/client/features/question-actions.js'
 
-const artifact = { practiceId: 'practice-1', questionId: 'question-1' }
+const artifact = { practiceId: 'practice-1', questionId: 'question-1', sessionRevision: 3 }
 
 function session(stage, overrides = {}) {
   return {
     selected: true,
     stage,
+    revision: 3,
     currentQuestionId: 'question-1',
     practice: { id: 'practice-1' },
     ...overrides,
@@ -18,6 +19,7 @@ test('只有当前会话绑定的题目被视为当前题', () => {
   assert.equal(isArtifactQuestionCurrent(session('answerable'), artifact), true)
   assert.equal(isArtifactQuestionCurrent(session('answerable', { currentQuestionId: 'question-2' }), artifact), false)
   assert.equal(isArtifactQuestionCurrent(session('answerable', { practice: { id: 'practice-2' } }), artifact), false)
+  assert.equal(isArtifactQuestionCurrent(session('answerable', { revision: 4 }), artifact), false)
   assert.equal(isArtifactQuestionCurrent({ selected: false }, artifact), false)
 })
 
