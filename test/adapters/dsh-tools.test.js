@@ -148,7 +148,8 @@ test('继续工具按阶段恢复并向模型返回确定的下一动作', async
   const fixture = toolFixture()
   const idle = await fixture.tools.interview_continue_practice.execute({}, exec('idle-session'))
   assert.equal(idle.nextAction, 'select_practice')
-  assert.equal(idle.artifact.kind, 'library')
+  assert.equal(idle.artifact, null)
+  assert.equal(idle.assistantResponse.text, '当前没有选中的练习，请先在练习工作台选择一条进行中的练习。')
 
   await fixture.tools.interview_start_practice.execute({ mode: 'bagu', topic: 'JVM' }, exec('continue-session'))
   const generating = await fixture.tools.interview_continue_practice.execute({}, exec('continue-session'))

@@ -46,5 +46,6 @@ export const CONTINUE_PRACTICE_POLICY = [
   'nextAction=generate_explanation 时读取完整上下文，生成详细讲解和直接背并调用 interview_complete_review。',
   'nextAction=generate_leetcode_explanation 时读取完整上下文，严格遵守 interview_complete_review 的力扣讲解约束生成内容并调用该工具。',
   'nextAction=generate_summary 时读取完整上下文，生成总结并调用 interview_complete_summary。',
-  'nextAction=select_practice、show_current_question 或 confirm_reopen 时，UI 产物已经由后端确定；遵守 assistantResponse 立即停止，不得继续生成或复述产物内容。',
+  'nextAction=select_practice 或 confirm_reopen 时不展示 UI 产物，严格输出 assistantResponse 后立即停止。',
+  'nextAction=show_current_question 时当前题目产物已经由后端确定；遵守 assistantResponse 立即停止，不得继续生成或复述题目内容。',
 ].join('')

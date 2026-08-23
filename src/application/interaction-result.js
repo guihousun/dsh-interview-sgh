@@ -63,8 +63,8 @@ function descriptor(action, result) {
         return {
           state: 'idle',
           nextAction,
-          artifact: createInteractionArtifact(ARTIFACT_KINDS.LIBRARY),
-          assistantResponse: exact('当前没有选中的练习，请先选择一条练习。'),
+          artifact: null,
+          assistantResponse: exact('当前没有选中的练习，请先在练习工作台选择一条进行中的练习。'),
         }
       }
       if (nextAction === 'show_current_question') {
