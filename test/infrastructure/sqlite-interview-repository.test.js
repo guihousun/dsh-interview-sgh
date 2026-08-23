@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createPractice, askQuestion, submitAnswer, evaluateAnswer, saveExplanation } from '../../src/domain/practice.js'
 import { createCursor, markQuestionAsked } from '../../src/domain/workflow.js'
+import { createSessionBinding, focusSessionQuestion, transferSessionBinding } from '../../src/domain/session.js'
 import { SqliteInterviewRepository } from '../../src/infrastructure/sqlite-interview-repository.js'
 
 function fixture() {
@@ -57,6 +58,28 @@ test('SQLite 在绑定练习时原子转移会话并释放原绑定', async () =
 
     await context.repository.commit({ unbindSessionId: 'session-2' })
     assert.equal(await context.repository.getCursorByPractice(practice.id), null)
+  } finally {
+    context.cleanup()
+  }
+})
+
+test('SQLite 保存无阶段会话绑定并原子转移到新会话', async () => {
+  const context = fixture()
+  try {
+    const { practice } = aggregate()
+    const binding = focusSessionQuestion(createSessionBinding({
+      sessionId: 'session-1', practiceId: practice.id, now: 1,
+    }), practice.questions[0].id, 2)
+    await context.repository.commit({ practice, binding })
+    assert.deepEqual(await context.repository.getSessionBinding('session-1'), binding)
+
+    const transferred = transferSessionBinding(binding, 'session-2', 3)
+    await context.repository.commit({ binding: transferred })
+    assert.equal(await context.repository.getSessionBinding('session-1'), null)
+    assert.deepEqual(await context.repository.getSessionBindingByPractice(practice.id), transferred)
+
+    await context.repository.clearSessionBinding('session-2')
+    assert.equal(await context.repository.getSessionBindingByPractice(practice.id), null)
   } finally {
     context.cleanup()
   }

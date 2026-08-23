@@ -69,6 +69,14 @@ export class SqliteInterviewRepository {
         updated_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS session_bindings (
+        session_id TEXT PRIMARY KEY,
+        practice_id TEXT NOT NULL UNIQUE REFERENCES practices(id) ON DELETE CASCADE,
+        current_question_id TEXT,
+        revision INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS leetcode_progress (
         slug TEXT PRIMARY KEY,
         completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
@@ -158,6 +166,26 @@ export class SqliteInterviewRepository {
   async getCursorByPractice(practiceId) {
     const row = this.database.prepare('SELECT * FROM session_cursors WHERE practice_id = ?').get(practiceId)
     return this.#readCursor(row)
+  }
+
+  async getSessionBinding(sessionId) {
+    const row = this.database.prepare('SELECT * FROM session_bindings WHERE session_id = ?').get(sessionId)
+    return this.#readSessionBinding(row)
+  }
+
+  async getSessionBindingByPractice(practiceId) {
+    const row = this.database.prepare('SELECT * FROM session_bindings WHERE practice_id = ?').get(practiceId)
+    return this.#readSessionBinding(row)
+  }
+
+  #readSessionBinding(row) {
+    return row ? {
+      sessionId: row.session_id,
+      practiceId: row.practice_id,
+      currentQuestionId: row.current_question_id,
+      revision: row.revision,
+      updatedAt: row.updated_at,
+    } : null
   }
 
   #readCursor(row) {
@@ -260,12 +288,30 @@ export class SqliteInterviewRepository {
     )
   }
 
-  async commit({ practice, practices = [], cursor, unbindSessionId }) {
+  #writeSessionBinding(binding) {
+    this.database.prepare('DELETE FROM session_bindings WHERE session_id = ? OR practice_id = ?')
+      .run(binding.sessionId, binding.practiceId)
+    this.database.prepare(`
+      INSERT INTO session_bindings (
+        session_id, practice_id, current_question_id, revision, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(
+      binding.sessionId,
+      binding.practiceId,
+      binding.currentQuestionId,
+      binding.revision,
+      binding.updatedAt,
+    )
+  }
+
+  async commit({ practice, practices = [], cursor, binding, unbindSessionId }) {
     this.database.exec('BEGIN IMMEDIATE')
     try {
       for (const item of [...practices, ...(practice ? [practice] : [])]) this.#writePractice(item)
       if (unbindSessionId) this.database.prepare('DELETE FROM session_cursors WHERE session_id = ?').run(unbindSessionId)
+      if (unbindSessionId) this.database.prepare('DELETE FROM session_bindings WHERE session_id = ?').run(unbindSessionId)
       if (cursor) this.#writeCursor(cursor)
+      if (binding) this.#writeSessionBinding(binding)
       this.database.exec('COMMIT')
     } catch (error) {
       this.database.exec('ROLLBACK')
@@ -279,6 +325,10 @@ export class SqliteInterviewRepository {
 
   async clearCursor(sessionId) {
     this.database.prepare('DELETE FROM session_cursors WHERE session_id = ?').run(sessionId)
+  }
+
+  async clearSessionBinding(sessionId) {
+    this.database.prepare('DELETE FROM session_bindings WHERE session_id = ?').run(sessionId)
   }
 
   async listLeetcodeProgress() {
