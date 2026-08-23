@@ -79,9 +79,9 @@ export function ReviewResultCard({ sessionId, question, attempt, actionsDisabled
       h('div', { className: 'di-review-actions' },
         isLeetcode
           ? h(Button, { tone: 'primary', disabled: actionsDisabled || nextRequested, onClick: next }, nextRequested ? '已出下一题' : '随机下一题')
-          : h(Button, { tone: 'primary', disabled: actionsDisabled, busy: command.busy === 'question.next', onClick: () => run('question.next') }, '下一题'),
-        !isLeetcode ? h(Button, { disabled: actionsDisabled, busy: command.busy === 'question.retry', onClick: retry }, h(Icon, { name: 'swap' }), '重新作答') : null,
-        !isLeetcode ? h(Button, { disabled: actionsDisabled, busy: command.busy === 'session.finish', onClick: () => run('session.finish') }, '结束练习') : null)))
+          : h(Button, { tone: 'primary', disabled: actionsDisabled || nextRequested, busy: command.busy === 'question.next', onClick: next }, '下一题'),
+        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === 'question.retry', onClick: retry }, h(Icon, { name: 'swap' }), '重新作答') : null,
+        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === 'session.finish', onClick: () => run('session.finish') }, '结束练习') : null)))
 }
 
 export function ToolErrorCard({ message }) {

@@ -917,9 +917,9 @@ function ReviewResultCard({ sessionId, question, attempt, actionsDisabled = fals
       h(
         "div",
         { className: "di-review-actions" },
-        isLeetcode ? h(Button, { tone: "primary", disabled: actionsDisabled || nextRequested, onClick: next }, nextRequested ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898") : h(Button, { tone: "primary", disabled: actionsDisabled, busy: command.busy === "question.next", onClick: () => run("question.next") }, "\u4E0B\u4E00\u9898"),
-        !isLeetcode ? h(Button, { disabled: actionsDisabled, busy: command.busy === "question.retry", onClick: retry }, h(Icon, { name: "swap" }), "\u91CD\u65B0\u4F5C\u7B54") : null,
-        !isLeetcode ? h(Button, { disabled: actionsDisabled, busy: command.busy === "session.finish", onClick: () => run("session.finish") }, "\u7ED3\u675F\u7EC3\u4E60") : null
+        isLeetcode ? h(Button, { tone: "primary", disabled: actionsDisabled || nextRequested, onClick: next }, nextRequested ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898") : h(Button, { tone: "primary", disabled: actionsDisabled || nextRequested, busy: command.busy === "question.next", onClick: next }, "\u4E0B\u4E00\u9898"),
+        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === "question.retry", onClick: retry }, h(Icon, { name: "swap" }), "\u91CD\u65B0\u4F5C\u7B54") : null,
+        !isLeetcode ? h(Button, { disabled: actionsDisabled || nextRequested, busy: command.busy === "session.finish", onClick: () => run("session.finish") }, "\u7ED3\u675F\u7EC3\u4E60") : null
       )
     )
   );
