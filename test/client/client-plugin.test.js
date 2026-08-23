@@ -244,6 +244,14 @@ test('普通练习请求下一题后锁定当前点评卡全部流程按钮', ()
   assert.match(liveInterview, /disabled: actionsDisabled \|\| nextRequested, busy: command\.busy === 'session\.finish'/)
 })
 
+test('题目卡点击看答案后立即锁定且仅在请求失败时恢复', () => {
+  const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
+  assert.match(liveInterview, /revealRequestedRef\.current = true/)
+  assert.match(liveInterview, /setRevealRequested\(true\)/)
+  assert.match(liveInterview, /disabled: answerDisabled \|\| revealRequested/)
+  assert.match(liveInterview, /catch \{[\s\S]{0,120}revealRequestedRef\.current = false[\s\S]{0,120}setRevealRequested\(false\)/)
+})
+
 test('每次展示卡片都绕过资源缓存并使用独立展示标识', () => {
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
   const entry = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')

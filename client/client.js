@@ -825,8 +825,19 @@ function CompactResultCard({ title, detail, tone = "quiet" }) {
 function QuestionResultCard({ sessionId, question, answerDisabled = false }) {
   if (!question) return null;
   const command = useCommand(sessionId);
-  const revealAnswer = () => command.run("question.reveal", { questionId: question.id }).catch(() => {
-  });
+  const revealRequestedRef = import_react4.default.useRef(false);
+  const [revealRequested, setRevealRequested] = import_react4.default.useState(false);
+  const revealAnswer = async () => {
+    if (revealRequestedRef.current) return;
+    revealRequestedRef.current = true;
+    setRevealRequested(true);
+    try {
+      await command.run("question.reveal", { questionId: question.id });
+    } catch {
+      revealRequestedRef.current = false;
+      setRevealRequested(false);
+    }
+  };
   return h(
     "article",
     { className: "di-card di-question-card", "aria-label": "\u9762\u8BD5\u9898" },
@@ -837,7 +848,7 @@ function QuestionResultCard({ sessionId, question, answerDisabled = false }) {
     ),
     h(Button, {
       className: "di-answer-button",
-      disabled: answerDisabled,
+      disabled: answerDisabled || revealRequested,
       busy: command.busy === "question.reveal",
       onClick: revealAnswer,
       "aria-label": "\u67E5\u770B\u672C\u9898\u7B54\u6848"

@@ -17,13 +17,25 @@ export function CompactResultCard({ title, detail, tone = 'quiet' }) {
 export function QuestionResultCard({ sessionId, question, answerDisabled = false }) {
   if (!question) return null
   const command = useCommand(sessionId)
-  const revealAnswer = () => command.run('question.reveal', { questionId: question.id }).catch(() => {})
+  const revealRequestedRef = React.useRef(false)
+  const [revealRequested, setRevealRequested] = React.useState(false)
+  const revealAnswer = async () => {
+    if (revealRequestedRef.current) return
+    revealRequestedRef.current = true
+    setRevealRequested(true)
+    try {
+      await command.run('question.reveal', { questionId: question.id })
+    } catch {
+      revealRequestedRef.current = false
+      setRevealRequested(false)
+    }
+  }
   return h('article', { className: 'di-card di-question-card', 'aria-label': '面试题' },
     h('div', { className: 'di-question-main' },
       h('div', { className: 'di-question-text' }, h(Markdown, null, question.prompt))),
     h(Button, {
       className: 'di-answer-button',
-      disabled: answerDisabled,
+      disabled: answerDisabled || revealRequested,
       busy: command.busy === 'question.reveal',
       onClick: revealAnswer,
       'aria-label': '查看本题答案',
