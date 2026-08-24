@@ -7,7 +7,14 @@ import { askQuestion, completeLeetcodePractice, createPractice, evaluateAnswer, 
 import { MarkdownPracticeExporter, renderPracticeMarkdown } from '../../src/infrastructure/markdown-practice-exporter.js'
 
 function practiceFixture() {
-  let practice = createPractice({ id: 'practice-1', mode: 'mock', config: { resume: 'Java/后端简历', interviewerStyle: '深挖项目', coding: true, difficulty: 'intermediate' }, now: 1 })
+  let practice = createPractice({
+    id: 'practice-1', mode: 'mock',
+    config: {
+      resume: 'Java/后端简历', targetRole: '后端开发工程师', jobDescriptionProvided: true,
+      jobDescription: '负责服务端开发。', interviewerStyle: '深挖项目', coding: true, difficulty: 'intermediate',
+    },
+    now: 1,
+  })
   practice = askQuestion(practice, { id: 'question-1', prompt: '什么是 JMM？', now: 2 }).practice
   practice = submitAnswer(practice, { questionId: 'question-1', attemptId: 'attempt-1', answer: 'Java 内存模型。', now: 3 }).practice
   practice = evaluateAnswer(practice, { questionId: 'question-1', attemptId: 'attempt-1', score: 8, feedback: '基本正确。', dimensions: { accuracy: 8 }, now: 4 }).practice

@@ -20,7 +20,10 @@ function samplePractice() {
   return createPractice({
     id: 'practice-1',
     mode: 'mock',
-    config: { resume: 'Java 后端工程师简历', interviewerStyle: '深挖项目', coding: true, difficulty: 'senior' },
+    config: {
+      resume: 'Java 后端工程师简历', targetRole: '后端开发工程师', jobDescriptionProvided: true,
+      jobDescription: '负责服务端开发。', interviewerStyle: '深挖项目', coding: true, difficulty: 'senior',
+    },
     now: 1,
   })
 }
@@ -28,7 +31,8 @@ function samplePractice() {
 test('不同模式只接受各自的显式配置', () => {
   const practice = samplePractice()
   assert.deepEqual(practice.config, {
-    resume: 'Java 后端工程师简历', interviewerStyle: '深挖项目', coding: true, difficulty: 'senior',
+    resume: 'Java 后端工程师简历', targetRole: '后端开发工程师', jobDescriptionProvided: true,
+    jobDescription: '负责服务端开发。', interviewerStyle: '深挖项目', coding: true, difficulty: 'senior',
   })
   assert.equal(practice.status, 'active')
   assert.throws(() => createPractice({ id: 'practice-2', mode: 'bagu', config: {}, now: 1 }), {
@@ -56,14 +60,21 @@ test('八股模式只接受 bagu 标识', () => {
 })
 
 test('模拟面试的每项配置都禁止默认', () => {
-  const base = { resume: '简历', interviewerStyle: '压力面', coding: false, difficulty: 'intermediate' }
+  const base = {
+    resume: '简历', targetRole: '通用技术开发', jobDescriptionProvided: false, jobDescription: '',
+    interviewerStyle: '压力面', coding: false, difficulty: 'intermediate',
+  }
   for (const [field, code] of [
-    ['resume', 'RESUME_REQUIRED'], ['interviewerStyle', 'INTERVIEWER_STYLE_REQUIRED'], ['coding', 'CODING_REQUIRED'], ['difficulty', 'DIFFICULTY_REQUIRED'],
+    ['resume', 'RESUME_REQUIRED'], ['targetRole', 'TARGET_ROLE_REQUIRED'], ['jobDescriptionProvided', 'JOB_DESCRIPTION_PROVIDED_REQUIRED'],
+    ['interviewerStyle', 'INTERVIEWER_STYLE_REQUIRED'], ['coding', 'CODING_REQUIRED'], ['difficulty', 'DIFFICULTY_REQUIRED'],
   ]) {
     const config = { ...base }
     delete config[field]
     assert.throws(() => createPractice({ id: `practice-${field}`, mode: 'mock', config, now: 1 }), (error) => error instanceof DomainError && error.code === code)
   }
+  assert.throws(() => createPractice({ id: 'practice-jd', mode: 'mock', config: { ...base, jobDescriptionProvided: true }, now: 1 }), {
+    code: 'JOB_DESCRIPTION_REQUIRED',
+  })
 })
 
 test('题目、作答、评价和讲解形成结构化聚合', () => {
@@ -224,12 +235,22 @@ test('练习和题目修改经过领域校验，删除题目后连续重排', ()
 
   practice = updatePractice(practice, {
     mode: 'mock',
-    config: { resume: '完整简历', interviewerStyle: '深挖项目', coding: false, difficulty: 'senior' },
+    config: {
+      resume: '完整简历', targetRole: '后端开发工程师', jobDescriptionProvided: false, jobDescription: '',
+      interviewerStyle: '深挖项目', coding: false, difficulty: 'senior',
+    },
     now: 7,
   })
   assert.equal(practice.mode, 'mock')
   assert.equal(practice.config.coding, false)
-  assert.throws(() => updatePractice(practice, { mode: 'mock', config: { resume: '简历', interviewerStyle: '压力面', difficulty: 'senior' }, now: 8 }), {
+  assert.throws(() => updatePractice(practice, {
+    mode: 'mock',
+    config: {
+      resume: '简历', targetRole: '后端开发工程师', jobDescriptionProvided: false, jobDescription: '',
+      interviewerStyle: '压力面', difficulty: 'senior',
+    },
+    now: 8,
+  }), {
     code: 'CODING_REQUIRED',
   })
 })

@@ -16,7 +16,10 @@ function fixture() {
 function aggregate() {
   let practice = createPractice({
     id: 'practice-1', mode: 'mock',
-    config: { resume: 'Java 后端简历', interviewerStyle: '深挖项目', coding: true, difficulty: 'intermediate' },
+    config: {
+      resume: 'Java 后端简历', targetRole: '后端开发工程师', jobDescriptionProvided: true,
+      jobDescription: '负责服务端开发。', interviewerStyle: '深挖项目', coding: true, difficulty: 'intermediate',
+    },
     now: 1,
   })
   practice = askQuestion(practice, { id: 'question-1', prompt: '解释 happens-before。', now: 2 }).practice

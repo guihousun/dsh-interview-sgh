@@ -39,11 +39,19 @@ function normalizeConfiguration(definition, config) {
   }
 
   const resume = requiredText(config.resume, 'RESUME_REQUIRED', '模拟面试必须明确提供简历内容')
+  const targetRole = requiredText(config.targetRole, 'TARGET_ROLE_REQUIRED', '模拟面试必须明确提供目标岗位')
+  assertDomain(typeof config.jobDescriptionProvided === 'boolean', 'JOB_DESCRIPTION_PROVIDED_REQUIRED', '模拟面试必须明确选择是否提供 JD')
+  const jobDescription = config.jobDescriptionProvided
+    ? requiredText(config.jobDescription, 'JOB_DESCRIPTION_REQUIRED', '已选择提供 JD 时必须填写岗位描述')
+    : ''
   const interviewerStyle = requiredText(config.interviewerStyle, 'INTERVIEWER_STYLE_REQUIRED', '模拟面试必须明确选择面试官风格')
   assertDomain(typeof config.coding === 'boolean', 'CODING_REQUIRED', '模拟面试必须明确选择是否手撕代码')
   const difficulty = requiredText(config.difficulty, 'DIFFICULTY_REQUIRED', '模拟面试必须明确选择面试难度')
   assertDomain(DIFFICULTIES.has(difficulty), 'INVALID_DIFFICULTY', `不支持的难度：${difficulty}`)
-  return { resume, interviewerStyle, coding: config.coding, difficulty }
+  return {
+    resume, targetRole, jobDescriptionProvided: config.jobDescriptionProvided, jobDescription,
+    interviewerStyle, coding: config.coding, difficulty,
+  }
 }
 
 function practiceIdentity(definition, config) {

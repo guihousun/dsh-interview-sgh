@@ -1015,6 +1015,10 @@ var CODING_OPTIONS = Object.freeze([
   { value: "true", label: "\u662F" },
   { value: "false", label: "\u5426" }
 ]);
+var JD_OPTIONS = Object.freeze([
+  { value: "true", label: "\u63D0\u4F9B JD" },
+  { value: "false", label: "\u4E0D\u63D0\u4F9B JD" }
+]);
 var DIFFICULTY_OPTIONS = Object.freeze([
   { value: "junior", label: "\u521D\u7EA7" },
   { value: "intermediate", label: "\u4E2D\u7EA7" },
@@ -1024,7 +1028,8 @@ function completedConfigText(payload) {
   if (!payload) return "";
   if (payload.mode === "mock") {
     const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || "";
-    return `${modeLabel(payload.mode)} \xB7 ${difficulty}\u96BE\u5EA6`;
+    const jd = payload.config.jobDescriptionProvided ? "\u542B JD" : "\u672A\u63D0\u4F9B JD";
+    return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
   }
   if (payload.mode === "leetcode") return `${modeLabel(payload.mode)} \xB7 ${leetcodeLanguageLabel(payload.config.language)}`;
   return `${modeLabel(payload.mode)} \xB7 ${payload.config.topic}`;
@@ -1041,15 +1046,31 @@ function PracticeConfigForm({
   const [step, setStep] = import_react6.default.useState(initial ? "config" : "mode");
   const [topic, setTopic] = import_react6.default.useState(initial?.config?.topic || "");
   const [resume, setResume] = import_react6.default.useState(initial?.config?.resume || "");
+  const [targetRole, setTargetRole] = import_react6.default.useState(initial?.config?.targetRole || "");
+  const [jobDescriptionProvided, setJobDescriptionProvided] = import_react6.default.useState(typeof initial?.config?.jobDescriptionProvided === "boolean" ? String(initial.config.jobDescriptionProvided) : "");
+  const [jobDescription, setJobDescription] = import_react6.default.useState(initial?.config?.jobDescription || "");
   const [interviewerStyle, setInterviewerStyle] = import_react6.default.useState(initial?.config?.interviewerStyle || "");
   const [coding, setCoding] = import_react6.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
   const [difficulty, setDifficulty] = import_react6.default.useState(initial?.config?.difficulty || "");
   const [language, setLanguage] = import_react6.default.useState(initial?.config?.language || "");
   const topicMode = mode === "bagu" || mode === "scenario";
-  const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language) : mode === "mock" && Boolean(resume.trim() && interviewerStyle.trim() && coding && difficulty);
+  const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language) : mode === "mock" && Boolean(
+    resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && interviewerStyle.trim() && coding !== "" && difficulty
+  );
   const submit = () => {
     if (step !== "config" || !valid || disabled) return;
-    onSubmit(mode === "mock" ? { mode, config: { resume: resume.trim(), interviewerStyle: interviewerStyle.trim(), coding: coding === "true", difficulty } } : mode === "leetcode" ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } });
+    onSubmit(mode === "mock" ? {
+      mode,
+      config: {
+        resume: resume.trim(),
+        targetRole: targetRole.trim(),
+        jobDescriptionProvided: jobDescriptionProvided === "true",
+        jobDescription: jobDescriptionProvided === "true" ? jobDescription.trim() : "",
+        interviewerStyle: interviewerStyle.trim(),
+        coding: coding === "true",
+        difficulty
+      }
+    } : mode === "leetcode" ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } });
   };
   const chooseMode = (value) => {
     if (disabled) return;
@@ -1100,6 +1121,24 @@ function PracticeConfigForm({
           h("span", null, "\u7B80\u5386"),
           h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
         ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u76EE\u6807\u5C97\u4F4D"),
+          h("input", { className: "di-input", disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u5C97\u4F4D\u63CF\u8FF0"),
+          h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, "aria-label": "\u9009\u62E9\u662F\u5426\u63D0\u4F9B\u5C97\u4F4D\u63CF\u8FF0" })
+        ),
+        jobDescriptionProvided === "true" ? h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "JD"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })
+        ) : null,
         h(
           "label",
           { className: "di-field" },

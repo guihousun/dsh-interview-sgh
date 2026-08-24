@@ -26,6 +26,9 @@ function configOf(args) {
   if (args.mode === 'mock') {
     return {
       resume: args.resume,
+      targetRole: args.target_role,
+      jobDescriptionProvided: args.job_description_provided,
+      jobDescription: args.job_description,
       interviewerStyle: args.interviewer_style,
       coding: args.coding,
       difficulty: args.difficulty,
@@ -58,6 +61,9 @@ const practiceParameters = {
     topic: { type: 'string', minLength: 1 },
     language: { type: 'string', enum: LEETCODE_LANGUAGE_IDS },
     resume: { type: 'string', minLength: 1 },
+    target_role: { type: 'string', minLength: 1 },
+    job_description_provided: { type: 'boolean' },
+    job_description: { type: 'string', minLength: 1 },
     interviewer_style: { type: 'string', minLength: 1 },
     coding: { type: 'boolean' },
     difficulty: { type: 'string', enum: ['junior', 'intermediate', 'senior'] },

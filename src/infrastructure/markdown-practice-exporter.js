@@ -58,6 +58,8 @@ export function renderPracticeMarkdown(practice, include) {
     if (practice.mode === 'mock') {
       lines.push(
         `- 简历：${practice.config.resume}`,
+        `- 目标岗位：${practice.config.targetRole}`,
+        `- JD：${practice.config.jobDescriptionProvided ? practice.config.jobDescription : '未提供'}`,
         `- 面试官风格：${practice.config.interviewerStyle}`,
         `- 是否手撕代码：${practice.config.coding ? '是' : '否'}`,
         `- 面试难度：${practice.config.difficulty}`,

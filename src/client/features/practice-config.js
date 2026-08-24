@@ -20,6 +20,11 @@ const CODING_OPTIONS = Object.freeze([
   { value: 'false', label: '否' },
 ])
 
+const JD_OPTIONS = Object.freeze([
+  { value: 'true', label: '提供 JD' },
+  { value: 'false', label: '不提供 JD' },
+])
+
 const DIFFICULTY_OPTIONS = Object.freeze([
   { value: 'junior', label: '初级' },
   { value: 'intermediate', label: '中级' },
@@ -30,7 +35,8 @@ function completedConfigText(payload) {
   if (!payload) return ''
   if (payload.mode === 'mock') {
     const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || ''
-    return `${modeLabel(payload.mode)} · ${difficulty}难度`
+    const jd = payload.config.jobDescriptionProvided ? '含 JD' : '未提供 JD'
+    return `${modeLabel(payload.mode)} · ${payload.config.targetRole} · ${difficulty}难度 · ${jd}`
   }
   if (payload.mode === 'leetcode') return `${modeLabel(payload.mode)} · ${leetcodeLanguageLabel(payload.config.language)}`
   return `${modeLabel(payload.mode)} · ${payload.config.topic}`
@@ -48,6 +54,9 @@ export function PracticeConfigForm({
   const [step, setStep] = React.useState(initial ? 'config' : 'mode')
   const [topic, setTopic] = React.useState(initial?.config?.topic || '')
   const [resume, setResume] = React.useState(initial?.config?.resume || '')
+  const [targetRole, setTargetRole] = React.useState(initial?.config?.targetRole || '')
+  const [jobDescriptionProvided, setJobDescriptionProvided] = React.useState(typeof initial?.config?.jobDescriptionProvided === 'boolean' ? String(initial.config.jobDescriptionProvided) : '')
+  const [jobDescription, setJobDescription] = React.useState(initial?.config?.jobDescription || '')
   const [interviewerStyle, setInterviewerStyle] = React.useState(initial?.config?.interviewerStyle || '')
   const [coding, setCoding] = React.useState(typeof initial?.config?.coding === 'boolean' ? String(initial.config.coding) : '')
   const [difficulty, setDifficulty] = React.useState(initial?.config?.difficulty || '')
@@ -55,11 +64,28 @@ export function PracticeConfigForm({
   const topicMode = mode === 'bagu' || mode === 'scenario'
   const valid = topicMode
     ? Boolean(topic.trim())
-    : mode === 'leetcode' ? Boolean(language) : mode === 'mock' && Boolean(resume.trim() && interviewerStyle.trim() && coding && difficulty)
+    : mode === 'leetcode'
+      ? Boolean(language)
+      : mode === 'mock' && Boolean(
+        resume.trim() && targetRole.trim() && jobDescriptionProvided !== ''
+        && (jobDescriptionProvided !== 'true' || jobDescription.trim())
+        && interviewerStyle.trim() && coding !== '' && difficulty,
+      )
   const submit = () => {
     if (step !== 'config' || !valid || disabled) return
     onSubmit(mode === 'mock'
-      ? { mode, config: { resume: resume.trim(), interviewerStyle: interviewerStyle.trim(), coding: coding === 'true', difficulty } }
+      ? {
+          mode,
+          config: {
+            resume: resume.trim(),
+            targetRole: targetRole.trim(),
+            jobDescriptionProvided: jobDescriptionProvided === 'true',
+            jobDescription: jobDescriptionProvided === 'true' ? jobDescription.trim() : '',
+            interviewerStyle: interviewerStyle.trim(),
+            coding: coding === 'true',
+            difficulty,
+          },
+        }
       : mode === 'leetcode' ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } })
   }
   const chooseMode = (value) => {
@@ -90,6 +116,12 @@ export function PracticeConfigForm({
           mode === 'mock' ? h(React.Fragment, null,
             h('label', { className: 'di-field di-field-wide' }, h('span', null, '简历'),
               h('textarea', { className: 'di-input di-textarea', disabled, value: resume, onChange: (event) => setResume(event.target.value) })),
+            h('label', { className: 'di-field' }, h('span', null, '目标岗位'),
+              h('input', { className: 'di-input', disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })),
+            h('label', { className: 'di-field' }, h('span', null, '岗位描述'),
+              h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, 'aria-label': '选择是否提供岗位描述' })),
+            jobDescriptionProvided === 'true' ? h('label', { className: 'di-field di-field-wide' }, h('span', null, 'JD'),
+              h('textarea', { className: 'di-input di-textarea', disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })) : null,
             h('label', { className: 'di-field' }, h('span', null, '面试官风格'),
               h('input', { className: 'di-input', disabled, value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })),
             h('label', { className: 'di-field' }, h('span', null, '是否手撕代码'),
