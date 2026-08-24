@@ -271,6 +271,19 @@ test('新建练习配置卡复用工作台表单且提交后消费整张卡片',
   assert.match(entry, /case 'practice-setup': return h\(PracticeSetupCard/)
 })
 
+test('练习配置先选择模式再填写配置且下拉层不被卡片裁切', () => {
+  const config = readFileSync(new URL('../../src/client/features/practice-config.js', import.meta.url), 'utf8')
+  const styles = readFileSync(new URL('../../src/client/shared/styles.js', import.meta.url), 'utf8')
+  assert.match(config, /useState\(initial \? 'config' : 'mode'\)/)
+  assert.match(config, /setStep\('config'\)/)
+  assert.match(config, /'选择模式'/)
+  assert.match(config, /'填写配置'/)
+  assert.match(config, /className: 'di-mode-options'/)
+  assert.match(config, /step === 'config' \? h\(Button, \{ disabled, onClick: \(\) => setStep\('mode'\) \}, '上一步'\)/)
+  assert.doesNotMatch(config, /value: mode, options: PRACTICE_MODE_OPTIONS/)
+  assert.match(styles, /\.di-setup-card\{overflow:visible\}/)
+})
+
 test('每次展示卡片都绕过资源缓存并使用独立展示标识', () => {
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
   const entry = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')

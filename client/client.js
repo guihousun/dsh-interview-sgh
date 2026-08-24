@@ -1035,6 +1035,9 @@ var PRACTICE_MODE_OPTIONS = Object.freeze([
   { value: "scenario", label: "\u573A\u666F\u9898" },
   { value: "leetcode", label: "\u5237\u529B\u6263" }
 ]);
+function modeLabel(mode) {
+  return PRACTICE_MODE_OPTIONS.find((option) => option.value === mode)?.label || "";
+}
 var CODING_OPTIONS = Object.freeze([
   { value: "true", label: "\u662F" },
   { value: "false", label: "\u5426" }
@@ -1053,6 +1056,7 @@ function PracticeConfigForm({
   submitLabel = ""
 }) {
   const [mode, setMode] = import_react6.default.useState(initial?.mode || "");
+  const [step, setStep] = import_react6.default.useState(initial ? "config" : "mode");
   const [topic, setTopic] = import_react6.default.useState(initial?.config?.topic || "");
   const [resume, setResume] = import_react6.default.useState(initial?.config?.resume || "");
   const [interviewerStyle, setInterviewerStyle] = import_react6.default.useState(initial?.config?.interviewerStyle || "");
@@ -1062,63 +1066,84 @@ function PracticeConfigForm({
   const topicMode = mode === "bagu" || mode === "scenario";
   const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language) : mode === "mock" && Boolean(resume.trim() && interviewerStyle.trim() && coding && difficulty);
   const submit = () => {
-    if (!valid || disabled) return;
+    if (step !== "config" || !valid || disabled) return;
     onSubmit(mode === "mock" ? { mode, config: { resume: resume.trim(), interviewerStyle: interviewerStyle.trim(), coding: coding === "true", difficulty } } : mode === "leetcode" ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } });
+  };
+  const chooseMode = (value) => {
+    if (disabled) return;
+    setMode(value);
+    setStep("config");
   };
   return h(
     "div",
     { className: "di-practice-form" },
     h(
-      "label",
-      { className: "di-field" },
-      h("span", null, "\u6A21\u5F0F"),
-      h(Select, { value: mode, options: PRACTICE_MODE_OPTIONS, disabled, onChange: setMode, "aria-label": "\u9009\u62E9\u7EC3\u4E60\u6A21\u5F0F" })
+      "ol",
+      { className: "di-config-progress", "aria-label": "\u65B0\u5EFA\u7EC3\u4E60\u8FDB\u5EA6" },
+      h("li", { className: step === "mode" ? "is-current" : "is-complete" }, h("span", null, "1"), "\u9009\u62E9\u6A21\u5F0F"),
+      h("li", { className: step === "config" ? "is-current" : "" }, h("span", null, "2"), "\u586B\u5199\u914D\u7F6E")
     ),
-    topicMode ? h(
-      "label",
-      { className: "di-field" },
-      h("span", null, "\u4E3B\u9898"),
-      h("input", { className: "di-input", disabled, value: topic, onChange: (event) => setTopic(event.target.value) })
-    ) : null,
-    mode === "leetcode" ? h(
-      "label",
-      { className: "di-field" },
-      h("span", null, "\u7F16\u7A0B\u8BED\u8A00"),
-      h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), disabled, onChange: setLanguage, "aria-label": "\u9009\u62E9\u7F16\u7A0B\u8BED\u8A00" })
-    ) : null,
-    mode === "mock" ? h(
-      import_react6.default.Fragment,
-      null,
-      h(
-        "label",
-        { className: "di-field di-field-wide" },
-        h("span", null, "\u7B80\u5386"),
-        h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
-      ),
-      h(
+    step === "mode" ? h(
+      "section",
+      { className: "di-config-stage di-field-wide", "aria-label": "\u9009\u62E9\u7EC3\u4E60\u6A21\u5F0F" },
+      h("div", { className: "di-mode-options" }, PRACTICE_MODE_OPTIONS.map((option) => h("button", {
+        type: "button",
+        className: `di-mode-option is-${option.value}`,
+        disabled,
+        key: option.value,
+        onClick: () => chooseMode(option.value)
+      }, option.label)))
+    ) : h(
+      "section",
+      { className: "di-config-stage di-config-fields di-field-wide", "aria-label": `${modeLabel(mode)}\u914D\u7F6E` },
+      h("div", { className: "di-config-mode" }, h("span", null, "\u7EC3\u4E60\u6A21\u5F0F"), h("span", { className: `di-mode-badge is-${mode}` }, modeLabel(mode))),
+      topicMode ? h(
         "label",
         { className: "di-field" },
-        h("span", null, "\u9762\u8BD5\u5B98\u98CE\u683C"),
-        h("input", { className: "di-input", disabled, value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })
-      ),
-      h(
+        h("span", null, "\u4E3B\u9898"),
+        h("input", { className: "di-input", disabled, value: topic, onChange: (event) => setTopic(event.target.value) })
+      ) : null,
+      mode === "leetcode" ? h(
         "label",
         { className: "di-field" },
-        h("span", null, "\u662F\u5426\u624B\u6495\u4EE3\u7801"),
-        h(Select, { value: coding, options: CODING_OPTIONS, disabled, onChange: setCoding, "aria-label": "\u9009\u62E9\u662F\u5426\u624B\u6495\u4EE3\u7801" })
-      ),
-      h(
-        "label",
-        { className: "di-field" },
-        h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
-        h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
-      )
-    ) : null,
+        h("span", null, "\u7F16\u7A0B\u8BED\u8A00"),
+        h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), disabled, onChange: setLanguage, "aria-label": "\u9009\u62E9\u7F16\u7A0B\u8BED\u8A00" })
+      ) : null,
+      mode === "mock" ? h(
+        import_react6.default.Fragment,
+        null,
+        h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "\u7B80\u5386"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u9762\u8BD5\u5B98\u98CE\u683C"),
+          h("input", { className: "di-input", disabled, value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u662F\u5426\u624B\u6495\u4EE3\u7801"),
+          h(Select, { value: coding, options: CODING_OPTIONS, disabled, onChange: setCoding, "aria-label": "\u9009\u62E9\u662F\u5426\u624B\u6495\u4EE3\u7801" })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
+          h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
+        )
+      ) : null
+    ),
     h(
       "div",
       { className: "di-actions di-field-wide" },
       onCancel ? h(Button, { disabled, onClick: onCancel }, "\u53D6\u6D88") : null,
-      h(Button, { tone: "primary", disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60"))
+      step === "config" ? h(Button, { disabled, onClick: () => setStep("mode") }, "\u4E0A\u4E00\u6B65") : null,
+      step === "config" ? h(Button, { tone: "primary", disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60")) : null
     )
   );
 }
@@ -1842,7 +1867,8 @@ var STYLE_TEXT = `
 .di-card{width:min(1080px,100%);border:1px solid var(--di-line);border-radius:14px;background:var(--di-white);overflow:hidden;box-shadow:var(--di-shadow)}
 .di-card-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 24px;border-bottom:1px solid var(--di-line);background:var(--di-white)}
 .di-card-body{padding:24px}.di-title{font-size:18px;font-weight:var(--di-weight-title)}.di-meta{font-size:12px;line-height:1.5;color:var(--di-muted)}.di-markdown strong,.di-markdown b,.di-markdown h1,.di-markdown h2,.di-markdown h3,.di-markdown h4,.di-markdown h5,.di-markdown h6{font-weight:inherit}
-.di-setup-card .di-practice-form{margin:0;border:0;border-radius:0;padding:22px 24px;background:var(--di-white)}.di-setup-card>.di-notice{margin:0 24px 22px}.di-setup-card .di-actions{justify-content:flex-end;padding-top:2px}.di-setup-card .di-button.is-primary{min-width:104px}
+.di-setup-card{overflow:visible}.di-setup-card .di-card-head{border-radius:14px 14px 0 0}.di-setup-card .di-practice-form{margin:0;border:0;border-radius:0 0 14px 14px;padding:22px 24px;background:var(--di-white)}.di-setup-card>.di-notice{margin:0 24px 22px}.di-setup-card .di-actions{justify-content:flex-end;padding-top:2px}.di-setup-card .di-button.is-primary{min-width:104px}
+.di-config-progress{display:flex;align-items:center;grid-column:1/-1;gap:0;margin:0;padding:0;list-style:none;color:var(--di-muted);font-size:12px}.di-config-progress li{display:flex;align-items:center;gap:7px}.di-config-progress li+li::before{content:"";width:42px;height:1px;margin:0 10px;background:var(--di-line)}.di-config-progress li>span{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--di-line);border-radius:50%;background:var(--di-white);font-size:11px}.di-config-progress li.is-current{color:var(--di-blue)}.di-config-progress li.is-current>span{border-color:var(--di-blue);background:var(--di-blue);color:var(--di-white)}.di-config-progress li.is-complete>span{border-color:#b9c8ff;color:var(--di-blue);background:var(--di-blue-soft)}.di-config-stage{animation:di-config-enter .18s ease-out}.di-mode-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.di-mode-option{appearance:none;min-height:62px;border:1px solid var(--di-line);border-radius:10px;background:var(--di-white);color:var(--di-ink);font:var(--di-weight-text) 14px/1.3 "Segoe UI Variable","Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}.di-mode-option:hover:not(:disabled),.di-mode-option:focus-visible{outline:0;border-color:#9eb4ff;background:var(--di-blue-soft);transform:translateY(-1px)}.di-mode-option:focus-visible{box-shadow:0 0 0 3px rgba(36,92,255,.14)}.di-mode-option:disabled{opacity:.55;cursor:not-allowed}.di-config-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.di-config-mode{display:flex;align-items:center;gap:9px;grid-column:1/-1;padding-bottom:3px;color:var(--di-muted);font-size:12px}
 .di-question-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:30px;padding:26px 34px}.di-question-main{min-width:0}.di-question-text{font-size:19px;font-weight:var(--di-weight-title);line-height:1.55;color:var(--di-ink)}.di-question-text p{margin:0}.di-answer-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:140px;padding:12px 18px!important;border-color:var(--di-blue)!important;color:var(--di-blue)!important;background:var(--di-white)!important;font-size:15px!important}
 .di-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--di-line);border-radius:8px;padding:9px 13px;background:var(--di-white);color:var(--di-ink);font:var(--di-weight-text) 13px/1 "Segoe UI Variable","Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,box-shadow .15s ease}.di-button:hover:not(:disabled){transform:translateY(-1px);border-color:#b8c6e6;box-shadow:0 4px 12px rgba(36,92,255,.08)}.di-button:focus-visible,.di-input:focus-visible,.di-custom-select-trigger:focus-visible,.di-history-topic:focus-visible{outline:3px solid rgba(36,92,255,.18);outline-offset:2px}.di-button:disabled{opacity:.55;cursor:not-allowed}.di-button.is-primary{background:var(--di-blue);border-color:var(--di-blue);color:#fff}.di-button.is-danger{color:var(--di-red);border-color:#ffd9dc;background:#fffafa}
 .di-phase{display:inline-flex;border:1px solid var(--di-line);border-radius:999px;padding:5px 9px;font-size:11px;font-weight:var(--di-weight-text);color:var(--di-muted);white-space:nowrap}.di-phase-answerable,.di-phase-solving{border-color:#b9c8ff;color:var(--di-blue);background:var(--di-blue-soft)}.di-phase-needs_evaluation,.di-phase-needs_explanation{border-color:#ffe1a3;color:#a76500;background:#fffaf0}.di-phase-reviewed,.di-phase-ready_for_next{border-color:#bde6cf;color:var(--di-green);background:var(--di-green-soft)}.di-phase-completed{color:var(--di-muted);background:var(--di-paper)}
@@ -1860,10 +1886,11 @@ var STYLE_TEXT = `
 .di-workspace-backdrop{position:fixed;z-index:53;inset:0;display:grid;place-items:center;padding:32px;background:rgba(241,245,249,.82);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}.di-workspace-panel{position:relative;right:auto;bottom:auto;width:min(1024px,calc(100vw - 64px));height:min(720px,calc(100vh - 64px));min-height:640px;border:1px solid rgba(226,232,240,.8);border-radius:16px;background:#fff;box-shadow:0 20px 25px -5px rgba(148,163,184,.18),0 8px 10px -6px rgba(148,163,184,.16)}.di-workspace-head{height:64px;padding:0 24px;border-bottom-color:#f1f5f9;background:rgba(255,255,255,.8);backdrop-filter:blur(8px)}.di-workspace-brand{display:flex;align-items:center;gap:10px}.di-workspace-brand-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:rgba(37,99,235,.1);color:#2563eb;box-shadow:none}.di-workspace-head h2{font-size:16px;letter-spacing:-.015em}.di-workspace-head>button{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;color:#94a3b8}.di-workspace-head>button:hover{color:#334155;background:#f1f5f9}.di-workspace-layout{grid-template-columns:208px minmax(0,1fr);height:calc(100% - 64px)}.di-workspace-tabs{gap:4px;padding:12px;border-right-color:#f1f5f9;background:rgba(248,250,252,.7)}.di-workspace-tabs button{display:flex;align-items:center;gap:10px;border-radius:12px;padding:9px 12px;color:#475569;font-size:12px;line-height:1.2}.di-workspace-tabs button::before{display:none}.di-workspace-tabs button:hover{color:#0f172a;background:#f1f5f9}.di-workspace-tabs button.is-active{color:#2563eb;background:rgba(239,246,255,.7);box-shadow:none}.di-workspace-count{margin-left:auto;min-width:20px;padding:2px 6px;border-radius:999px;background:#2563eb;color:#fff;font-size:10px;line-height:1.2;text-align:center}.di-workspace-content{padding:24px;background:#fff}.di-workspace-content>.di-ledger,.di-workspace-content>.di-lc-catalog{border:0;border-radius:0;background:#fff;box-shadow:none;overflow:visible}.di-history-head{min-height:auto;padding:0 0 20px;border:0}.di-ledger-title{font-size:18px}.di-history-head .di-button{height:34px;padding:0 14px;border-radius:12px;box-shadow:0 1px 2px rgba(37,99,235,.18)}.di-history-filters{gap:10px;margin-bottom:20px;padding:0;border:0;background:#fff}.di-history-filters .di-input{padding-left:14px}.di-input,.di-select{height:34px;border-color:#e2e8f0;border-radius:12px;font-size:12px}.di-input:hover,.di-select:hover{border-color:#cbd5e1}.di-history-scroll{border:1px solid #f1f5f9;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.04)}.di-history-table th{padding:12px 16px;border:0;border-bottom:1px solid #f1f5f9;background:rgba(248,250,252,.6);color:#94a3b8;font-size:12px}.di-history-table td{padding:14px 16px;border-top-color:#f1f5f9;color:#334155}.di-history-table tbody tr{transition:background .15s ease}.di-history-table tbody tr:hover td{background:rgba(248,250,252,.5)}.di-history-table tr.is-selected td{background:#eff6ff}.di-history-topic{max-width:280px;overflow:hidden;text-overflow:ellipsis;color:#1e293b}.di-mode-badge{display:inline-flex;padding:3px 8px;border-radius:6px;background:#eef2ff;color:#4338ca;font-size:11px}.di-mode-badge.is-leetcode{background:#eff6ff;color:#2563eb}.di-mode-badge.is-scenario{background:#f0fdf4;color:#15803d}.di-mode-badge.is-mock{background:#fff7ed;color:#c2410c}.di-row-actions{gap:4px;opacity:.8}.di-history-table tr:hover .di-row-actions{opacity:1}.di-icon-button{width:28px;height:28px;border-color:transparent;border-radius:8px;background:transparent;color:#94a3b8}.di-icon-button:hover:not(:disabled){transform:none;color:#334155;background:#f1f5f9;box-shadow:none}.di-icon-button.is-delete{border-color:transparent;background:transparent;color:#94a3b8}.di-icon-button.is-delete:hover:not(:disabled){color:#e11d48;background:#fff1f2}.di-history-empty{min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 24px;border:1px dashed #e2e8f0;border-radius:12px;background:rgba(248,250,252,.4);color:#94a3b8;font-size:12px;text-align:center}.di-history-empty-icon{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;margin-bottom:12px;border-radius:16px;background:#f1f5f9;color:#94a3b8;box-shadow:inset 0 1px 2px rgba(15,23,42,.04)}.di-history-empty-title{margin-bottom:4px;color:#334155;font-size:14px;font-weight:var(--di-weight-title)}.di-history-detail{margin-top:18px;border:1px solid #f1f5f9;border-radius:12px;background:#fff}.di-detail{padding:20px}.di-detail-heading{padding-bottom:14px;border-bottom:1px solid #f1f5f9}.di-practice-form{margin-bottom:20px;border:1px solid #f1f5f9;border-radius:12px;background:#f8fafc}.di-modal-backdrop{position:absolute;z-index:20;inset:0;display:grid;place-items:center;padding:16px;background:rgba(15,23,42,.3);backdrop-filter:blur(4px)}.di-confirm-modal{width:min(384px,100%);padding:20px;border:1px solid #f1f5f9;border-radius:16px;background:#fff;box-shadow:0 25px 50px -12px rgba(15,23,42,.3)}.di-confirm-copy{display:flex;align-items:flex-start;gap:14px}.di-confirm-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:0 0 auto;border-radius:12px;background:#fff1f2;color:#e11d48}.di-confirm-modal h4{margin:0;color:#0f172a;font-size:14px;font-weight:var(--di-weight-title)}.di-confirm-modal p{margin:4px 0 0;color:#64748b;font-size:12px;line-height:1.6}.di-confirm-modal .di-actions{justify-content:flex-end;margin-top:16px;padding-top:10px;border-top:1px solid #f8fafc}.di-confirm-modal .di-button{padding:7px 12px;border-color:transparent}.di-confirm-modal .di-button.is-danger{background:#e11d48;border-color:#e11d48;color:#fff}.di-lc-catalog-head{padding:0 0 20px}.di-lc-heading{display:flex;align-items:center;gap:8px}.di-lc-title{font-size:18px}.di-lc-source{padding:3px 8px;border-radius:999px;background:#eff6ff;color:#2563eb;font-size:11px}.di-lc-catalog-summary{gap:8px;padding:6px 14px;border:1px solid #f1f5f9;border-radius:12px;background:#f8fafc}.di-lc-progress-label{color:#94a3b8;font-size:11px}.di-lc-progress-copy{gap:4px;color:#334155;font-size:12px}.di-lc-progress-value{color:#2563eb;font-size:14px}.di-lc-progress{width:48px;height:8px;margin:0;background:#e2e8f0}.di-lc-progress>i{background:#2563eb}.di-lc-groups{display:grid;gap:24px;padding:0}.di-lc-group{display:block;padding:0;border:0}.di-lc-group-head{padding:0 4px;margin-bottom:10px}.di-lc-group-head h3{color:#1e293b;font-size:12px}.di-lc-group-head span{font-size:12px}.di-lc-problems{border:1px solid #f1f5f9;border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden}.di-lc-row{min-height:46px;padding:8px 12px;border-radius:0}.di-lc-row+.di-lc-row{border-top:1px solid #f1f5f9}.di-lc-row:hover{background:rgba(248,250,252,.5)}.di-lc-check{width:16px;height:16px;border-color:#cbd5e1;border-radius:4px;line-height:13px}.di-lc-problem-link{font-size:12px}.di-lc-problem-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#94a3b8}.di-lc-difficulty{min-width:auto;padding:3px 8px;border-radius:6px;font-size:10px}.di-workspace-launcher{right:20px;bottom:20px;padding:8px 14px 8px 8px}.di-local-toast{right:24px;bottom:24px}
 .di-custom-select{position:relative;min-width:0}.di-custom-select-trigger{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:34px;padding:0 10px 0 13px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;color:#334155;font:var(--di-weight-text) 12px/1 Inter,"Segoe UI","Microsoft YaHei",sans-serif;text-align:left;cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease}.di-custom-select-trigger:hover:not(:disabled){border-color:#cbd5e1}.di-custom-select-trigger .is-placeholder{color:#94a3b8}.di-custom-select-trigger .di-icon{color:#94a3b8;transition:transform .15s ease}.di-custom-select.is-open .di-custom-select-trigger{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12)}.di-custom-select.is-open .di-custom-select-trigger .di-icon{transform:rotate(180deg)}.di-custom-select.is-disabled{opacity:.55}.di-custom-select-menu{position:absolute;z-index:40;top:calc(100% + 6px);right:0;left:0;max-height:220px;padding:5px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.12);overflow:auto}.di-custom-select-option{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:32px;padding:7px 9px;border:0;border-radius:8px;background:transparent;color:#475569;font:var(--di-weight-text) 12px/1.3 Inter,"Segoe UI","Microsoft YaHei",sans-serif;text-align:left;cursor:pointer}.di-custom-select-option:hover,.di-custom-select-option:focus-visible{outline:0;background:#f8fafc;color:#0f172a}.di-custom-select-option.is-selected{background:#eff6ff;color:#2563eb}.di-custom-select-option:disabled{opacity:.45;cursor:not-allowed}.di-history-mode-select{width:144px;flex:0 0 144px}
 @keyframes di-spin{to{transform:rotate(360deg)}}
+@keyframes di-config-enter{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:translateX(0)}}
 @media(max-width:760px){.di-detail-heading{align-items:flex-start;flex-direction:column;gap:5px}.di-lc-catalog-summary{gap:10px}}
 @media(max-width:760px){.di-question-card,.di-lc-problem-card{grid-template-columns:1fr;padding:22px}.di-lc-problem-actions{justify-content:flex-start;max-width:none}.di-lc-group{grid-template-columns:1fr;gap:10px}.di-lc-group-head{justify-content:flex-start}.di-answer-button{justify-self:start}.di-history-table th,.di-history-table td{padding-left:16px;padding-right:16px}.di-history-filters{flex-wrap:wrap}.di-input{flex-basis:100%}.di-timeline{display:none}.di-workspace-backdrop{padding:8px;place-items:stretch}.di-workspace-panel{width:100%;height:100%;min-height:0;border-radius:12px}.di-workspace-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}.di-workspace-tabs{flex-direction:row;padding:6px;border-right:0;border-bottom:1px solid var(--di-line);overflow-x:auto}.di-workspace-tabs button{white-space:nowrap}.di-workspace-count{display:none}.di-workspace-content{padding:16px}.di-lc-catalog-head{align-items:flex-start;flex-direction:column}.di-workspace-launcher{right:10px;bottom:12px}}
-@media(max-width:520px){.di-card-body{padding:18px}.di-question-text{font-size:17px}.di-review-score{flex-wrap:wrap;padding:18px}.di-review-score-summary{flex:1}.di-stars{width:100%;margin-left:56px}.di-review-content{padding:20px 18px}.di-review-actions{justify-content:flex-start}.di-history-head{padding:17px 18px}.di-history-filters{padding:10px 18px}.di-history-mode-select{width:100%;flex:1 1 100%}.di-practice-form{grid-template-columns:1fr;padding:16px 18px}.di-field-wide{grid-column:1}.di-delete-confirm{align-items:flex-start;flex-direction:column;margin:10px 18px}.di-lc-catalog-head{align-items:flex-start;padding:20px;}.di-lc-progress{margin-right:20px;margin-left:20px}.di-lc-groups{padding-right:20px;padding-left:20px}.di-lc-row{grid-template-columns:22px minmax(0,1fr) 44px}.di-lc-problem-id{display:none}}
-@media(prefers-reduced-motion:reduce){.di-button,.di-time-node,.di-lc-progress>i{transition:none}.di-spinner{animation-duration:1.5s}}
+@media(max-width:520px){.di-card-body{padding:18px}.di-question-text{font-size:17px}.di-review-score{flex-wrap:wrap;padding:18px}.di-review-score-summary{flex:1}.di-stars{width:100%;margin-left:56px}.di-review-content{padding:20px 18px}.di-review-actions{justify-content:flex-start}.di-history-head{padding:17px 18px}.di-history-filters{padding:10px 18px}.di-history-mode-select{width:100%;flex:1 1 100%}.di-practice-form{grid-template-columns:1fr;padding:16px 18px}.di-field-wide{grid-column:1}.di-config-fields{grid-template-columns:1fr}.di-mode-options{grid-template-columns:repeat(2,minmax(0,1fr))}.di-config-progress li+li::before{width:24px;margin-right:7px;margin-left:7px}.di-delete-confirm{align-items:flex-start;flex-direction:column;margin:10px 18px}.di-lc-catalog-head{align-items:flex-start;padding:20px;}.di-lc-progress{margin-right:20px;margin-left:20px}.di-lc-groups{padding-right:20px;padding-left:20px}.di-lc-row{grid-template-columns:22px minmax(0,1fr) 44px}.di-lc-problem-id{display:none}}
+@media(prefers-reduced-motion:reduce){.di-button,.di-time-node,.di-lc-progress>i,.di-mode-option{transition:none}.di-config-stage{animation:none}.di-spinner{animation-duration:1.5s}}
 `;
 function installStyles() {
   if (document.getElementById("dsh-interview-styles")) return;
