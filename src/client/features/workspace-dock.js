@@ -11,33 +11,6 @@ const WORKSPACE_TABS = Object.freeze([
   { id: 'leetcode', label: '热题 100', icon: 'flame' },
 ])
 
-const LAUNCHER_POSITION_KEY = 'dsh-interview:workspace-launcher-position'
-const LAUNCHER_MARGIN = 8
-
-function loadLauncherPosition() {
-  try {
-    const value = JSON.parse(globalThis.localStorage?.getItem(LAUNCHER_POSITION_KEY) || 'null')
-    return Number.isFinite(value?.left) && Number.isFinite(value?.top) ? value : null
-  } catch {
-    return null
-  }
-}
-
-function clampLauncherPosition(position, width, height) {
-  return {
-    left: Math.min(Math.max(LAUNCHER_MARGIN, position.left), Math.max(LAUNCHER_MARGIN, globalThis.innerWidth - width - LAUNCHER_MARGIN)),
-    top: Math.min(Math.max(LAUNCHER_MARGIN, position.top), Math.max(LAUNCHER_MARGIN, globalThis.innerHeight - height - LAUNCHER_MARGIN)),
-  }
-}
-
-function saveLauncherPosition(position) {
-  try {
-    globalThis.localStorage?.setItem(LAUNCHER_POSITION_KEY, JSON.stringify(position))
-  } catch {
-    // 存储不可用时仍保留当前会话内的拖动结果。
-  }
-}
-
 function WorkspaceContent({ tab, sessionId }) {
   if (tab === 'active') return h(PracticeLibrary, {
     sessionId, statusScope: 'active', title: '进行中', allowCreate: true,
@@ -49,17 +22,16 @@ function WorkspaceContent({ tab, sessionId }) {
   return null
 }
 
-export function WorkspaceDock({ sessionId }) {
+export function WorkspaceSidebarEntry({ wide = true, useSessions }) {
+  const sessionId = useSessions((state) => state.current)
+  return h(WorkspaceDock, { sessionId, wide })
+}
+
+export function WorkspaceDock({ sessionId, wide = true }) {
   const [open, setOpen] = React.useState(false)
   const [tab, setTab] = React.useState('active')
   const [notice, setNotice] = React.useState('')
-  const [launcherPosition, setLauncherPosition] = React.useState(loadLauncherPosition)
-  const [draggingLauncher, setDraggingLauncher] = React.useState(false)
-  const launcherRef = React.useRef(null)
-  const launcherPositionRef = React.useRef(launcherPosition)
-  const launcherDragRef = React.useRef(null)
-  const suppressLauncherClickRef = React.useRef(false)
-  launcherPositionRef.current = launcherPosition
+  const closeButtonRef = React.useRef(null)
   const activeQuery = useInterviewQuery(
     `workspace-active-count:${open}`,
     () => interviewApi.practices({ status: 'active' }),
@@ -87,83 +59,33 @@ export function WorkspaceDock({ sessionId }) {
   }), [])
 
   React.useEffect(() => {
-    const keepLauncherInViewport = () => {
-      const rect = launcherRef.current?.getBoundingClientRect()
-      const current = launcherPositionRef.current
-      if (!rect || !current) return
-      const next = clampLauncherPosition(current, rect.width, rect.height)
-      launcherPositionRef.current = next
-      setLauncherPosition(next)
-      saveLauncherPosition(next)
+    if (!open) return undefined
+    closeButtonRef.current?.focus()
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setOpen(false)
     }
-    keepLauncherInViewport()
-    globalThis.addEventListener?.('resize', keepLauncherInViewport)
-    return () => globalThis.removeEventListener?.('resize', keepLauncherInViewport)
-  }, [])
-
-  const startLauncherDrag = (event) => {
-    if (event.button !== 0) return
-    const rect = event.currentTarget.getBoundingClientRect()
-    launcherDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-      moved: false,
-      position: { left: rect.left, top: rect.top },
-    }
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-    setDraggingLauncher(true)
-  }
-
-  const moveLauncher = (event) => {
-    const drag = launcherDragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-    const deltaX = event.clientX - drag.startX
-    const deltaY = event.clientY - drag.startY
-    if (!drag.moved && Math.hypot(deltaX, deltaY) < 4) return
-    drag.moved = true
-    drag.position = clampLauncherPosition({ left: drag.left + deltaX, top: drag.top + deltaY }, drag.width, drag.height)
-    setLauncherPosition(drag.position)
-  }
-
-  const finishLauncherDrag = (event) => {
-    const drag = launcherDragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-    event.currentTarget.releasePointerCapture?.(event.pointerId)
-    if (drag.moved) {
-      suppressLauncherClickRef.current = true
-      saveLauncherPosition(drag.position)
-    }
-    launcherDragRef.current = null
-    setDraggingLauncher(false)
-  }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [open])
 
   return h(React.Fragment, null,
     h('button', {
-      ref: launcherRef,
       type: 'button',
-      className: `di-workspace-launcher${open ? ' is-open' : ''}${draggingLauncher ? ' is-dragging' : ''}`,
-      style: launcherPosition ? { left: `${launcherPosition.left}px`, top: `${launcherPosition.top}px`, right: 'auto', bottom: 'auto' } : undefined,
+      className: `di-workspace-entry${wide ? '' : ' is-rail'}${open ? ' is-open' : ''}`,
+      title: wide ? undefined : '面试训练',
+      'aria-label': '面试训练',
+      'aria-haspopup': 'dialog',
       'aria-expanded': open,
       'aria-controls': 'di-interview-workspace',
-      onPointerDown: startLauncherDrag,
-      onPointerMove: moveLauncher,
-      onPointerUp: finishLauncherDrag,
-      onPointerCancel: finishLauncherDrag,
-      onClick: (event) => {
-        if (suppressLauncherClickRef.current) {
-          suppressLauncherClickRef.current = false
-          event.preventDefault()
-          return
-        }
-        setOpen((value) => !value)
+      onClick: () => setOpen(true),
+    }, h(Icon, { name: 'grid', size: wide ? 16 : 18 }), wide ? h('span', { className: 'di-workspace-entry-label' }, '面试训练') : null,
+    wide && activeCount > 0 ? h('span', { className: 'di-workspace-entry-count' }, activeCount) : null),
+    open ? h('div', {
+      className: 'di-workspace-backdrop',
+      onMouseDown: (event) => {
+        if (event.target === event.currentTarget) setOpen(false)
       },
-    }, h('span', { className: 'di-workspace-mark', 'aria-hidden': 'true' }, 'I'), '练习工作台'),
-    open ? h('div', { className: 'di-workspace-backdrop' },
+    },
       h('section', {
         id: 'di-interview-workspace',
         className: 'di-workspace-panel',
@@ -175,7 +97,7 @@ export function WorkspaceDock({ sessionId }) {
         h('div', { className: 'di-workspace-brand' },
           h('span', { className: 'di-workspace-brand-icon', 'aria-hidden': 'true' }, h(Icon, { name: 'grid', size: 18 })),
           h('h2', null, '练习工作台')),
-        h('button', { type: 'button', onClick: () => setOpen(false), 'aria-label': '关闭练习工作台' }, h(Icon, { name: 'close', size: 20 }))),
+        h('button', { ref: closeButtonRef, type: 'button', onClick: () => setOpen(false), 'aria-label': '关闭练习工作台' }, h(Icon, { name: 'close', size: 20 }))),
       h('div', { className: 'di-workspace-layout' },
         h('nav', { className: 'di-workspace-tabs', 'aria-label': '工作台视图' }, WORKSPACE_TABS.map((item) => h('button', {
           type: 'button',

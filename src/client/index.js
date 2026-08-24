@@ -10,7 +10,7 @@ import { InsightsCard, PracticeLibrary } from './features/practice-library.js'
 import { PracticeSetupCard } from './features/practice-config.js'
 import { TimelinePanel } from './features/timeline.js'
 import { LeetcodeCatalog } from './features/leetcode.js'
-import { WorkspaceDock } from './features/workspace-dock.js'
+import { WorkspaceSidebarEntry } from './features/workspace-dock.js'
 import { INTERVIEW_TOOL_NAMES } from '../protocol/interview-tool-names.js'
 import { installStyles } from './shared/styles.js'
 import { h, parseInteractionResult, toolCallState, toolErrorAudience, toolErrorMessage } from './shared/ui.js'
@@ -57,9 +57,9 @@ export function apply(ctx) {
     ))
   }
 
-  slots.inject('conversation.input.dock', () => slots.register(
-    { name: 'conversation.input.dock', id: 'interview-workspace', order: 24 },
-    (props) => h(WorkspaceDock, { sessionId: props.sessionId }),
+  slots.inject('sidebar.footer.action', () => slots.register(
+    { name: 'sidebar.footer.action', id: 'interview-workspace', order: 20 },
+    (props) => h(WorkspaceSidebarEntry, { wide: props.wide, useSessions: props.useSessions }),
   ))
 
   slots.inject('conversation.input.dock', () => slots.register(

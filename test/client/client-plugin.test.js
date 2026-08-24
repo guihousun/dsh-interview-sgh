@@ -40,7 +40,7 @@ function settled(interaction, extra = {}) {
   }
 }
 
-test('构建后的 Client 注册全部原子工具视图和时间轴槽位', () => {
+test('构建后的 Client 注册全部原子工具视图、侧边栏入口和时间轴槽位', () => {
   const { plugin, appended } = loadPlugin()
   const registrations = []
   const slots = {
@@ -54,8 +54,10 @@ test('构建后的 Client 注册全部原子工具视图和时间轴槽位', () 
     registrations.filter((item) => item.name === 'tool.call.toolview').map((item) => item.key),
     INTERVIEW_TOOL_NAMES,
   )
+  const sidebarIds = registrations.filter((item) => item.name === 'sidebar.footer.action').map((item) => item.id)
   const dockIds = registrations.filter((item) => item.name === 'conversation.input.dock').map((item) => item.id)
-  assert.deepEqual(dockIds, ['interview-workspace', 'interview-timeline'])
+  assert.deepEqual(sidebarIds, ['interview-workspace'])
+  assert.deepEqual(dockIds, ['interview-timeline'])
 })
 
 test('Client 只使用 DSH 当前会话身份且不共享练习游标', () => {
@@ -64,6 +66,7 @@ test('Client 只使用 DSH 当前会话身份且不共享练习游标', () => {
   assert.doesNotMatch(source, /sessionId\s*\|\|\s*['"]global['"]/)
   assert.doesNotMatch(leetcode, /sessionId\s*=\s*['"]global['"]/)
   assert.match(source, /sessionId: props\.sessionId/)
+  assert.match(source, /useSessions: props\.useSessions/)
 })
 
 test('工具视图只按结构化 artifact 渲染用户可见卡片', () => {
@@ -337,15 +340,16 @@ test('长时间轴使用独立滚动区且详情浮层位于滚动区之外', ()
   assert.doesNotMatch(styles, /\.di-timeline\{[^}]*max-height:/)
 })
 
-test('练习工作台入口支持拖动、边界约束和位置持久化', () => {
+test('面试训练入口固定注册在设置上方并适配折叠侧边栏', () => {
+  const entry = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')
   const workspace = readFileSync(new URL('../../src/client/features/workspace-dock.js', import.meta.url), 'utf8')
   const styles = readFileSync(new URL('../../src/client/shared/styles.js', import.meta.url), 'utf8')
 
-  assert.match(workspace, /onPointerDown: startLauncherDrag/)
-  assert.match(workspace, /onPointerMove: moveLauncher/)
-  assert.match(workspace, /onPointerUp: finishLauncherDrag/)
-  assert.match(workspace, /clampLauncherPosition/)
-  assert.match(workspace, /localStorage\?\.setItem\(LAUNCHER_POSITION_KEY/)
-  assert.match(workspace, /suppressLauncherClickRef/)
-  assert.match(styles, /\.di-workspace-launcher\{[^}]*cursor:grab[^}]*touch-action:none/)
+  assert.match(entry, /name: 'sidebar\.footer\.action'/)
+  assert.match(workspace, /useSessions\(\(state\) => state\.current\)/)
+  assert.match(workspace, /di-workspace-entry/)
+  assert.match(workspace, /is-rail/)
+  assert.match(workspace, /> '面试训练'|}, '面试训练'/)
+  assert.match(styles, /\.di-workspace-entry\.is-rail\{[^}]*width:36px[^}]*height:36px/)
+  assert.doesNotMatch(workspace, /onPointerDown|setPointerCapture|localStorage|workspace-launcher-position/)
 })
