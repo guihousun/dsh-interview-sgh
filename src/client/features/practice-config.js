@@ -1,5 +1,5 @@
 import React from 'react'
-import { LEETCODE_LANGUAGES } from '../../domain/leetcode-languages.js'
+import { LEETCODE_LANGUAGES, leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
 import { useCommand } from '../shared/hooks.js'
 import { useCardLifecycle } from '../shared/card-transition.js'
 import { Button, ErrorNotice, h, Icon, Select } from '../shared/ui.js'
@@ -25,6 +25,16 @@ const DIFFICULTY_OPTIONS = Object.freeze([
   { value: 'intermediate', label: '中级' },
   { value: 'senior', label: '高级' },
 ])
+
+function completedConfigText(payload) {
+  if (!payload) return ''
+  if (payload.mode === 'mock') {
+    const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || ''
+    return `${modeLabel(payload.mode)} · ${difficulty}难度`
+  }
+  if (payload.mode === 'leetcode') return `${modeLabel(payload.mode)} · ${leetcodeLanguageLabel(payload.config.language)}`
+  return `${modeLabel(payload.mode)} · ${payload.config.topic}`
+}
 
 export function PracticeConfigForm({
   initial = null,
@@ -95,13 +105,19 @@ export function PracticeConfigForm({
 export function PracticeSetupCard({ sessionId }) {
   const command = useCommand(sessionId)
   const lifecycle = useCardLifecycle(false)
-  const start = (payload) => lifecycle.enter('session.start', () => command.run('session.start', payload))
+  const [completedConfig, setCompletedConfig] = React.useState(null)
+  const start = (payload) => lifecycle.enter('session.start', () => {
+    setCompletedConfig(payload)
+    return command.run('session.start', payload)
+  })
 
   if (lifecycle.consumedBy) {
-    return h('article', { className: 'di-card di-setup-card is-complete', 'aria-label': '练习配置已完成' },
+    return h('article', { className: 'di-card di-setup-card is-complete', 'aria-label': '练习配置已就绪' },
       h('div', { className: 'di-setup-complete', role: 'status', 'aria-live': 'polite' },
-        h('span', { className: 'di-setup-complete-icon', 'aria-hidden': 'true' }, h(Icon, { name: 'check', size: 22 })),
-        h('div', { className: 'di-title' }, '配置已完成')),
+        h('span', { className: 'di-setup-complete-icon', 'aria-hidden': 'true' }, h(Icon, { name: 'check', size: 18 })),
+        h('div', { className: 'di-setup-complete-copy' },
+          h('div', { className: 'di-title' }, '练习配置已就绪'),
+          h('div', { className: 'di-meta' }, completedConfigText(completedConfig)))),
       h(ErrorNotice, null, command.error))
   }
 

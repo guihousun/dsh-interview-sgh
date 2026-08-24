@@ -269,8 +269,10 @@ test('新建练习配置卡复用工作台表单且提交后消费整张卡片',
   assert.match(config, /disabled: lifecycle\.locked/)
   assert.match(config, /if \(lifecycle\.consumedBy\)/)
   assert.match(config, /className: 'di-setup-complete-icon'/)
-  assert.match(config, /h\(Icon, \{ name: 'check', size: 22 \}\)/)
-  assert.match(config, /'配置已完成'/)
+  assert.match(config, /h\(Icon, \{ name: 'check', size: 18 \}\)/)
+  assert.match(config, /'练习配置已就绪'/)
+  assert.match(config, /completedConfigText\(completedConfig\)/)
+  assert.match(config, /setCompletedConfig\(payload\)/)
   assert.match(entry, /case 'practice-setup': return h\(PracticeSetupCard/)
 })
 
