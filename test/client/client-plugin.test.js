@@ -223,20 +223,24 @@ test('力扣切题不使用本地临时卡片槽位', () => {
 test('会话中的下一题不会改变先前力扣消息卡片', () => {
   const leetcode = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
+  const cardActivity = readFileSync(new URL('../../src/client/shared/card-activity.js', import.meta.url), 'utf8')
 
   assert.match(leetcode, /const current = initialQuestion/)
-  assert.match(leetcode, /session\.revision === artifact\.sessionRevision/)
+  assert.match(leetcode, /isCardActive\(session, artifact\)/)
+  assert.match(cardActivity, /session\.revision === artifact\?\.sessionRevision/)
   assert.match(leetcode, /const transition = useCardTransition\(command\.run, artifact, !artifactActive\)/)
   assert.doesNotMatch(leetcode, /live = false|sessionQuestion/)
   assert.match(liveInterview, /LeetcodeProblemCard, \{ sessionId, initialQuestion: question, artifact, language: practice\.config\?\.language/)
 })
 
-test('重新作答只切换题目状态且不主动打开练习工作台', () => {
+test('重新作答创建新题卡且不主动打开练习工作台', () => {
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
   const library = readFileSync(new URL('../../src/client/features/practice-library.js', import.meta.url), 'utf8')
 
   assert.doesNotMatch(liveInterview, /navigateWorkspace\('active'\)/)
   assert.doesNotMatch(library, /question\.retry[\s\S]{0,160}navigateWorkspace/)
+  assert.match(liveInterview, /answerDisabled: !active/)
+  assert.doesNotMatch(liveInterview, /session\.stage/)
 })
 
 test('力扣随机下一题点击后立即锁定为已出下一题', () => {

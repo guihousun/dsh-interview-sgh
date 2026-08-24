@@ -4,6 +4,7 @@ import { useCommand, useInterviewQuery } from '../shared/hooks.js'
 import { Button, ErrorNotice, h, Loading, Markdown } from '../shared/ui.js'
 import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
+import { isCardActive } from '../shared/card-activity.js'
 import { useCardTransition } from '../shared/card-transition.js'
 
 const DIFFICULTY = Object.freeze({
@@ -131,12 +132,7 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifac
   const session = sessionQuery.data?.resource?.data
   const current = initialQuestion
   const [showExplanation, setShowExplanation] = React.useState(false)
-  const artifactActive = Boolean(
-    session?.selected
-    && session.practice?.id === artifact.practiceId
-    && session.currentQuestionId === artifact.questionId
-    && session.revision === artifact.sessionRevision,
-  )
+  const artifactActive = isCardActive(session, artifact)
   const transition = useCardTransition(command.run, artifact, !artifactActive)
 
   React.useEffect(() => {

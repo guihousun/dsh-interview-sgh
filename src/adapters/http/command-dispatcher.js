@@ -24,7 +24,7 @@ async function consumeCard(application, sessionId, payload) {
 
 export const UI_COMMANDS = Object.freeze([
   'session.start', 'session.continue', 'session.select', 'session.reopen', 'session.finish',
-  'practice.update', 'question.open', 'question.update', 'question.delete', 'question.next',
+  'practice.update', 'question.open', 'question.focus', 'question.update', 'question.delete', 'question.next',
   'question.retry', 'question.reveal', 'leetcode.set-completion', 'library.delete', 'library.export',
 ])
 
@@ -70,6 +70,14 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       return application.updatePractice(payload.practiceId, practiceInput(payload))
     case 'question.open':
       return application.getQuestion(payload.practiceId, payload.questionId)
+    case 'question.focus': {
+      await application.bindAtomicPractice(sessionId, payload.practiceId)
+      const result = await application.focusAtomicQuestion(sessionId, payload.questionId)
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'question.show', practiceId: result.references.practiceId, questionId: result.references.questionId,
+      })
+      return result
+    }
     case 'question.update':
       return application.updateQuestion(payload.practiceId, payload.questionId, { prompt: payload.prompt })
     case 'question.delete':

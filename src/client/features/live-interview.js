@@ -1,17 +1,16 @@
 import React from 'react'
 import { interviewApi } from '../shared/api.js'
 import { useCommand, useInterviewQuery } from '../shared/hooks.js'
-import { Button, Empty, ErrorNotice, h, Icon, Loading, Markdown, PhaseBadge, StarRating } from '../shared/ui.js'
+import { Button, Empty, ErrorNotice, h, Icon, Loading, Markdown, StarRating } from '../shared/ui.js'
 import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { LeetcodeProblemCard } from './leetcode.js'
-import { getArtifactQuestionActions } from './question-actions.js'
+import { isCardActive } from '../shared/card-activity.js'
 import { useCardTransition } from '../shared/card-transition.js'
 
-export function CompactResultCard({ title, detail, tone = 'quiet' }) {
+export function CompactResultCard({ title, detail }) {
   return h('div', { className: 'di-card' },
     h('div', { className: 'di-card-head' },
-      h('div', { className: 'di-title' }, title),
-      h(PhaseBadge, { stage: tone === 'completed' ? 'completed' : 'reviewed' })),
+      h('div', { className: 'di-title' }, title)),
     detail ? h('div', { className: 'di-card-body' }, detail) : null)
 }
 
@@ -108,11 +107,11 @@ export function QuestionResourceCard({ artifact, revision, sessionId }) {
   const practice = query.data?.resource?.data
   const session = sessionQuery.data?.resource?.data
   const question = practice?.questions?.find((item) => item.id === artifact.questionId)
-  const actions = getArtifactQuestionActions(session, artifact)
+  const active = isCardActive(session, artifact)
   return h(ArtifactState, { query, missing: '找不到题目卡片数据' }, question
     ? question.leetcode
       ? h(LeetcodeProblemCard, { sessionId, initialQuestion: question, artifact, language: practice.config?.language, resourceRevision: revision })
-      : h(QuestionResultCard, { sessionId, question, artifact, answerDisabled: !actions.canReveal })
+      : h(QuestionResultCard, { sessionId, question, artifact, answerDisabled: !active })
     : null)
 }
 
@@ -124,9 +123,9 @@ export function ReviewResourceCard({ artifact, revision, sessionId }) {
   const question = practice?.questions?.find((item) => item.id === artifact.questionId)
   const attempt = artifact.attemptId ? question?.attempts?.find((item) => item.id === artifact.attemptId) : null
   const complete = question?.explanation && (!artifact.attemptId || attempt?.evaluation)
-  const actions = getArtifactQuestionActions(session, artifact)
+  const active = isCardActive(session, artifact)
   return h(ArtifactState, { query, missing: '找不到讲解数据' }, complete
-    ? h(ReviewResultCard, { sessionId, question, attempt, artifact, actionsDisabled: !actions.canContinue })
+    ? h(ReviewResultCard, { sessionId, question, attempt, artifact, actionsDisabled: !active })
     : null)
 }
 
@@ -137,8 +136,7 @@ export function PracticeSummaryCard({ artifact, revision }) {
   const leetcode = summary?.kind === 'leetcode'
   return h(ArtifactState, { query, missing: '找不到练习总结' }, summary ? h('article', { className: 'di-card', 'aria-label': '练习总结' },
     h('header', { className: 'di-card-head' },
-      h('div', { className: 'di-title' }, '练习总结'),
-      h(PhaseBadge, { stage: 'completed' })),
+      h('div', { className: 'di-title' }, '练习总结')),
     h('div', { className: 'di-card-body' },
       leetcode
         ? h(React.Fragment, null,

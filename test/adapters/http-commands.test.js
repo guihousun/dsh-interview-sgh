@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { dispatchCommand } from '../../src/adapters/http/command-dispatcher.js'
 import { instructionFor } from '../../src/adapters/dsh/agent-event-bridge.js'
+import { createPresentationToolDefinitions } from '../../src/adapters/dsh/presentation-tool-definitions.js'
+import { isCardActive } from '../../src/client/shared/card-activity.js'
 import { applicationFixture } from '../support/application-fixture.js'
 
 function fixture() {
@@ -74,6 +76,70 @@ test('UI 查看答案依据真实数据选择生成或展示讲解', async () =>
   )
   assert.equal(context.dispatched.at(-1).event.type, 'review.show')
   assert.equal(context.dispatched.at(-1).event.practiceId, practice.resource.data.id)
+})
+
+test('重新作答保留历史并创建可操作的新题目卡片', async () => {
+  const context = fixture()
+  const practice = await context.application.createAtomicPractice('session-1', { mode: 'bagu', config: { topic: 'JVM' } })
+  const question = await context.application.createAtomicQuestion('session-1', { prompt: '什么是 JMM？' })
+  const attempt = await context.application.createAtomicAttempt('session-1', {
+    questionId: question.resource.data.id,
+    answer: 'Java 内存模型。',
+  })
+  await context.application.createAtomicEvaluation('session-1', {
+    questionId: question.resource.data.id,
+    attemptId: attempt.resource.data.id,
+    score: 8,
+    feedback: '回答正确。',
+  })
+  await context.application.createAtomicExplanation('session-1', {
+    questionId: question.resource.data.id,
+    detail: 'JMM 定义线程间可见性。',
+    memorizationPoints: 'JMM 解决可见性与有序性。',
+  })
+
+  const tools = Object.fromEntries(createPresentationToolDefinitions(context.application).map((tool) => [tool.name, tool]))
+  const exec = { agent: { session: { header: { id: 'session-1' } } } }
+  const reviewCard = await tools.interview_show_review.execute({
+    practice_id: practice.resource.data.id,
+    question_id: question.resource.data.id,
+    attempt_id: attempt.resource.data.id,
+  }, exec)
+
+  await dispatchCommand(context.runtime, 'session-1', 'question.retry', reviewCard.artifact)
+  assert.equal(context.dispatched.at(-1).event.type, 'question.show')
+
+  const questionCard = await tools.interview_show_question.execute({
+    practice_id: practice.resource.data.id,
+    question_id: question.resource.data.id,
+  }, exec)
+  const session = (await context.application.readAtomicSession('session-1')).resource.data
+  assert.notEqual(questionCard.artifact.presentationId, reviewCard.artifact.presentationId)
+  assert.equal(isCardActive(session, questionCard.artifact), true)
+  assert.equal(session.currentQuestion.attempts.length, 1)
+  assert.equal(session.currentQuestion.explanation.detail, 'JMM 定义线程间可见性。')
+})
+
+test('练习档案无需卡片凭证即可聚焦题目并请求展示', async () => {
+  const context = fixture()
+  const practice = await context.application.createAtomicPractice('session-1', { mode: 'bagu', config: { topic: 'MySQL' } })
+  const first = await context.application.createAtomicQuestion('session-1', { prompt: '什么是 redo log？' })
+  await context.application.createAtomicQuestion('session-1', { prompt: '什么是 undo log？' })
+
+  const result = await dispatchCommand(context.runtime, 'session-2', 'question.focus', {
+    practiceId: practice.resource.data.id,
+    questionId: first.resource.data.id,
+  })
+
+  assert.equal(result.references.questionId, first.resource.data.id)
+  assert.deepEqual(context.dispatched.at(-1), {
+    sessionId: 'session-2',
+    event: {
+      type: 'question.show',
+      practiceId: practice.resource.data.id,
+      questionId: first.resource.data.id,
+    },
+  })
 })
 
 test('同一张卡片只能推进一次流程', async () => {

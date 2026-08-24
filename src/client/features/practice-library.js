@@ -42,8 +42,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
   }
   const retry = async (questionId) => {
     if (practice.status !== 'active') return
-    await run('session.select', { practiceId: practice.id })
-    await run('question.retry', { questionId })
+    await run('question.focus', { practiceId: practice.id, questionId })
   }
   return h('section', { className: 'di-detail' },
     h('div', { className: 'di-detail-heading' },

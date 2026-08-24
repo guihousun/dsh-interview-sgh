@@ -78,21 +78,6 @@ export function toolErrorAudience(block) {
   return code === 'INVALID_ARGS' ? 'agent' : 'user'
 }
 
-export function PhaseBadge({ stage }) {
-  const labels = {
-    ready_for_question: '准备出题',
-    solving: '刷题中',
-    ready_for_next: '可抽下一题',
-    answerable: '等待回答',
-    needs_evaluation: '待评价',
-    needs_explanation: '待讲解',
-    reviewed: '点评讲解完成',
-    completed: '练习已结束',
-    idle: '未选择练习',
-  }
-  return h('span', { className: `di-phase di-phase-${stage || 'idle'}` }, labels[stage] || stage)
-}
-
 export function ScoreRail({ score, compact = false }) {
   const normalized = Number.isFinite(Number(score)) ? Math.max(0, Math.min(10, Number(score))) : null
   const tone = normalized === null ? 'empty' : normalized >= 8 ? 'good' : normalized >= 6 ? 'mid' : 'low'
