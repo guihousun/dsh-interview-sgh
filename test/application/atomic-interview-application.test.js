@@ -11,13 +11,15 @@ test('原子操作通过真实数据推进完整知识练习', async () => {
   assert.equal('agentTasks' in created, false)
 
   let session = await fixture.application.readAtomicSession('session-1')
-  assert.equal(session.resource.data.stage, 'ready_for_question')
-  assert.ok(session.resource.data.allowedOperations.includes('question.create'))
+  assert.equal(session.resource.data.selected, true)
+  assert.equal(session.resource.data.currentQuestion, null)
+  assert.equal('stage' in session.resource.data, false)
+  assert.equal('allowedOperations' in session.resource.data, false)
 
   const question = await fixture.application.createAtomicQuestion('session-1', { prompt: '什么是 JMM？' })
   const questionId = question.resource.data.id
   session = await fixture.application.readAtomicSession('session-1')
-  assert.equal(session.resource.data.stage, 'answerable')
+  assert.equal(session.resource.data.currentQuestion.id, questionId)
 
   const attempt = await fixture.application.createAtomicAttempt('session-1', {
     questionId, answer: 'Java 内存模型。',
@@ -25,19 +27,20 @@ test('原子操作通过真实数据推进完整知识练习', async () => {
   const attemptId = attempt.resource.data.id
   assert.ok(attempt.revision > question.revision)
   session = await fixture.application.readAtomicSession('session-1')
-  assert.equal(session.resource.data.stage, 'needs_evaluation')
+  assert.equal(session.resource.data.currentQuestion.attempts.at(-1).evaluation, null)
 
   await fixture.application.createAtomicEvaluation('session-1', {
     questionId, attemptId, score: 7, feedback: '基础正确。',
   })
   session = await fixture.application.readAtomicSession('session-1')
-  assert.equal(session.resource.data.stage, 'needs_explanation')
+  assert.equal(session.resource.data.currentQuestion.attempts.at(-1).evaluation.score, 7)
+  assert.equal(session.resource.data.currentQuestion.explanation, null)
 
   await fixture.application.createAtomicExplanation('session-1', {
     questionId, detail: 'JMM 规定线程间可见性。', memorizationPoints: 'JMM 解决可见性与有序性。',
   })
   session = await fixture.application.readAtomicSession('session-1')
-  assert.equal(session.resource.data.stage, 'reviewed')
+  assert.equal(session.resource.data.currentQuestion.explanation.detail, 'JMM 规定线程间可见性。')
 
   const completed = await fixture.application.completeAtomicPractice('session-1', {
     overall: '完成 JVM 练习。', strengths: ['基础清晰。'], improvements: ['补充 happens-before。'],
@@ -53,7 +56,6 @@ test('重复题可以由删除与创建两个原子操作组合替换', async ()
   const duplicate = await fixture.application.createAtomicQuestion('session-1', { prompt: '什么是 redo log？' })
   await fixture.application.deleteAtomicQuestion('session-1', duplicate.resource.data.id)
   let session = await fixture.application.readAtomicSession('session-1')
-  assert.equal(session.resource.data.stage, 'ready_for_question')
   assert.equal(session.resource.data.currentQuestion, null)
 
   const replacement = await fixture.application.createAtomicQuestion('session-1', { prompt: '什么是 undo log？' })
@@ -108,5 +110,7 @@ test('力扣抽题与随机下一题是无待办的原子操作', async () => {
   const next = await fixture.application.drawNextAtomicLeetcode('leetcode-session')
   assert.notEqual(next.references.practiceId, firstPracticeId)
   assert.equal((await fixture.repository.getPractice(firstPracticeId)).status, 'completed')
-  assert.equal((await fixture.application.readAtomicSession('leetcode-session')).resource.data.stage, 'solving')
+  const session = await fixture.application.readAtomicSession('leetcode-session')
+  assert.equal(session.resource.data.currentQuestion.leetcode.slug, next.resource.data.leetcode.slug)
+  assert.notEqual(session.resource.data.currentQuestion.leetcode.slug, first.resource.data.leetcode.slug)
 })

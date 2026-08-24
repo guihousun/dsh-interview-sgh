@@ -38,7 +38,8 @@ test('AI 可以组合删除和创建原子操作完成重新出题', async () =>
   const next = await fixture.tools.interview_question.execute({ operation: 'create', prompt: '什么是 undo log？' }, fixture.exec)
   const session = await fixture.tools.interview_session.execute({ operation: 'read' }, fixture.exec)
   assert.equal(session.resource.data.currentQuestion.id, next.references.questionId)
-  assert.equal(session.resource.data.stage, 'answerable')
+  assert.equal(session.resource.data.currentQuestion.prompt, '什么是 undo log？')
+  assert.equal('stage' in session.resource.data, false)
 })
 
 test('业务工具描述不再要求状态机恢复和 nextAction 工具链', () => {

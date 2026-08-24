@@ -29,7 +29,8 @@ test('UI 新建知识练习只保存练习并投递一次性出题请求', async
   const result = await dispatchCommand(context.runtime, 'session-1', 'session.start', {
     mode: 'bagu', config: { topic: 'JVM' },
   })
-  assert.equal(result.resource.data.stage, 'ready_for_question')
+  assert.equal(result.resource.data.currentQuestion, null)
+  assert.equal('stage' in result.resource.data, false)
   assert.deepEqual(context.dispatched, [{
     sessionId: 'session-1',
     event: { type: 'question.generate', practiceId: result.resource.data.practice.id },

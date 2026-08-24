@@ -62,11 +62,6 @@ export class InterviewApplication {
     return new Map((await this.repository.listLeetcodeProgress()).map((item) => [item.slug, item]))
   }
 
-  async #leetcodeCompleted(question) {
-    if (!question?.leetcode) return false
-    return (await this.#leetcodeProgress()).get(question.leetcode.slug)?.completed === true
-  }
-
   async #drawLeetcodeQuestion(practice, binding, now, { excludedSlugs = [] } = {}) {
     assertDomain(practice.mode === 'leetcode', 'INVALID_PRACTICE_MODE', '只有刷力扣模式可以从题库抽题')
     const progress = await this.#leetcodeProgress()
@@ -102,10 +97,7 @@ export class InterviewApplication {
     const binding = await this.repository.getSessionBinding(requiredId(sessionId, 'sessionId'))
     if (!binding) return this.#result('session-context', toSessionContextDto(null, null))
     const practice = await this.#practice(binding.practiceId)
-    const question = practice.questions.find((item) => item.id === binding.currentQuestionId) || null
-    return this.#result('session-context', toSessionContextDto(binding, practice, {
-      leetcodeCompleted: await this.#leetcodeCompleted(question),
-    }), binding)
+    return this.#result('session-context', toSessionContextDto(binding, practice), binding)
   }
 
   async bindAtomicPractice(sessionId, practiceId) {
@@ -117,10 +109,7 @@ export class InterviewApplication {
       : createSessionBinding({ sessionId, practiceId: practice.id, now })
     if (!existing && practice.questions.length) binding = focusSessionQuestion(binding, practice.questions.at(-1).id, now)
     await this.repository.commit({ binding })
-    const question = practice.questions.find((item) => item.id === binding.currentQuestionId) || null
-    return this.#result('session-context', toSessionContextDto(binding, practice, {
-      leetcodeCompleted: await this.#leetcodeCompleted(question),
-    }), binding)
+    return this.#result('session-context', toSessionContextDto(binding, practice), binding)
   }
 
   async consumeAtomicPresentation(sessionId, input) {
@@ -227,9 +216,7 @@ export class InterviewApplication {
     let binding = createSessionBinding({ sessionId, practiceId: practice.id, now })
     if (practice.questions.length) binding = focusSessionQuestion(binding, practice.questions.at(-1).id, now)
     await this.repository.commit({ practice, binding })
-    return this.#result('session-context', toSessionContextDto(binding, practice, {
-      leetcodeCompleted: await this.#leetcodeCompleted(practice.questions.at(-1) || null),
-    }), binding)
+    return this.#result('session-context', toSessionContextDto(binding, practice), binding)
   }
 
   async drawAtomicLeetcode(sessionId) {
