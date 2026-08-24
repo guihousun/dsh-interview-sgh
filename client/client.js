@@ -1151,6 +1151,19 @@ function PracticeSetupCard({ sessionId }) {
   const command = useCommand(sessionId);
   const lifecycle = useCardLifecycle(false);
   const start = (payload) => lifecycle.enter("session.start", () => command.run("session.start", payload));
+  if (lifecycle.consumedBy) {
+    return h(
+      "article",
+      { className: "di-card di-setup-card is-complete", "aria-label": "\u7EC3\u4E60\u914D\u7F6E\u5DF2\u5B8C\u6210" },
+      h(
+        "div",
+        { className: "di-setup-complete", role: "status", "aria-live": "polite" },
+        h("span", { className: "di-setup-complete-icon", "aria-hidden": "true" }, h(Icon, { name: "check", size: 22 })),
+        h("div", { className: "di-title" }, "\u914D\u7F6E\u5DF2\u5B8C\u6210")
+      ),
+      h(ErrorNotice, null, command.error)
+    );
+  }
   return h(
     "article",
     { className: "di-card di-setup-card", "aria-label": "\u65B0\u5EFA\u7EC3\u4E60\u914D\u7F6E" },
@@ -1159,7 +1172,7 @@ function PracticeSetupCard({ sessionId }) {
       busy: command.busy === "session.start",
       disabled: lifecycle.locked,
       onSubmit: start,
-      submitLabel: lifecycle.consumedBy ? "\u5DF2\u63D0\u4EA4" : "\u5F00\u59CB\u7EC3\u4E60"
+      submitLabel: "\u5F00\u59CB\u7EC3\u4E60"
     }),
     h(ErrorNotice, null, command.error)
   );
@@ -1868,6 +1881,7 @@ var STYLE_TEXT = `
 .di-card-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 24px;border-bottom:1px solid var(--di-line);background:var(--di-white)}
 .di-card-body{padding:24px}.di-title{font-size:18px;font-weight:var(--di-weight-title)}.di-meta{font-size:12px;line-height:1.5;color:var(--di-muted)}.di-markdown strong,.di-markdown b,.di-markdown h1,.di-markdown h2,.di-markdown h3,.di-markdown h4,.di-markdown h5,.di-markdown h6{font-weight:inherit}
 .di-setup-card{overflow:visible}.di-setup-card .di-card-head{border-radius:14px 14px 0 0}.di-setup-card .di-practice-form{margin:0;border:0;border-radius:0 0 14px 14px;padding:22px 24px;background:var(--di-white)}.di-setup-card>.di-notice{margin:0 24px 22px}.di-setup-card .di-actions{justify-content:flex-end;padding-top:2px}.di-setup-card .di-button.is-primary{min-width:104px}
+.di-setup-card.is-complete{overflow:hidden}.di-setup-complete{display:flex;align-items:center;justify-content:center;gap:13px;min-height:112px;padding:24px;background:var(--di-white)}.di-setup-complete-icon{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border:1px solid #bde6cf;border-radius:10px;background:var(--di-green-soft);color:var(--di-green)}.di-setup-card.is-complete>.di-notice{margin-top:-10px}
 .di-config-progress{display:flex;align-items:center;grid-column:1/-1;gap:0;margin:0;padding:0;list-style:none;color:var(--di-muted);font-size:12px}.di-config-progress li{display:flex;align-items:center;gap:7px}.di-config-progress li+li::before{content:"";width:42px;height:1px;margin:0 10px;background:var(--di-line)}.di-config-progress li>span{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--di-line);border-radius:50%;background:var(--di-white);font-size:11px}.di-config-progress li.is-current{color:var(--di-blue)}.di-config-progress li.is-current>span{border-color:var(--di-blue);background:var(--di-blue);color:var(--di-white)}.di-config-progress li.is-complete>span{border-color:#b9c8ff;color:var(--di-blue);background:var(--di-blue-soft)}.di-config-stage{animation:di-config-enter .18s ease-out}.di-mode-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.di-mode-option{appearance:none;min-height:62px;border:1px solid var(--di-line);border-radius:10px;background:var(--di-white);color:var(--di-ink);font:var(--di-weight-text) 14px/1.3 "Segoe UI Variable","Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}.di-mode-option:hover:not(:disabled),.di-mode-option:focus-visible{outline:0;border-color:#9eb4ff;background:var(--di-blue-soft);transform:translateY(-1px)}.di-mode-option:focus-visible{box-shadow:0 0 0 3px rgba(36,92,255,.14)}.di-mode-option:disabled{opacity:.55;cursor:not-allowed}.di-config-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.di-config-mode{display:flex;align-items:center;gap:9px;grid-column:1/-1;padding-bottom:3px;color:var(--di-muted);font-size:12px}
 .di-question-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:30px;padding:26px 34px}.di-question-main{min-width:0}.di-question-text{font-size:19px;font-weight:var(--di-weight-title);line-height:1.55;color:var(--di-ink)}.di-question-text p{margin:0}.di-answer-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:140px;padding:12px 18px!important;border-color:var(--di-blue)!important;color:var(--di-blue)!important;background:var(--di-white)!important;font-size:15px!important}
 .di-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--di-line);border-radius:8px;padding:9px 13px;background:var(--di-white);color:var(--di-ink);font:var(--di-weight-text) 13px/1 "Segoe UI Variable","Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,box-shadow .15s ease}.di-button:hover:not(:disabled){transform:translateY(-1px);border-color:#b8c6e6;box-shadow:0 4px 12px rgba(36,92,255,.08)}.di-button:focus-visible,.di-input:focus-visible,.di-custom-select-trigger:focus-visible,.di-history-topic:focus-visible{outline:3px solid rgba(36,92,255,.18);outline-offset:2px}.di-button:disabled{opacity:.55;cursor:not-allowed}.di-button.is-primary{background:var(--di-blue);border-color:var(--di-blue);color:#fff}.di-button.is-danger{color:var(--di-red);border-color:#ffd9dc;background:#fffafa}
