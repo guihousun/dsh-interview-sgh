@@ -40,13 +40,17 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         })
         session = await application.readAtomicSession(sessionId)
       } else {
-        dispatchAgent(eventBridge, sessionId, { type: 'question.generate', practiceId: session.resource.data.practice.id })
+        dispatchAgent(eventBridge, sessionId, {
+          type: 'question.generate', practiceId: session.resource.data.practice.id, mode: session.resource.data.practice.mode,
+        })
       }
       return session
     }
     case 'session.continue': {
       const current = await selected(application, sessionId)
-      dispatchAgent(eventBridge, sessionId, { type: 'practice.continue', practiceId: current.practiceId })
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'practice.continue', practiceId: current.practiceId, mode: current.data.practice.mode,
+      })
       return current.result
     }
     case 'session.select': {
@@ -56,14 +60,18 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     }
     case 'session.reopen': {
       const result = await application.reopenAtomicPractice(sessionId, payload.practiceId)
-      dispatchAgent(eventBridge, sessionId, { type: 'practice.continue', practiceId: result.resource.data.practice.id })
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'practice.continue', practiceId: result.resource.data.practice.id, mode: result.resource.data.practice.mode,
+      })
       return result
     }
     case 'session.finish': {
       const current = await selected(application, sessionId)
       await consumeCard(application, sessionId, payload)
       if (current.data.practice.mode === 'leetcode') return application.completeAtomicPractice(sessionId)
-      dispatchAgent(eventBridge, sessionId, { type: 'practice.summarize', practiceId: current.practiceId })
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'practice.summarize', practiceId: current.practiceId, mode: current.data.practice.mode,
+      })
       return current.result
     }
     case 'practice.update':
@@ -100,6 +108,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         type: question.explanation ? 'review.show' : 'review.generate',
         practiceId: current.practiceId,
         questionId,
+        mode: current.data.practice.mode,
       })
       return application.readAtomicSession(sessionId)
     }
@@ -113,7 +122,9 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         })
         return application.readAtomicSession(sessionId)
       }
-      dispatchAgent(eventBridge, sessionId, { type: 'question.generate', practiceId: current.practiceId })
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'question.generate', practiceId: current.practiceId, mode: current.data.practice.mode,
+      })
       return application.readAtomicSession(sessionId)
     }
     case 'leetcode.set-completion':

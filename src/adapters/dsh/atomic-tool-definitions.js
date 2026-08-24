@@ -4,6 +4,9 @@ import {
   ATOMIC_ANSWER_POLICY,
   ATOMIC_CONFIGURATION_POLICY,
   ATOMIC_INTERVIEW_POLICY,
+  ATOMIC_MODE_QUESTION_POLICY,
+  ATOMIC_MODE_REVIEW_POLICY,
+  ATOMIC_MODE_SUMMARY_POLICY,
   ATOMIC_QUESTION_POLICY,
   ATOMIC_REVIEW_POLICY,
 } from './atomic-prompt-policy.js'
@@ -103,7 +106,7 @@ const definitions = [
   }),
   atomicTool({
     name: 'interview_practice',
-    description: `对练习执行原子增删改查、结束、重新打开、导出或洞察。create/update 必须提供所选模式的完整显式配置；complete 的非力扣练习必须提供真实总结。用户需要查看完成结果时，complete 后调用 interview_show_summary。${ATOMIC_CONFIGURATION_POLICY}`,
+    description: `对练习执行原子增删改查、结束、重新打开、导出或洞察。create/update 必须提供所选模式的完整显式配置；complete 的非力扣练习必须提供真实总结。用户需要查看完成结果时，complete 后调用 interview_show_summary。${ATOMIC_CONFIGURATION_POLICY}${ATOMIC_MODE_SUMMARY_POLICY}`,
     parameters: practiceParameters,
     execute(application, args, sessionId) {
       const input = { mode: args.mode, config: configOf(args) }
@@ -125,7 +128,7 @@ const definitions = [
   }),
   atomicTool({
     name: 'interview_question',
-    description: `对题目执行原子创建、读取、列表、修改、删除或聚焦。create 会把新题设为当前题；delete 当前题后可继续 create 完成重新出题；focus 用于重新作答历史题。用户需要查看题目时，create 或 focus 后必须调用 interview_show_question。${ATOMIC_QUESTION_POLICY}`,
+    description: `对题目执行原子创建、读取、列表、修改、删除或聚焦。create 会把新题设为当前题；delete 当前题后可继续 create 完成重新出题；focus 用于重新作答历史题。用户需要查看题目时，create 或 focus 后必须调用 interview_show_question。${ATOMIC_QUESTION_POLICY}${ATOMIC_MODE_QUESTION_POLICY}`,
     parameters: questionParameters,
     async execute(application, args, sessionId) {
       switch (args.operation) {
@@ -162,7 +165,7 @@ const definitions = [
   }),
   atomicTool({
     name: 'interview_evaluation',
-    description: `为一条尚未评价的真实作答保存评分和点评。评价保存后若题目没有讲解，继续调用 interview_explanation 创建讲解；用户需要查看结果时最后调用 interview_show_review。${ATOMIC_REVIEW_POLICY}`,
+    description: `为一条尚未评价的真实作答保存评分和点评。评价保存后若题目没有讲解，继续调用 interview_explanation 创建讲解；用户需要查看结果时最后调用 interview_show_review。${ATOMIC_REVIEW_POLICY}${ATOMIC_MODE_REVIEW_POLICY}`,
     parameters: {
       type: 'object',
       properties: {
@@ -186,7 +189,7 @@ const definitions = [
   }),
   atomicTool({
     name: 'interview_explanation',
-    description: `创建或明确替换一道题的详细讲解。面试题 memorization_points 是直接背；力扣题只允许配置语言的一份完整代码。用户需要查看讲解时，保存后必须调用 interview_show_review。${ATOMIC_REVIEW_POLICY}`,
+    description: `创建或明确替换一道题的详细讲解。memorization_points 保存当前模式要求的直接背或精炼解法。用户需要查看讲解时，保存后必须调用 interview_show_review。${ATOMIC_REVIEW_POLICY}${ATOMIC_MODE_REVIEW_POLICY}`,
     parameters: {
       type: 'object',
       properties: {

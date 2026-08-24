@@ -35,7 +35,7 @@ test('UI 新建知识练习只保存练习并投递一次性出题请求', async
   assert.equal('stage' in result.resource.data, false)
   assert.deepEqual(context.dispatched, [{
     sessionId: 'session-1',
-    event: { type: 'question.generate', practiceId: result.resource.data.practice.id },
+    event: { type: 'question.generate', practiceId: result.resource.data.practice.id, mode: 'bagu' },
   }])
   assert.equal('pendingTask' in result.resource.data, false)
 })
@@ -52,6 +52,7 @@ test('UI 下一题不封装业务状态机而是投递可失败的一次性生�
   )
   assert.equal(result.resource.data.currentQuestion.prompt, '什么是 redo log？')
   assert.equal(context.dispatched.at(-1).event.type, 'question.generate')
+  assert.equal(context.dispatched.at(-1).event.mode, 'bagu')
 })
 
 test('UI 查看答案依据真实数据选择生成或展示讲解', async () => {
@@ -65,6 +66,7 @@ test('UI 查看答案依据真实数据选择生成或展示讲解', async () =>
     await cardPayload(context.application),
   )
   assert.equal(context.dispatched.at(-1).event.type, 'review.generate')
+  assert.equal(context.dispatched.at(-1).event.mode, 'bagu')
   await context.application.createAtomicExplanation('session-1', {
     questionId: question.resource.data.id, detail: '详细讲解。', memorizationPoints: '直接背。',
   })
@@ -157,7 +159,35 @@ test('同一张卡片只能推进一次流程', async () => {
 })
 
 test('一次性 Agent 指令只引用原子业务工具和独立展示工具', () => {
-  const text = instructionFor({ type: 'practice.continue', practiceId: 'practice-1' })
+  const text = instructionFor({ type: 'practice.continue', practiceId: 'practice-1', mode: 'bagu' })
   assert.match(text, /interview_session read/)
   assert.doesNotMatch(text, /nextAction|interview_continue_practice|状态机|pendingTask/)
+})
+
+test('四种练习模式注入各自的出题策略', () => {
+  const event = (mode) => instructionFor({ type: 'question.generate', practiceId: 'practice-1', mode })
+
+  assert.match(event('bagu'), /围绕 config\.topic.*独立知识点直接提问/)
+  assert.match(event('bagu'), /禁止改写成综合场景题/)
+  assert.match(event('mock'), /config\.interviewerStyle.*扮演面试官/)
+  assert.match(event('mock'), /config\.coding 为 false 时禁止出手撕代码题/)
+  assert.match(event('scenario'), /简短的工程背景/)
+  assert.match(event('scenario'), /逐步增加约束、故障或权衡/)
+  assert.match(event('leetcode'), /interview_leetcode draw 或 draw_next/)
+  assert.match(event('leetcode'), /禁止使用 interview_question create/)
+})
+
+test('点评讲解与练习总结按当前模式选择策略', () => {
+  const review = (mode) => instructionFor({
+    type: 'review.generate', practiceId: 'practice-1', questionId: 'question-1', mode,
+  })
+  const summary = (mode) => instructionFor({ type: 'practice.summarize', practiceId: 'practice-1', mode })
+
+  assert.match(review('bagu'), /底层原理、适用场景、边界和常见误区/)
+  assert.match(review('mock'), /表达结构和经历证据/)
+  assert.match(review('scenario'), /方案推导、关键权衡、风险、边界和落地验证/)
+  assert.match(review('leetcode'), /只使用 config\.language 提供一份完整可提交代码/)
+  assert.match(summary('bagu'), /知识覆盖、理解准确性和口述完整性/)
+  assert.match(summary('mock'), /面试官风格适配度/)
+  assert.match(summary('scenario'), /问题拆解、方案合理性、取舍意识/)
 })
