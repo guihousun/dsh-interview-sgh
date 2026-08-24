@@ -35,7 +35,7 @@ test('UI 新建知识练习只保存练习并投递一次性出题请求', async
   assert.equal('stage' in result.resource.data, false)
   assert.deepEqual(context.dispatched, [{
     sessionId: 'session-1',
-    event: { type: 'question.generate', practiceId: result.resource.data.practice.id, mode: 'bagu' },
+    event: { type: 'question.generate', practiceId: result.resource.data.practice.id, mode: 'bagu', includeModeContext: true },
   }])
   assert.equal('pendingTask' in result.resource.data, false)
 })
@@ -140,6 +140,8 @@ test('练习档案无需卡片凭证即可聚焦题目并请求展示', async ()
       type: 'question.show',
       practiceId: practice.resource.data.id,
       questionId: first.resource.data.id,
+      mode: 'bagu',
+      includeModeContext: true,
     },
   })
 })
@@ -164,27 +166,26 @@ test('一次性 Agent 指令只引用原子业务工具和独立展示工具', (
   assert.doesNotMatch(text, /nextAction|interview_continue_practice|状态机|pendingTask/)
 })
 
-test('四种练习模式注入各自的出题策略', () => {
-  const event = (mode) => instructionFor({ type: 'question.generate', practiceId: 'practice-1', mode })
+test('绑定练习时注入一次当前模式上下文，操作任务不重复注入', () => {
+  const event = (mode) => instructionFor({ type: 'question.generate', practiceId: 'practice-1', mode, includeModeContext: true })
 
-  assert.match(event('bagu'), /围绕 config\.topic.*独立知识点直接提问/)
-  assert.match(event('bagu'), /禁止改写成综合场景题/)
+  assert.match(event('bagu'), /当前激活练习模式为背八股（bagu）/)
+  assert.match(event('bagu'), /【看答案】背八股看答案时/)
   assert.match(event('mock'), /config\.interviewerStyle.*扮演面试官/)
   assert.match(event('mock'), /config\.targetRole/)
   assert.match(event('mock'), /完整覆盖 config\.resume/)
   assert.match(event('mock'), /不得自行假设公司、岗位级别、业务领域或技术栈/)
   assert.match(event('mock'), /config\.coding 为 false 时整场禁止手撕代码/)
-  assert.match(event('scenario'), /简短的工程背景/)
-  assert.match(event('scenario'), /逐步增加约束、故障或权衡/)
-  assert.match(event('leetcode'), /interview_leetcode draw 或 draw_next/)
-  assert.match(event('leetcode'), /禁止使用 interview_question create/)
+  assert.match(event('scenario'), /【看答案】场景题看答案时/)
+  assert.match(event('leetcode'), /【看答案】力扣看答案时/)
+  assert.doesNotMatch(instructionFor({ type: 'question.generate', practiceId: 'practice-1', mode: 'mock' }), /当前激活练习模式|项目真实性、表达结构/)
 })
 
 test('点评讲解与练习总结按当前模式选择策略', () => {
   const review = (mode) => instructionFor({
-    type: 'review.generate', practiceId: 'practice-1', questionId: 'question-1', mode,
+    type: 'review.generate', practiceId: 'practice-1', questionId: 'question-1', mode, includeModeContext: true,
   })
-  const summary = (mode) => instructionFor({ type: 'practice.summarize', practiceId: 'practice-1', mode })
+  const summary = (mode) => instructionFor({ type: 'practice.summarize', practiceId: 'practice-1', mode, includeModeContext: true })
 
   assert.match(review('bagu'), /底层原理、适用场景、边界和常见误区/)
   assert.match(review('mock'), /项目真实性、表达结构和目标岗位匹配度/)

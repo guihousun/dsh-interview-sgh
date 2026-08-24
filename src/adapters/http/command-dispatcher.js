@@ -37,11 +37,13 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         const question = await application.drawAtomicLeetcode(sessionId)
         dispatchAgent(eventBridge, sessionId, {
           type: 'question.show', practiceId: question.references.practiceId, questionId: question.references.questionId,
+          mode: payload.mode, includeModeContext: true,
         })
         session = await application.readAtomicSession(sessionId)
       } else {
         dispatchAgent(eventBridge, sessionId, {
           type: 'question.generate', practiceId: session.resource.data.practice.id, mode: session.resource.data.practice.mode,
+          includeModeContext: true,
         })
       }
       return session
@@ -55,13 +57,17 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     }
     case 'session.select': {
       const result = await application.bindAtomicPractice(sessionId, payload.practiceId)
-      dispatchAgent(eventBridge, sessionId, { type: 'practice.selected', practiceId: result.resource.data.practice.id })
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'practice.selected', practiceId: result.resource.data.practice.id,
+        mode: result.resource.data.practice.mode, includeModeContext: true,
+      })
       return result
     }
     case 'session.reopen': {
       const result = await application.reopenAtomicPractice(sessionId, payload.practiceId)
       dispatchAgent(eventBridge, sessionId, {
         type: 'practice.continue', practiceId: result.resource.data.practice.id, mode: result.resource.data.practice.mode,
+        includeModeContext: true,
       })
       return result
     }
@@ -81,8 +87,10 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     case 'question.focus': {
       await application.bindAtomicPractice(sessionId, payload.practiceId)
       const result = await application.focusAtomicQuestion(sessionId, payload.questionId)
+      const session = await application.readAtomicSession(sessionId)
       dispatchAgent(eventBridge, sessionId, {
         type: 'question.show', practiceId: result.references.practiceId, questionId: result.references.questionId,
+        mode: session.resource.data.practice.mode, includeModeContext: true,
       })
       return result
     }

@@ -1,7 +1,7 @@
 export const ATOMIC_INTERVIEW_POLICY = [
   '你通过练习、题目、作答、评价、讲解和力扣原子工具组合完成用户意图。',
   '调用写工具前先读取当前会话或相关练习；以数据库返回的数据为唯一事实来源。',
-  '读取练习后必须根据 mode 选择对应模式策略，并严格使用数据库中的真实 config，禁止混用其他模式规则。',
+  '读取练习后必须使用当前会话已激活的模式提示词，并严格使用数据库中的真实 config，禁止混用其他模式规则。',
   '所有持久化修改必须调用业务工具，禁止只用文本声称已经创建、修改、删除、评价或完成。',
   '业务工具不展示 UI；只有用户确实需要查看内容时，才调用对应 interview_show_* 工具。',
   '与练习无关的内容正常回答，不调用练习工具，也不修改练习数据。',
@@ -28,7 +28,8 @@ export const ATOMIC_QUESTION_POLICY = [
 const MODE_PROMPT_POLICIES = Object.freeze({
   bagu: Object.freeze({
     question: '当前模式是背八股。严格围绕 config.topic 选择一个适合面试口述的独立知识点直接提问；优先覆盖历史题目尚未涉及的核心点，禁止改写成综合场景题、项目追问或代码题。',
-    review: '背八股讲解要说明概念、底层原理、适用场景、边界和常见误区；memorization_points 给出完整、简洁、可以直接用于面试口述的答案。',
+    reveal: '背八股看答案时说明概念、底层原理、适用场景、边界和常见误区；最后给出完整、简洁、可以直接用于面试口述的答案；不创建作答，不生成评分。',
+    answerReview: '背八股点评要评价知识准确性、原理理解和口述完整性；指出正确、缺失和错误部分，补充相关知识，最后给出完整、简洁、可以直接用于面试口述的答案。',
     summary: '背八股总结围绕知识覆盖、理解准确性和口述完整性，指出已经掌握和仍需补强的知识点。',
   }),
   mock: Object.freeze({
@@ -45,7 +46,12 @@ const MODE_PROMPT_POLICIES = Object.freeze({
       '根据历史回答动态调整难度：回答浅显时追问原因、边界或替代方案，回答深入时增加规模、异常或迁移约束，回答模糊时要求具体例子，回答错误时先给一次自我修正机会。',
       '不得输出题目列表、答案、提示、评分标准、隐藏面试计划或多个后续问题。',
     ].join(''),
-    review: [
+    reveal: [
+      '模拟面试看答案时结合当前题目、config.resume、config.targetRole 和 JD 解释知识点。',
+      '说明真实面试中应该如何组织回答，可以给出标准答案，但不能把标准答案伪装成候选人的真实经历。',
+      '不创建作答，不生成评分。',
+    ].join(''),
+    answerReview: [
       '模拟面试点评必须基于候选人的真实回答，按照 config.difficulty 评价技术正确性、原理深度、边界意识、方案权衡、项目真实性、表达结构和目标岗位匹配度。',
       '不能把简历或 JD 中的描述直接当作回答证据；没有问过或没有证据支持的内容必须标记为未考察。',
       '讲解要指出回答中正确、缺失和错误的部分，补充相关原理、边界和常见误区，并给出不虚构候选人经历的可直接用于面试表达的答案。',
@@ -57,44 +63,57 @@ const MODE_PROMPT_POLICIES = Object.freeze({
   }),
   scenario: Object.freeze({
     question: '当前模式是场景题。围绕 config.topic 给出必要且简短的工程背景，每次只询问一个诊断、设计或决策问题；结合历史题目逐步增加约束、故障或权衡，禁止同时抛出问题清单，也禁止在题目中泄露方案。',
-    review: '场景题讲解要完整展开问题定位、方案推导、关键权衡、风险、边界和落地验证；memorization_points 给出结构清晰、可以直接在面试中表达的场景题回答。',
+    reveal: '场景题看答案时完整展开问题定位、方案推导、关键权衡、风险、边界和落地验证；最后给出结构清晰、可以直接在面试中表达的场景题回答；不创建作答，不生成评分。',
+    answerReview: '场景题点评要评价问题拆解、方案合理性、取舍意识、风险识别和落地能力；补充遗漏的约束与验证手段，最后给出改进后的场景题回答。',
     summary: '场景题总结围绕问题拆解、方案合理性、取舍意识、风险识别和落地能力，指出用户容易遗漏的约束与验证手段。',
   }),
   leetcode: Object.freeze({
-    question: '当前模式是刷力扣。禁止使用 interview_question create 生成或改写题目；只能通过 interview_leetcode draw 或 draw_next 从固定热题 100 抽题，并原样展示数据库中的题目。',
-    review: '力扣讲解要说明解题思路、推导过程、正确性、边界条件和时间空间复杂度，并且只使用 config.language 提供一份完整可提交代码，禁止同时输出其他语言版本。',
-    summary: '力扣练习只保存和展示本次题目记录，禁止生成能力分析、表现评价或改进建议。',
+    question: '只能从固定热题 100 抽题，禁止自行生成或改写力扣题目，必须原样使用数据库中的题目和元数据。',
+    reveal: '力扣看答案时说明解题思路、推导过程、正确性、边界条件和时间空间复杂度，并且只使用 config.language 提供一份完整可提交代码，禁止同时输出其他语言版本；不创建作答，不生成评分。',
+    answerReview: '力扣点评要分析用户解法的正确性，指出思路或代码问题，对比正确解法，并且只使用 config.language 给出修正版代码；不套用背八股或模拟面试的评分逻辑。',
+    summary: '只保存和展示本次题目记录，禁止生成能力分析、表现评价或改进建议。',
   }),
 })
 
 const MODE_LABELS = Object.freeze({ bagu: '背八股', mock: '模拟面试', scenario: '场景题', leetcode: '刷力扣' })
 
-function policyFor(mode, phase) {
+export function modeContextForMode(mode) {
+  const policies = MODE_PROMPT_POLICIES[mode]
+  if (!policies) throw new TypeError(`缺少${String(MODE_LABELS[mode] || mode)}的模式提示词`)
+  return [
+    `当前激活练习模式为${MODE_LABELS[mode]}（${mode}）。`,
+    '后续所有出题、看答案、作答后点评和总结都只能使用当前模式规则，不得混用其他模式。',
+    `【出题】${policies.question}`,
+    `【看答案】${policies.reveal}`,
+    `【作答后点评】${policies.answerReview}`,
+    `【总结】${policies.summary}`,
+  ].join('')
+}
+
+export function policyForMode(mode, phase) {
   const policy = MODE_PROMPT_POLICIES[mode]?.[phase]
   if (!policy) throw new TypeError(`缺少${String(MODE_LABELS[mode] || mode)}的${String(phase)}提示策略`)
   return policy
 }
 
-function catalogFor(phase) {
-  return Object.entries(MODE_PROMPT_POLICIES)
-    .map(([mode, policies]) => `${MODE_LABELS[mode]}（${mode}）：${policies[phase]}`)
-    .join('')
+export function questionPolicyForMode(mode) {
+  return policyForMode(mode, 'question')
 }
 
-export const ATOMIC_MODE_QUESTION_POLICY = `读取练习后按 mode 使用且只使用以下对应出题策略：${catalogFor('question')}`
-export const ATOMIC_MODE_REVIEW_POLICY = `读取练习后按 mode 使用且只使用以下对应点评讲解策略：${catalogFor('review')}`
-export const ATOMIC_MODE_SUMMARY_POLICY = `结束练习时按 mode 使用且只使用以下对应总结策略：${catalogFor('summary')}`
+export function revealPolicyForMode(mode) {
+  return policyForMode(mode, 'reveal')
+}
 
-export function questionPolicyForMode(mode) {
-  return policyFor(mode, 'question')
+export function answerReviewPolicyForMode(mode) {
+  return policyForMode(mode, 'answerReview')
 }
 
 export function reviewPolicyForMode(mode) {
-  return policyFor(mode, 'review')
+  return answerReviewPolicyForMode(mode)
 }
 
 export function summaryPolicyForMode(mode) {
-  return policyFor(mode, 'summary')
+  return policyForMode(mode, 'summary')
 }
 
 export const ATOMIC_ANSWER_POLICY = [
