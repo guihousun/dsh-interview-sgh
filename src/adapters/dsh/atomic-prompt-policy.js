@@ -1,3 +1,5 @@
+import { MOCK_INTERVIEW_CONTEXT } from './mock-interview-policy.js'
+
 export const ATOMIC_INTERVIEW_POLICY = [
   '你通过练习、题目、作答、评价、讲解和力扣原子工具组合完成用户意图。',
   '调用写工具前先读取当前会话或相关练习；以数据库返回的数据为唯一事实来源。',
@@ -33,6 +35,7 @@ const MODE_PROMPT_POLICIES = Object.freeze({
     summary: '背八股总结围绕知识覆盖、理解准确性和口述完整性，指出已经掌握和仍需补强的知识点。',
   }),
   mock: Object.freeze({
+    context: MOCK_INTERVIEW_CONTEXT,
     question: [
       '当前模式是模拟面试，目标岗位为 config.targetRole。',
       '按照 config.interviewerStyle 扮演面试官，并按 config.difficulty 控制深度。',
@@ -83,6 +86,7 @@ export function modeContextForMode(mode) {
   return [
     `当前激活练习模式为${MODE_LABELS[mode]}（${mode}）。`,
     '后续所有出题、看答案、作答后点评和总结都只能使用当前模式规则，不得混用其他模式。',
+    policies.context || '',
     `【出题】${policies.question}`,
     `【看答案】${policies.reveal}`,
     `【作答后点评】${policies.answerReview}`,
