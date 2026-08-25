@@ -90,13 +90,13 @@ test('模拟面试题目关闭看答案并拒绝点评链路，结束时只归�
     fixture.application.createAtomicEvaluation('mock-session', {
       questionId: question.resource.data.id, attemptId: attempt.resource.data.id, score: 8, feedback: '不应生成',
     }),
-    { code: 'MOCK_EVALUATION_NOT_ALLOWED' },
+    { code: 'EVALUATION_NOT_ALLOWED' },
   )
   await assert.rejects(
     fixture.application.createAtomicExplanation('mock-session', {
       questionId: question.resource.data.id, detail: '不应生成', memorizationPoints: '不应生成',
     }),
-    { code: 'MOCK_EXPLANATION_NOT_ALLOWED' },
+    { code: 'EXPLANATION_NOT_ALLOWED' },
   )
   const completed = await fixture.application.completeAtomicPractice('mock-session')
   assert.equal(completed.resource.data.status, 'completed')

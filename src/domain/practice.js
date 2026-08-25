@@ -2,6 +2,7 @@ import { assertDomain } from './errors.js'
 import { LEETCODE_TOP_100_SOURCE, leetcodeTop100Problem } from './leetcode-top-100.js'
 import { LEETCODE_LANGUAGES, leetcodeLanguageDefinition } from './leetcode-languages.js'
 import { modeDefinition } from './modes.js'
+import { assertModeCapability } from './mode-capabilities.js'
 
 const DIFFICULTIES = new Set(['junior', 'intermediate', 'senior'])
 
@@ -127,7 +128,8 @@ function normalizeLeetcodeProblem(practice, input) {
 }
 
 function normalizeHot100Problem(practice, input) {
-  if (practice.mode !== 'mock' || input?.kind !== 'hot100') return null
+  if (input?.kind !== 'hot100') return null
+  assertModeCapability(practice, 'question.draw_hot100', 'HOT100_NOT_ALLOWED', '当前模式不能抽取 Hot 100 手撕题')
   assertDomain(practice.config.coding === true, 'MOCK_CODING_REQUIRED', '只有开启手撕代码的模拟面试才能抽取 Hot 100 题目')
   const problem = leetcodeTop100Problem(input?.slug)
   assertDomain(problem, 'HOT100_PROBLEM_REQUIRED', '模拟面试手撕题必须从固定 Hot 100 题库中选择')
@@ -206,7 +208,7 @@ export function submitAnswer(practice, { questionId, attemptId, answer, now }) {
 
 export function evaluateAnswer(practice, { questionId, attemptId, score, feedback, dimensions = {}, now }) {
   activePractice(practice)
-  assertDomain(practice.mode !== 'mock', 'MOCK_EVALUATION_NOT_ALLOWED', '模拟面试不提供作答评价')
+  assertModeCapability(practice, 'evaluation.create', 'EVALUATION_NOT_ALLOWED', '当前模式不提供作答评价')
   const targetQuestion = findQuestion(practice, questionId)
   const targetAttempt = findAttempt(targetQuestion, attemptId)
   assertDomain(!targetAttempt.evaluation, 'ATTEMPT_ALREADY_EVALUATED', '该作答已经评价，重新回答会创建新的作答记录')
@@ -234,7 +236,12 @@ export function evaluateAnswer(practice, { questionId, attemptId, score, feedbac
 
 export function saveExplanation(practice, { questionId, detail, memorizationPoints, replace = false, now }) {
   activePractice(practice)
-  assertDomain(practice.mode !== 'mock', 'MOCK_EXPLANATION_NOT_ALLOWED', '模拟面试不提供答案讲解')
+  assertModeCapability(
+    practice,
+    replace ? 'explanation.replace' : 'explanation.create',
+    'EXPLANATION_NOT_ALLOWED',
+    '当前模式不提供答案讲解',
+  )
   const target = findQuestion(practice, questionId)
   assertDomain(replace || !target.explanation, 'EXPLANATION_ALREADY_EXISTS', '该题已经存在讲解')
   const normalizedDetail = requiredText(detail, 'INVALID_EXPLANATION', '讲解内容不能为空')
@@ -274,6 +281,7 @@ export function completePractice(practice, { overall, strengths, improvements, n
     return withUpdatedAt(practice, now, { status: 'completed', completedAt: now, summary: null })
   }
   assertDomain(practice.mode !== 'leetcode', 'LEETCODE_ANALYSIS_NOT_ALLOWED', '力扣练习不生成面试分析总结')
+  assertModeCapability(practice, 'summary.show', 'SUMMARY_NOT_ALLOWED', '当前模式不生成面试分析总结')
   assertDomain(Array.isArray(strengths) && strengths.length > 0, 'INVALID_SUMMARY_STRENGTHS', '练习总结必须包含至少一项表现亮点')
   assertDomain(Array.isArray(improvements) && improvements.length > 0, 'INVALID_SUMMARY_IMPROVEMENTS', '练习总结必须包含至少一项改进建议')
   const summary = {

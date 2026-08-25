@@ -10,6 +10,7 @@ import {
 } from '../domain/session.js'
 import { buildInsights, toPracticeDetailDto, toPracticeSummaryDto, toQuestionDto, toSessionContextDto } from './dto.js'
 import { validateApplicationPorts } from './ports.js'
+import { assertModeCapability } from '../domain/mode-capabilities.js'
 
 function requiredId(value, name) {
   assertDomain(typeof value === 'string' && value.trim(), `INVALID_${name.toUpperCase()}`, `${name} 不能为空`)
@@ -230,7 +231,7 @@ export class InterviewApplication {
   async drawAtomicMockCodingQuestion(sessionId) {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)
-    assertDomain(practice.mode === 'mock', 'MOCK_PRACTICE_REQUIRED', '只有模拟面试可以抽取手撕题')
+    assertModeCapability(practice, 'question.draw_hot100', 'HOT100_NOT_ALLOWED', '当前模式不能抽取 Hot 100 手撕题')
     assertDomain(practice.config.coding === true, 'MOCK_CODING_REQUIRED', '当前模拟面试未开启手撕代码')
     const used = new Set(practice.questions.map((question) => question.hot100?.slug).filter(Boolean))
     const unused = LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug))

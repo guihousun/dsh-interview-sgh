@@ -1,0 +1,86 @@
+import { assertDomain } from '../../domain/errors.js'
+
+const COMMON_TOOLS = Object.freeze([
+  'interview_session',
+  'interview_practice',
+  'interview_show_practice_setup',
+  'interview_show_practice_list',
+  'interview_show_practice',
+  'interview_show_insights',
+  'interview_show_leetcode_catalog',
+])
+
+const QUESTION_TOOLS = Object.freeze([
+  'interview_question',
+  'interview_attempt',
+  'interview_show_question',
+])
+
+const COACHING_TOOLS = Object.freeze([
+  'interview_evaluation',
+  'interview_explanation',
+  'interview_show_review',
+  'interview_show_summary',
+])
+
+const MODE_TOOL_NAMES = Object.freeze({
+  none: Object.freeze([...COMMON_TOOLS]),
+  mock: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS]),
+  bagu: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS]),
+  resume_drill: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS]),
+  scenario: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS]),
+  leetcode: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, 'interview_leetcode']),
+})
+
+export function toolNamesForMode(mode = null) {
+  const names = MODE_TOOL_NAMES[mode || 'none']
+  assertDomain(names, 'INVALID_MODE', `不支持的面试模式：${String(mode)}`)
+  return [...names]
+}
+
+export class ModeToolCatalog {
+  constructor({ context, application }) {
+    this.context = context
+    this.application = application
+    this.scopes = new Map()
+  }
+
+  attach(agent) {
+    if (!agent?.id || this.scopes.has(agent.id)) return
+    const restriction = agent.ctx.tools.restrict({ allow: toolNamesForMode() })
+    this.scopes.set(agent.id, { agent, mode: null, restriction })
+    void this.refresh(agent.id)
+  }
+
+  detach(agent) {
+    const state = this.scopes.get(agent?.id)
+    if (!state) return
+    state.restriction?.()
+    this.scopes.delete(agent.id)
+  }
+
+  setMode(sessionId, mode = null) {
+    const state = this.scopes.get(sessionId)
+    if (!state || state.mode === mode) return false
+    const names = toolNamesForMode(mode)
+    const restriction = state.agent.ctx.tools.restrict({ allow: names })
+    state.restriction?.()
+    state.restriction = restriction
+    state.mode = mode
+    return true
+  }
+
+  async refresh(sessionId) {
+    const state = this.scopes.get(sessionId)
+    if (!state) return false
+    const result = await this.application.readAtomicSession(sessionId)
+    const data = result.resource.data
+    return this.setMode(sessionId, data.selected ? data.practice.mode : null)
+  }
+
+  modeFor(sessionId) {
+    return this.scopes.get(sessionId)?.mode || null
+  }
+}
+
+export { COMMON_TOOLS, QUESTION_TOOLS, COACHING_TOOLS, MODE_TOOL_NAMES }

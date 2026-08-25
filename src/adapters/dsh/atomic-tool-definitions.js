@@ -46,7 +46,7 @@ function configOf(args) {
   return { topic: args.topic }
 }
 
-function atomicTool({ name, description, parameters, execute }) {
+function atomicTool({ name, description, parameters, execute, afterExecute = null }) {
   return (application) => ({
     name,
     description: `${description}${ATOMIC_INTERVIEW_POLICY}`,
@@ -54,7 +54,9 @@ function atomicTool({ name, description, parameters, execute }) {
     output,
     async execute(args, exec) {
       const operation = `${name}.${args?.operation || 'unknown'}`
-      const result = await execute(application, args || {}, sessionIdOf(exec))
+      const sessionId = sessionIdOf(exec)
+      const result = await execute(application, args || {}, sessionId)
+      await afterExecute?.({ application, args: args || {}, result, sessionId })
       return createAtomicOperationResult(operation, result)
     },
   })
@@ -108,7 +110,9 @@ const questionParameters = {
   additionalProperties: false,
 }
 
-const definitions = [
+function definitionsFor(afterExecute = null) {
+  const syncCatalog = afterExecute ? ({ sessionId }) => afterExecute(sessionId) : null
+  return [
   atomicTool({
     name: 'interview_session',
     description: '读取当前会话绑定与派生状态，或把一条进行中练习绑定到当前会话。用户说继续时先 read，再根据真实数据自行组合后续原子操作；不存在继续宏命令。',
@@ -121,6 +125,7 @@ const definitions = [
       required: ['operation'],
       additionalProperties: false,
     },
+    afterExecute: syncCatalog,
     execute(application, args, sessionId) {
       if (args.operation === 'read') return application.readAtomicSession(sessionId)
       return application.bindAtomicPractice(sessionId, args.practice_id).then((result) => (
@@ -132,6 +137,7 @@ const definitions = [
     name: 'interview_practice',
     description: `对练习执行原子增删改查、结束、重新打开、导出或洞察。create/update 必须提供所选模式的完整显式配置；背八股、简历押题和场景题 complete 必须提供真实总结，模拟面试 complete 只结束并归档问答记录，刷力扣使用固定汇总。${ATOMIC_CONFIGURATION_POLICY}`,
     parameters: practiceParameters,
+    afterExecute: syncCatalog,
     execute(application, args, sessionId) {
       const input = { mode: args.mode, config: configOf(args) }
       switch (args.operation) {
@@ -156,6 +162,7 @@ const definitions = [
     name: 'interview_question',
     description: `对题目执行原子创建、读取、列表、修改、删除、聚焦或从固定 Hot 100 抽取模拟面试手撕题。create 会把新题设为当前题；delete 当前题后可继续 create 完成重新出题；focus 用于重新作答历史题。${ATOMIC_QUESTION_POLICY}`,
     parameters: questionParameters,
+    afterExecute: syncCatalog,
     async execute(application, args, sessionId) {
       switch (args.operation) {
         case 'create': return application.createAtomicQuestion(sessionId, { prompt: args.prompt })
@@ -183,6 +190,7 @@ const definitions = [
       required: ['operation', 'question_id'],
       additionalProperties: false,
     },
+    afterExecute: syncCatalog,
     execute(application, args, sessionId) {
       if (args.operation === 'create') {
         return application.createAtomicAttempt(sessionId, { questionId: args.question_id, answer: args.answer })
@@ -206,6 +214,7 @@ const definitions = [
       required: ['operation', 'question_id', 'attempt_id', 'score', 'feedback'],
       additionalProperties: false,
     },
+    afterExecute: syncCatalog,
     execute: (application, args, sessionId) => application.createAtomicEvaluation(sessionId, {
       questionId: args.question_id,
       attemptId: args.attempt_id,
@@ -228,6 +237,7 @@ const definitions = [
       required: ['operation', 'question_id', 'detail', 'memorization_points'],
       additionalProperties: false,
     },
+    afterExecute: syncCatalog,
     execute: (application, args, sessionId) => application.createAtomicExplanation(sessionId, {
       questionId: args.question_id,
       detail: args.detail,
@@ -248,6 +258,7 @@ const definitions = [
       required: ['operation'],
       additionalProperties: false,
     },
+    afterExecute: syncCatalog,
     execute(application, args, sessionId) {
       switch (args.operation) {
         case 'catalog': return application.getLeetcodeCatalog()
@@ -258,12 +269,13 @@ const definitions = [
       }
     },
   }),
-]
+  ]
+}
 
-export const ATOMIC_BUSINESS_TOOL_NAMES = Object.freeze(definitions.map((create) => create({}).name))
+export const ATOMIC_BUSINESS_TOOL_NAMES = Object.freeze(definitionsFor().map((create) => create({}).name))
 
-export function createAtomicToolDefinitions(application) {
-  return definitions.map((create) => create(application))
+export function createAtomicToolDefinitions(application, { onComplete = null } = {}) {
+  return definitionsFor(onComplete).map((create) => create(application))
 }
 
 export { sessionIdOf }

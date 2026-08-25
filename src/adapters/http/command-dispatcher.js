@@ -1,9 +1,15 @@
+import { assertModeCapability } from '../../domain/mode-capabilities.js'
+
 function practiceInput(payload) {
   return { mode: payload.mode, config: payload.config }
 }
 
 function dispatchAgent(eventBridge, sessionId, event) {
   eventBridge?.dispatch(sessionId, event)
+}
+
+function refreshAgentTools(eventBridge, sessionId) {
+  void eventBridge?.refresh?.(sessionId)
 }
 
 async function selected(application, sessionId) {
@@ -75,15 +81,20 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const current = await selected(application, sessionId)
       await consumeCard(application, sessionId, payload)
       if (current.data.practice.mode === 'leetcode' || current.data.practice.mode === 'mock') {
-        return application.completeAtomicPractice(sessionId)
+        const result = await application.completeAtomicPractice(sessionId)
+        refreshAgentTools(eventBridge, sessionId)
+        return result
       }
       dispatchAgent(eventBridge, sessionId, {
         type: 'practice.summarize', practiceId: current.practiceId, mode: current.data.practice.mode,
       })
       return current.result
     }
-    case 'practice.update':
-      return application.updatePractice(payload.practiceId, practiceInput(payload))
+    case 'practice.update': {
+      const result = await application.updatePractice(payload.practiceId, practiceInput(payload))
+      refreshAgentTools(eventBridge, sessionId)
+      return result
+    }
     case 'question.open':
       return application.getQuestion(payload.practiceId, payload.questionId)
     case 'question.focus': {
@@ -113,7 +124,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const questionId = payload.questionId || current.questionId
       const question = current.data.practice.questions.find((item) => item.id === questionId)
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
-      if (current.data.practice.mode === 'mock') throw new TypeError('模拟面试不提供看答案')
+      assertModeCapability(current.data.practice, 'explanation.create', 'REVEAL_NOT_ALLOWED', '当前模式不提供看答案')
       await consumeCard(application, sessionId, payload)
       dispatchAgent(eventBridge, sessionId, {
         type: question.explanation ? 'review.show' : 'review.generate',
@@ -140,8 +151,11 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     }
     case 'leetcode.set-completion':
       return application.setLeetcodeProblemCompletion(payload.slug, payload.completed)
-    case 'library.delete':
-      return application.deletePractice(payload.practiceId, sessionId)
+    case 'library.delete': {
+      const result = await application.deletePractice(payload.practiceId, sessionId)
+      refreshAgentTools(eventBridge, sessionId)
+      return result
+    }
     case 'library.export':
       return application.exportPractices({ practiceIds: payload.practiceIds, scope: payload.scope, include: payload.include })
     default:

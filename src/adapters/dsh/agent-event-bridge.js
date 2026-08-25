@@ -41,11 +41,17 @@ function instructionFor(event) {
 }
 
 export class AgentEventBridge {
-  constructor(ctx) {
+  constructor(ctx, toolCatalog = null) {
     this.ctx = ctx
+    this.toolCatalog = toolCatalog
+  }
+
+  refresh(sessionId) {
+    return this.toolCatalog?.refresh(sessionId)
   }
 
   dispatch(sessionId, event) {
+    void this.refresh(sessionId)
     const text = instructionFor(event)
     if (!text) return false
     const agent = this.ctx.get('agents')?.get?.(sessionId)
