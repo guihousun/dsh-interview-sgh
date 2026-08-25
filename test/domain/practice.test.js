@@ -19,10 +19,10 @@ import { DomainError } from '../../src/domain/errors.js'
 function samplePractice() {
   return createPractice({
     id: 'practice-1',
-    mode: 'mock',
+    mode: 'resume_drill',
     config: {
       resume: 'Java 后端工程师简历', targetRole: '后端开发工程师', jobDescriptionProvided: true,
-      jobDescription: '负责服务端开发。', interviewerStyle: '深挖项目', coding: true, difficulty: 'senior',
+      jobDescription: '负责服务端开发。', focus: '项目难点与技术选型', difficulty: 'senior',
     },
     now: 1,
   })
@@ -32,7 +32,7 @@ test('不同模式只接受各自的显式配置', () => {
   const practice = samplePractice()
   assert.deepEqual(practice.config, {
     resume: 'Java 后端工程师简历', targetRole: '后端开发工程师', jobDescriptionProvided: true,
-    jobDescription: '负责服务端开发。', interviewerStyle: '深挖项目', coding: true, difficulty: 'senior',
+    jobDescription: '负责服务端开发。', focus: '项目难点与技术选型', difficulty: 'senior',
   })
   assert.equal(practice.status, 'active')
   assert.throws(() => createPractice({ id: 'practice-2', mode: 'bagu', config: {}, now: 1 }), {

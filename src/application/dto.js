@@ -9,7 +9,7 @@ function toSavedSummaryDto(summary) {
   return { ...summary, strengths: [...summary.strengths], improvements: [...summary.improvements] }
 }
 
-export function toQuestionDto(question) {
+export function toQuestionDto(question, practice = null) {
   const latestAttempt = question.attempts.at(-1) || null
   return {
     id: question.id,
@@ -25,6 +25,7 @@ export function toQuestionDto(question) {
     })),
     latestScore: latestAttempt?.evaluation?.score ?? null,
     explanation: question.explanation ? { ...question.explanation } : null,
+    capabilities: { allowReveal: practice?.mode !== 'mock' },
     ...(question.leetcode ? { leetcode: { ...question.leetcode } } : {}),
     ...(question.hot100 ? { hot100: { ...question.hot100 } } : {}),
   }
@@ -51,7 +52,7 @@ export function toPracticeDetailDto(practice) {
     ...toPracticeSummaryDto(practice),
     source: { ...practice.source },
     config: { ...practice.config },
-    questions: practice.questions.map(toQuestionDto),
+    questions: practice.questions.map((question) => toQuestionDto(question, practice)),
   }
 }
 
@@ -69,7 +70,7 @@ export function toSessionContextDto(binding, practice) {
     revision: binding.revision,
     currentQuestionId: binding.currentQuestionId,
     practice: toPracticeDetailDto(practice),
-    currentQuestion: question ? toQuestionDto(question) : null,
+    currentQuestion: question ? toQuestionDto(question, practice) : null,
   }
 }
 

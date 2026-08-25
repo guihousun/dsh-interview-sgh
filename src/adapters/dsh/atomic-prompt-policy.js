@@ -1,4 +1,5 @@
 import { MOCK_INTERVIEW_CONTEXT } from './mock-interview-policy.js'
+import { RESUME_DRILL_CONTEXT } from './resume-drill-policy.js'
 
 export const ATOMIC_INTERVIEW_POLICY = [
   '你通过练习、题目、作答、评价、讲解和力扣原子工具组合完成用户意图。',
@@ -16,6 +17,7 @@ export const ATOMIC_CONFIGURATION_POLICY = [
   '背八股 bagu 和场景题 scenario 必须明确提供 topic。',
   '刷力扣 leetcode 必须明确提供 language，只能是 cpp、java、python、c、go。',
   '模拟面试 mock 必须明确提供 resume、target_role、job_description_provided、interviewer_style、coding、difficulty；job_description_provided 为 true 时还必须提供 job_description，为 false 时不得自行猜测 JD。',
+  '简历押题 resume_drill 必须明确提供 resume、target_role、job_description_provided、focus、difficulty；job_description_provided 为 true 时还必须提供 job_description，为 false 时不得自行猜测 JD。',
   '只有配置卡提交或用户明确要求绕过配置 UI 时，create 才能接收完整配置；缺少字段不得自行补全。',
 ].join('')
 
@@ -37,9 +39,16 @@ const MODE_PROMPT_POLICIES = Object.freeze({
   mock: Object.freeze({
     context: MOCK_INTERVIEW_CONTEXT,
     question: '根据上面的完整模拟面试规则、真实配置和历史记录生成下一道问题，只提出当前这一道，不泄露答案或面试计划。',
-    reveal: '根据上面的完整模拟面试规则解释当前题目；直接看答案不创建作答或评分。',
-    answerReview: '根据上面的完整模拟面试规则，基于用户的真实回答保存评价和讲解，不把简历内容当作回答证据。',
-    summary: '根据上面的完整模拟面试规则，基于真实题目和回答证据生成总结；未考察内容标记为未考察。',
+    reveal: '当前模式不提供看答案、点评或讲解；如果用户要求这些内容，说明模拟面试只保留真实问答。',
+    answerReview: '当前模式不提供评分、点评或讲解；收到正式回答后继续作为面试官追问或切换面试主题。',
+    summary: '当前模式不生成评价型总结；结束时只确认本次面试记录已保存。',
+  }),
+  resume_drill: Object.freeze({
+    context: RESUME_DRILL_CONTEXT,
+    question: '根据上面的完整简历押题规则、真实配置和历史记录生成下一道押题，只提出当前这一道，不泄露答案或题目计划。',
+    reveal: '根据上面的完整简历押题规则解释当前题目；直接看答案不创建作答或评分。',
+    answerReview: '根据上面的完整简历押题规则，基于用户的真实回答保存评价、详细讲解和可背诵答案。',
+    summary: '根据上面的完整简历押题规则，基于真实题目和回答证据生成练习总结。',
   }),
   scenario: Object.freeze({
     question: '当前模式是场景题。围绕 config.topic 给出必要且简短的工程背景，每次只询问一个诊断、设计或决策问题；结合历史题目逐步增加约束、故障或权衡，禁止同时抛出问题清单，也禁止在题目中泄露方案。',
@@ -55,7 +64,7 @@ const MODE_PROMPT_POLICIES = Object.freeze({
   }),
 })
 
-const MODE_LABELS = Object.freeze({ bagu: '背八股', mock: '模拟面试', scenario: '场景题', leetcode: '刷力扣' })
+const MODE_LABELS = Object.freeze({ bagu: '背八股', mock: '模拟面试', resume_drill: '简历押题', scenario: '场景题', leetcode: '刷力扣' })
 
 export function modeContextForMode(mode) {
   const policies = MODE_PROMPT_POLICIES[mode]

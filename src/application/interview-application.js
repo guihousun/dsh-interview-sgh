@@ -142,7 +142,7 @@ export class InterviewApplication {
     const events = [{ type: 'question.created', sessionId, practiceId: practice.id, questionId: added.question.id }]
     await this.repository.commit({ practice: added.practice, binding: nextBinding })
     await this.#publish(events)
-    return this.#result('question-detail', toQuestionDto(added.question), nextBinding, { events })
+    return this.#result('question-detail', toQuestionDto(added.question, practice), nextBinding, { events })
   }
 
   async focusAtomicQuestion(sessionId, questionId) {
@@ -151,7 +151,7 @@ export class InterviewApplication {
     const question = findQuestion(practice, requiredId(questionId, 'questionId'))
     const nextBinding = focusSessionQuestion(binding, question.id, now)
     await this.repository.commit({ binding: nextBinding })
-    return this.#result('question-detail', toQuestionDto(question), nextBinding)
+    return this.#result('question-detail', toQuestionDto(question, practice), nextBinding)
   }
 
   async deleteAtomicQuestion(sessionId, questionId) {
@@ -224,7 +224,7 @@ export class InterviewApplication {
     const { binding, practice } = await this.#session(sessionId)
     const drawn = await this.#drawLeetcodeQuestion(practice, binding, now)
     await this.repository.commit({ practice: drawn.practice, binding: drawn.binding })
-    return this.#result('question-detail', toQuestionDto(drawn.question), drawn.binding)
+    return this.#result('question-detail', toQuestionDto(drawn.question, practice), drawn.binding)
   }
 
   async drawAtomicMockCodingQuestion(sessionId) {
@@ -246,7 +246,7 @@ export class InterviewApplication {
     })
     const nextBinding = focusSessionQuestion(binding, added.question.id, now)
     await this.repository.commit({ practice: added.practice, binding: nextBinding })
-    return this.#result('question-detail', toQuestionDto(added.question), nextBinding)
+    return this.#result('question-detail', toQuestionDto(added.question, practice), nextBinding)
   }
 
   async drawNextAtomicLeetcode(sessionId) {
@@ -261,7 +261,7 @@ export class InterviewApplication {
       excludedSlugs: previousSlug ? [previousSlug] : [],
     })
     await this.repository.commit({ practices: [completed, drawn.practice], binding: drawn.binding })
-    return this.#result('question-detail', toQuestionDto(drawn.question), drawn.binding)
+    return this.#result('question-detail', toQuestionDto(drawn.question, nextPractice), drawn.binding)
   }
 
   async updatePractice(practiceId, input) {
@@ -274,7 +274,7 @@ export class InterviewApplication {
   async getQuestion(practiceId, questionId) {
     const practice = await this.#practice(practiceId)
     const id = requiredId(questionId, 'questionId')
-    return this.#result('question-detail', toQuestionDto(findQuestion(practice, id)), null, {
+    return this.#result('question-detail', toQuestionDto(findQuestion(practice, id), practice), null, {
       references: { practiceId: practice.id, questionId: id },
     })
   }
@@ -284,7 +284,7 @@ export class InterviewApplication {
     const practice = await this.#practice(practiceId)
     const revised = updateQuestion(practice, { questionId: requiredId(questionId, 'questionId'), prompt: input.prompt, now })
     await this.repository.commit({ practice: revised.practice })
-    return this.#result('question-detail', toQuestionDto(revised.question), null, {
+    return this.#result('question-detail', toQuestionDto(revised.question, practice), null, {
       references: { practiceId: practice.id, questionId: revised.question.id },
     })
   }

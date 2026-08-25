@@ -7,6 +7,7 @@ import { Button, ErrorNotice, h, Icon, Select } from '../shared/ui.js'
 export const PRACTICE_MODE_OPTIONS = Object.freeze([
   { value: 'bagu', label: '背八股' },
   { value: 'mock', label: '模拟面试' },
+  { value: 'resume_drill', label: '简历押题' },
   { value: 'scenario', label: '场景题' },
   { value: 'leetcode', label: '刷力扣' },
 ])
@@ -38,6 +39,11 @@ function completedConfigText(payload) {
     const jd = payload.config.jobDescriptionProvided ? '含 JD' : '未提供 JD'
     return `${modeLabel(payload.mode)} · ${payload.config.targetRole} · ${difficulty}难度 · ${jd}`
   }
+  if (payload.mode === 'resume_drill') {
+    const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || ''
+    const jd = payload.config.jobDescriptionProvided ? '含 JD' : '未提供 JD'
+    return `${modeLabel(payload.mode)} · ${payload.config.targetRole} · ${difficulty}难度 · ${jd}`
+  }
   if (payload.mode === 'leetcode') return `${modeLabel(payload.mode)} · ${leetcodeLanguageLabel(payload.config.language)}`
   return `${modeLabel(payload.mode)} · ${payload.config.topic}`
 }
@@ -57,6 +63,7 @@ export function PracticeConfigForm({
   const [targetRole, setTargetRole] = React.useState(initial?.config?.targetRole || '')
   const [jobDescriptionProvided, setJobDescriptionProvided] = React.useState(typeof initial?.config?.jobDescriptionProvided === 'boolean' ? String(initial.config.jobDescriptionProvided) : '')
   const [jobDescription, setJobDescription] = React.useState(initial?.config?.jobDescription || '')
+  const [focus, setFocus] = React.useState(initial?.config?.focus || '')
   const [interviewerStyle, setInterviewerStyle] = React.useState(initial?.config?.interviewerStyle || '')
   const [coding, setCoding] = React.useState(typeof initial?.config?.coding === 'boolean' ? String(initial.config.coding) : '')
   const [difficulty, setDifficulty] = React.useState(initial?.config?.difficulty || '')
@@ -66,11 +73,16 @@ export function PracticeConfigForm({
     ? Boolean(topic.trim())
     : mode === 'leetcode'
       ? Boolean(language)
-      : mode === 'mock' && Boolean(
-        resume.trim() && targetRole.trim() && jobDescriptionProvided !== ''
-        && (jobDescriptionProvided !== 'true' || jobDescription.trim())
-        && interviewerStyle.trim() && coding !== '' && difficulty,
-      )
+      : (mode === 'mock' && Boolean(
+          resume.trim() && targetRole.trim() && jobDescriptionProvided !== ''
+          && (jobDescriptionProvided !== 'true' || jobDescription.trim())
+          && interviewerStyle.trim() && coding !== '' && difficulty,
+        ))
+        || (mode === 'resume_drill' && Boolean(
+          resume.trim() && targetRole.trim() && jobDescriptionProvided !== ''
+          && (jobDescriptionProvided !== 'true' || jobDescription.trim())
+          && focus.trim() && difficulty,
+        ))
   const submit = () => {
     if (step !== 'config' || !valid || disabled) return
     onSubmit(mode === 'mock'
@@ -86,7 +98,19 @@ export function PracticeConfigForm({
             difficulty,
           },
         }
-      : mode === 'leetcode' ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } })
+      : mode === 'resume_drill'
+        ? {
+            mode,
+            config: {
+              resume: resume.trim(),
+              targetRole: targetRole.trim(),
+              jobDescriptionProvided: jobDescriptionProvided === 'true',
+              jobDescription: jobDescriptionProvided === 'true' ? jobDescription.trim() : '',
+              focus: focus.trim(),
+              difficulty,
+            },
+          }
+        : mode === 'leetcode' ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } })
   }
   const chooseMode = (value) => {
     if (disabled) return
@@ -126,6 +150,19 @@ export function PracticeConfigForm({
               h('input', { className: 'di-input', disabled, value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })),
             h('label', { className: 'di-field' }, h('span', null, '是否手撕代码'),
               h(Select, { value: coding, options: CODING_OPTIONS, disabled, onChange: setCoding, 'aria-label': '选择是否手撕代码' })),
+            h('label', { className: 'di-field' }, h('span', null, '面试难度'),
+              h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, 'aria-label': '选择面试难度' }))) : null,
+          mode === 'resume_drill' ? h(React.Fragment, null,
+            h('label', { className: 'di-field di-field-wide' }, h('span', null, '简历'),
+              h('textarea', { className: 'di-input di-textarea', disabled, value: resume, onChange: (event) => setResume(event.target.value) })),
+            h('label', { className: 'di-field' }, h('span', null, '目标岗位'),
+              h('input', { className: 'di-input', disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })),
+            h('label', { className: 'di-field' }, h('span', null, '岗位描述'),
+              h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, 'aria-label': '选择是否提供岗位描述' })),
+            jobDescriptionProvided === 'true' ? h('label', { className: 'di-field di-field-wide' }, h('span', null, 'JD'),
+              h('textarea', { className: 'di-input di-textarea', disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })) : null,
+            h('label', { className: 'di-field di-field-wide' }, h('span', null, '押题范围'),
+              h('input', { className: 'di-input', disabled, value: focus, onChange: (event) => setFocus(event.target.value), placeholder: '例如：项目难点、技术选型、并发与稳定性' })),
             h('label', { className: 'di-field' }, h('span', null, '面试难度'),
               h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, 'aria-label': '选择面试难度' }))) : null),
     h('div', { className: 'di-actions di-field-wide' },

@@ -96,6 +96,7 @@ const definitions = [
     },
     async execute(application, args, sessionId) {
       const { practice, question } = await practiceAndQuestion(application, args.practice_id, args.question_id)
+      if (practice.mode === 'mock') throw new DomainError('MOCK_REVIEW_NOT_ALLOWED', '模拟面试不提供点评讲解')
       if (!question.explanation) throw new DomainError('EXPLANATION_NOT_FOUND', '当前题目还没有讲解')
       if (args.attempt_id && !question.attempts.some((item) => item.id === args.attempt_id)) {
         throw new DomainError('ATTEMPT_NOT_FOUND', `找不到作答：${String(args.attempt_id)}`)

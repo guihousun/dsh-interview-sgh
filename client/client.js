@@ -817,6 +817,7 @@ function QuestionResultCard({ sessionId, question, artifact, answerDisabled = fa
   if (!question) return null;
   const command = useCommand(sessionId);
   const transition = useCardTransition(command.run, artifact, answerDisabled);
+  const allowReveal = question.capabilities?.allowReveal !== false;
   return h(
     "article",
     { className: "di-card di-question-card", "aria-label": "\u9762\u8BD5\u9898" },
@@ -825,13 +826,18 @@ function QuestionResultCard({ sessionId, question, artifact, answerDisabled = fa
       { className: "di-question-main" },
       h("div", { className: "di-question-text" }, h(Markdown, null, question.prompt))
     ),
-    h(Button, {
+    allowReveal ? h(Button, {
       className: "di-answer-button",
       disabled: transition.locked,
       busy: command.busy === "question.reveal",
       onClick: () => transition.run("question.reveal"),
       "aria-label": "\u67E5\u770B\u672C\u9898\u7B54\u6848"
-    }, h(Icon, { name: "eye" }), "\u770B\u7B54\u6848"),
+    }, h(Icon, { name: "eye" }), "\u770B\u7B54\u6848") : h(Button, {
+      className: "di-answer-button",
+      disabled: transition.locked,
+      busy: command.busy === "session.finish",
+      onClick: () => transition.run("session.finish")
+    }, "\u7ED3\u675F\u9762\u8BD5"),
     h(ErrorNotice, null, command.error)
   );
 }
@@ -1005,6 +1011,7 @@ var import_react6 = __toESM(require("react"), 1);
 var PRACTICE_MODE_OPTIONS = Object.freeze([
   { value: "bagu", label: "\u80CC\u516B\u80A1" },
   { value: "mock", label: "\u6A21\u62DF\u9762\u8BD5" },
+  { value: "resume_drill", label: "\u7B80\u5386\u62BC\u9898" },
   { value: "scenario", label: "\u573A\u666F\u9898" },
   { value: "leetcode", label: "\u5237\u529B\u6263" }
 ]);
@@ -1031,6 +1038,11 @@ function completedConfigText(payload) {
     const jd = payload.config.jobDescriptionProvided ? "\u542B JD" : "\u672A\u63D0\u4F9B JD";
     return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
   }
+  if (payload.mode === "resume_drill") {
+    const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || "";
+    const jd = payload.config.jobDescriptionProvided ? "\u542B JD" : "\u672A\u63D0\u4F9B JD";
+    return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
+  }
   if (payload.mode === "leetcode") return `${modeLabel(payload.mode)} \xB7 ${leetcodeLanguageLabel(payload.config.language)}`;
   return `${modeLabel(payload.mode)} \xB7 ${payload.config.topic}`;
 }
@@ -1049,6 +1061,7 @@ function PracticeConfigForm({
   const [targetRole, setTargetRole] = import_react6.default.useState(initial?.config?.targetRole || "");
   const [jobDescriptionProvided, setJobDescriptionProvided] = import_react6.default.useState(typeof initial?.config?.jobDescriptionProvided === "boolean" ? String(initial.config.jobDescriptionProvided) : "");
   const [jobDescription, setJobDescription] = import_react6.default.useState(initial?.config?.jobDescription || "");
+  const [focus, setFocus] = import_react6.default.useState(initial?.config?.focus || "");
   const [interviewerStyle, setInterviewerStyle] = import_react6.default.useState(initial?.config?.interviewerStyle || "");
   const [coding, setCoding] = import_react6.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
   const [difficulty, setDifficulty] = import_react6.default.useState(initial?.config?.difficulty || "");
@@ -1056,6 +1069,8 @@ function PracticeConfigForm({
   const topicMode = mode === "bagu" || mode === "scenario";
   const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language) : mode === "mock" && Boolean(
     resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && interviewerStyle.trim() && coding !== "" && difficulty
+  ) || mode === "resume_drill" && Boolean(
+    resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && focus.trim() && difficulty
   );
   const submit = () => {
     if (step !== "config" || !valid || disabled) return;
@@ -1068,6 +1083,16 @@ function PracticeConfigForm({
         jobDescription: jobDescriptionProvided === "true" ? jobDescription.trim() : "",
         interviewerStyle: interviewerStyle.trim(),
         coding: coding === "true",
+        difficulty
+      }
+    } : mode === "resume_drill" ? {
+      mode,
+      config: {
+        resume: resume.trim(),
+        targetRole: targetRole.trim(),
+        jobDescriptionProvided: jobDescriptionProvided === "true",
+        jobDescription: jobDescriptionProvided === "true" ? jobDescription.trim() : "",
+        focus: focus.trim(),
         difficulty
       }
     } : mode === "leetcode" ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } });
@@ -1150,6 +1175,46 @@ function PracticeConfigForm({
           { className: "di-field" },
           h("span", null, "\u662F\u5426\u624B\u6495\u4EE3\u7801"),
           h(Select, { value: coding, options: CODING_OPTIONS, disabled, onChange: setCoding, "aria-label": "\u9009\u62E9\u662F\u5426\u624B\u6495\u4EE3\u7801" })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
+          h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
+        )
+      ) : null,
+      mode === "resume_drill" ? h(
+        import_react6.default.Fragment,
+        null,
+        h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "\u7B80\u5386"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u76EE\u6807\u5C97\u4F4D"),
+          h("input", { className: "di-input", disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u5C97\u4F4D\u63CF\u8FF0"),
+          h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, "aria-label": "\u9009\u62E9\u662F\u5426\u63D0\u4F9B\u5C97\u4F4D\u63CF\u8FF0" })
+        ),
+        jobDescriptionProvided === "true" ? h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "JD"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })
+        ) : null,
+        h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "\u62BC\u9898\u8303\u56F4"),
+          h("input", { className: "di-input", disabled, value: focus, onChange: (event) => setFocus(event.target.value), placeholder: "\u4F8B\u5982\uFF1A\u9879\u76EE\u96BE\u70B9\u3001\u6280\u672F\u9009\u578B\u3001\u5E76\u53D1\u4E0E\u7A33\u5B9A\u6027" })
         ),
         h(
           "label",
@@ -1628,7 +1693,7 @@ function TimelinePanel({ sessionId, revisionSignal }) {
   const practice = detailQuery.data?.resource?.data;
   if (!session?.selected || !practice?.questions?.length) return null;
   const selectedQuestion = practice.questions.find((question) => question.id === selection?.questionId);
-  const selectedViews = selectedQuestion?.leetcode ? TIMELINE_VIEWS.slice(0, 1) : TIMELINE_VIEWS;
+  const selectedViews = selectedQuestion?.leetcode ? TIMELINE_VIEWS.slice(0, 1) : selectedQuestion?.capabilities?.allowReveal === false ? TIMELINE_VIEWS.slice(0, 2) : TIMELINE_VIEWS;
   const selectedView = selectedViews.some((item) => item.id === selection?.view) ? selection.view : null;
   const selectedLabel = selectedViews.find((item) => item.id === selectedView)?.label;
   return h(

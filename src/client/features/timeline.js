@@ -56,7 +56,11 @@ export function TimelinePanel({ sessionId, revisionSignal }) {
   if (!session?.selected || !practice?.questions?.length) return null
 
   const selectedQuestion = practice.questions.find((question) => question.id === selection?.questionId)
-  const selectedViews = selectedQuestion?.leetcode ? TIMELINE_VIEWS.slice(0, 1) : TIMELINE_VIEWS
+  const selectedViews = selectedQuestion?.leetcode
+    ? TIMELINE_VIEWS.slice(0, 1)
+    : selectedQuestion?.capabilities?.allowReveal === false
+      ? TIMELINE_VIEWS.slice(0, 2)
+      : TIMELINE_VIEWS
   const selectedView = selectedViews.some((item) => item.id === selection?.view) ? selection.view : null
   const selectedLabel = selectedViews.find((item) => item.id === selectedView)?.label
 

@@ -55,7 +55,7 @@ export function renderPracticeMarkdown(practice, include) {
       `- 状态：${practice.status === 'completed' ? '已结束' : '进行中'}`,
       `- 创建时间：${timestamp(practice.createdAt)}`,
     )
-    if (practice.mode === 'mock') {
+    if (practice.mode === 'mock' || practice.mode === 'resume_drill') {
       lines.push(
         `- 简历：${practice.config.resume}`,
         `- 目标岗位：${practice.config.targetRole}`,

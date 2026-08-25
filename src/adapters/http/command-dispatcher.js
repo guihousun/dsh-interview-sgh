@@ -74,7 +74,9 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     case 'session.finish': {
       const current = await selected(application, sessionId)
       await consumeCard(application, sessionId, payload)
-      if (current.data.practice.mode === 'leetcode') return application.completeAtomicPractice(sessionId)
+      if (current.data.practice.mode === 'leetcode' || current.data.practice.mode === 'mock') {
+        return application.completeAtomicPractice(sessionId)
+      }
       dispatchAgent(eventBridge, sessionId, {
         type: 'practice.summarize', practiceId: current.practiceId, mode: current.data.practice.mode,
       })
@@ -111,6 +113,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const questionId = payload.questionId || current.questionId
       const question = current.data.practice.questions.find((item) => item.id === questionId)
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
+      if (current.data.practice.mode === 'mock') throw new TypeError('模拟面试不提供看答案')
       await consumeCard(application, sessionId, payload)
       dispatchAgent(eventBridge, sessionId, {
         type: question.explanation ? 'review.show' : 'review.generate',

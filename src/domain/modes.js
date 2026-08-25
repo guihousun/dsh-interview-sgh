@@ -13,6 +13,12 @@ export const INTERVIEW_MODES = Object.freeze({
     questionStyle: 'adaptive',
     configuration: 'mock',
   }),
+  resume_drill: Object.freeze({
+    id: 'resume_drill',
+    label: '简历押题',
+    questionStyle: 'resume',
+    configuration: 'resume_drill',
+  }),
   scenario: Object.freeze({
     id: 'scenario',
     label: '场景题',

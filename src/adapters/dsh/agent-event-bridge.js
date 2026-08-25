@@ -32,7 +32,9 @@ function instructionFor(event) {
     case 'practice.selected':
       return `${activeModeContext(event)}练习已由后端绑定到当前会话。只回复“已切换到当前练习。”，不要出题、展示卡片或执行其他工具。`
     case 'practice.continue':
-      return `${activeModeContext(event)}用户请求继续当前练习。${practice}。先调用 interview_session read，并使用返回的真实配置与历史。根据数据组合原子操作：没有题目则创建或抽取并展示题目；当前题尚可回答则只展示当前题；有未评价作答则生成并保存评价，再生成并保存讲解，最后展示点评讲解；已有讲解则展示点评讲解。不要把“继续”固定等同于“下一题”。${END}`
+      return `${activeModeContext(event)}用户请求继续当前练习。${practice}。先调用 interview_session read，并使用返回的真实配置与历史。${event.mode === 'mock'
+        ? '模拟面试只保留真实问答：没有题目则生成并展示题目；当前题没有正式回答则展示当前题并等待回答；已有回答则继续作为面试官回应或生成下一道问题。禁止评价、评分、讲解、看答案或生成总结。'
+        : '根据数据组合原子操作：没有题目则创建或抽取并展示题目；当前题尚可回答则只展示当前题；有未评价作答则生成并保存评价，再生成并保存讲解，最后展示点评讲解；已有讲解则展示点评讲解。'}不要把“继续”固定等同于“下一题”。${END}`
     default:
       return null
   }

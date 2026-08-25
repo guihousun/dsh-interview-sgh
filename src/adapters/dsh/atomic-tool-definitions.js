@@ -32,6 +32,16 @@ function configOf(args) {
       difficulty: args.difficulty,
     }
   }
+  if (args.mode === 'resume_drill') {
+    return {
+      resume: args.resume,
+      targetRole: args.target_role,
+      jobDescriptionProvided: args.job_description_provided,
+      jobDescription: args.job_description,
+      focus: args.focus,
+      difficulty: args.difficulty,
+    }
+  }
   if (args.mode === 'leetcode') return { language: args.language }
   return { topic: args.topic }
 }
@@ -62,7 +72,7 @@ const practiceParameters = {
   properties: {
     operation: { type: 'string', enum: ['create', 'read', 'list', 'update', 'complete', 'reopen', 'delete', 'export', 'insights'] },
     practice_id: { type: 'string', minLength: 1 },
-    mode: { type: 'string', enum: ['bagu', 'mock', 'scenario', 'leetcode'] },
+    mode: { type: 'string', enum: ['bagu', 'mock', 'resume_drill', 'scenario', 'leetcode'] },
     topic: { type: 'string', minLength: 1 },
     language: { type: 'string', enum: LEETCODE_LANGUAGE_IDS },
     resume: { type: 'string', minLength: 1 },
@@ -71,6 +81,7 @@ const practiceParameters = {
     job_description: { type: 'string', minLength: 1 },
     interviewer_style: { type: 'string', minLength: 1 },
     coding: { type: 'boolean' },
+    focus: { type: 'string', minLength: 1 },
     difficulty: { type: 'string', enum: ['junior', 'intermediate', 'senior'] },
     status: { type: 'string', enum: ['active', 'completed'] },
     query: { type: 'string' },
@@ -119,7 +130,7 @@ const definitions = [
   }),
   atomicTool({
     name: 'interview_practice',
-    description: `对练习执行原子增删改查、结束、重新打开、导出或洞察。create/update 必须提供所选模式的完整显式配置；complete 的非力扣练习必须提供真实总结。${ATOMIC_CONFIGURATION_POLICY}`,
+    description: `对练习执行原子增删改查、结束、重新打开、导出或洞察。create/update 必须提供所选模式的完整显式配置；背八股、简历押题和场景题 complete 必须提供真实总结，模拟面试 complete 只结束并归档问答记录，刷力扣使用固定汇总。${ATOMIC_CONFIGURATION_POLICY}`,
     parameters: practiceParameters,
     execute(application, args, sessionId) {
       const input = { mode: args.mode, config: configOf(args) }

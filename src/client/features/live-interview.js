@@ -18,16 +18,24 @@ export function QuestionResultCard({ sessionId, question, artifact, answerDisabl
   if (!question) return null
   const command = useCommand(sessionId)
   const transition = useCardTransition(command.run, artifact, answerDisabled)
+  const allowReveal = question.capabilities?.allowReveal !== false
   return h('article', { className: 'di-card di-question-card', 'aria-label': '面试题' },
     h('div', { className: 'di-question-main' },
       h('div', { className: 'di-question-text' }, h(Markdown, null, question.prompt))),
-    h(Button, {
-      className: 'di-answer-button',
-      disabled: transition.locked,
-      busy: command.busy === 'question.reveal',
-      onClick: () => transition.run('question.reveal'),
-      'aria-label': '查看本题答案',
-    }, h(Icon, { name: 'eye' }), '看答案'),
+    allowReveal
+      ? h(Button, {
+          className: 'di-answer-button',
+          disabled: transition.locked,
+          busy: command.busy === 'question.reveal',
+          onClick: () => transition.run('question.reveal'),
+          'aria-label': '查看本题答案',
+        }, h(Icon, { name: 'eye' }), '看答案')
+      : h(Button, {
+          className: 'di-answer-button',
+          disabled: transition.locked,
+          busy: command.busy === 'session.finish',
+          onClick: () => transition.run('session.finish'),
+        }, '结束面试'),
     h(ErrorNotice, null, command.error))
 }
 

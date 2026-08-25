@@ -38,16 +38,23 @@ function normalizeConfiguration(definition, config) {
     return { language }
   }
 
-  const resume = requiredText(config.resume, 'RESUME_REQUIRED', '模拟面试必须明确提供简历内容')
-  const targetRole = requiredText(config.targetRole, 'TARGET_ROLE_REQUIRED', '模拟面试必须明确提供目标岗位')
-  assertDomain(typeof config.jobDescriptionProvided === 'boolean', 'JOB_DESCRIPTION_PROVIDED_REQUIRED', '模拟面试必须明确选择是否提供 JD')
+  const resume = requiredText(config.resume, 'RESUME_REQUIRED', `${definition.label}必须明确提供简历内容`)
+  const targetRole = requiredText(config.targetRole, 'TARGET_ROLE_REQUIRED', `${definition.label}必须明确提供目标岗位`)
+  assertDomain(typeof config.jobDescriptionProvided === 'boolean', 'JOB_DESCRIPTION_PROVIDED_REQUIRED', `${definition.label}必须明确选择是否提供 JD`)
   const jobDescription = config.jobDescriptionProvided
     ? requiredText(config.jobDescription, 'JOB_DESCRIPTION_REQUIRED', '已选择提供 JD 时必须填写岗位描述')
     : ''
-  const interviewerStyle = requiredText(config.interviewerStyle, 'INTERVIEWER_STYLE_REQUIRED', '模拟面试必须明确选择面试官风格')
-  assertDomain(typeof config.coding === 'boolean', 'CODING_REQUIRED', '模拟面试必须明确选择是否手撕代码')
   const difficulty = requiredText(config.difficulty, 'DIFFICULTY_REQUIRED', '模拟面试必须明确选择面试难度')
   assertDomain(DIFFICULTIES.has(difficulty), 'INVALID_DIFFICULTY', `不支持的难度：${difficulty}`)
+  if (definition.configuration === 'resume_drill') {
+    const focus = requiredText(config.focus, 'RESUME_DRILL_FOCUS_REQUIRED', '简历押题必须明确押题范围')
+    return {
+      resume, targetRole, jobDescriptionProvided: config.jobDescriptionProvided, jobDescription,
+      focus, difficulty,
+    }
+  }
+  const interviewerStyle = requiredText(config.interviewerStyle, 'INTERVIEWER_STYLE_REQUIRED', '模拟面试必须明确选择面试官风格')
+  assertDomain(typeof config.coding === 'boolean', 'CODING_REQUIRED', '模拟面试必须明确选择是否手撕代码')
   return {
     resume, targetRole, jobDescriptionProvided: config.jobDescriptionProvided, jobDescription,
     interviewerStyle, coding: config.coding, difficulty,
@@ -199,6 +206,7 @@ export function submitAnswer(practice, { questionId, attemptId, answer, now }) {
 
 export function evaluateAnswer(practice, { questionId, attemptId, score, feedback, dimensions = {}, now }) {
   activePractice(practice)
+  assertDomain(practice.mode !== 'mock', 'MOCK_EVALUATION_NOT_ALLOWED', '模拟面试不提供作答评价')
   const targetQuestion = findQuestion(practice, questionId)
   const targetAttempt = findAttempt(targetQuestion, attemptId)
   assertDomain(!targetAttempt.evaluation, 'ATTEMPT_ALREADY_EVALUATED', '该作答已经评价，重新回答会创建新的作答记录')
@@ -226,6 +234,7 @@ export function evaluateAnswer(practice, { questionId, attemptId, score, feedbac
 
 export function saveExplanation(practice, { questionId, detail, memorizationPoints, replace = false, now }) {
   activePractice(practice)
+  assertDomain(practice.mode !== 'mock', 'MOCK_EXPLANATION_NOT_ALLOWED', '模拟面试不提供答案讲解')
   const target = findQuestion(practice, questionId)
   assertDomain(replace || !target.explanation, 'EXPLANATION_ALREADY_EXISTS', '该题已经存在讲解')
   const normalizedDetail = requiredText(detail, 'INVALID_EXPLANATION', '讲解内容不能为空')
@@ -261,6 +270,9 @@ export function saveExplanation(practice, { questionId, detail, memorizationPoin
 
 export function completePractice(practice, { overall, strengths, improvements, now }) {
   activePractice(practice)
+  if (practice.mode === 'mock') {
+    return withUpdatedAt(practice, now, { status: 'completed', completedAt: now, summary: null })
+  }
   assertDomain(practice.mode !== 'leetcode', 'LEETCODE_ANALYSIS_NOT_ALLOWED', '力扣练习不生成面试分析总结')
   assertDomain(Array.isArray(strengths) && strengths.length > 0, 'INVALID_SUMMARY_STRENGTHS', '练习总结必须包含至少一项表现亮点')
   assertDomain(Array.isArray(improvements) && improvements.length > 0, 'INVALID_SUMMARY_IMPROVEMENTS', '练习总结必须包含至少一项改进建议')

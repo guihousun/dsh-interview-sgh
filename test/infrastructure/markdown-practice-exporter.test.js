@@ -8,10 +8,10 @@ import { MarkdownPracticeExporter, renderPracticeMarkdown } from '../../src/infr
 
 function practiceFixture() {
   let practice = createPractice({
-    id: 'practice-1', mode: 'mock',
+    id: 'practice-1', mode: 'resume_drill',
     config: {
       resume: 'Java/后端简历', targetRole: '后端开发工程师', jobDescriptionProvided: true,
-      jobDescription: '负责服务端开发。', interviewerStyle: '深挖项目', coding: true, difficulty: 'intermediate',
+      jobDescription: '负责服务端开发。', focus: '项目难点与技术选型', difficulty: 'intermediate',
     },
     now: 1,
   })

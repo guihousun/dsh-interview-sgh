@@ -70,6 +70,53 @@ test('模拟面试手撕题从 Hot 100 抽取但仍保留 mock 练习语义', as
   assert.equal(first.resource.data.leetcode, undefined)
 })
 
+test('模拟面试题目关闭看答案并拒绝点评链路，结束时只归档记录', async () => {
+  const fixture = applicationFixture()
+  await fixture.application.createAtomicPractice('mock-session', {
+    mode: 'mock',
+    config: {
+      resume: '服务端项目。', targetRole: '通用技术开发', jobDescriptionProvided: false,
+      jobDescription: '', interviewerStyle: '专业追问', coding: false, difficulty: 'intermediate',
+    },
+  })
+  const question = await fixture.application.createAtomicQuestion('mock-session', { prompt: '请介绍一个你负责的项目。' })
+  const session = (await fixture.application.readAtomicSession('mock-session')).resource.data
+  assert.equal(question.resource.data.capabilities.allowReveal, false)
+  assert.equal(session.currentQuestion.capabilities.allowReveal, false)
+  const attempt = await fixture.application.createAtomicAttempt('mock-session', {
+    questionId: question.resource.data.id, answer: '我负责核心服务。',
+  })
+  await assert.rejects(
+    fixture.application.createAtomicEvaluation('mock-session', {
+      questionId: question.resource.data.id, attemptId: attempt.resource.data.id, score: 8, feedback: '不应生成',
+    }),
+    { code: 'MOCK_EVALUATION_NOT_ALLOWED' },
+  )
+  await assert.rejects(
+    fixture.application.createAtomicExplanation('mock-session', {
+      questionId: question.resource.data.id, detail: '不应生成', memorizationPoints: '不应生成',
+    }),
+    { code: 'MOCK_EXPLANATION_NOT_ALLOWED' },
+  )
+  const completed = await fixture.application.completeAtomicPractice('mock-session')
+  assert.equal(completed.resource.data.status, 'completed')
+  assert.equal(completed.resource.data.summary, null)
+})
+
+test('简历押题独立使用押题范围配置并保留点评能力', async () => {
+  const fixture = applicationFixture()
+  const created = await fixture.application.createAtomicPractice('resume-session', {
+    mode: 'resume_drill',
+    config: {
+      resume: '服务端项目。', targetRole: '通用技术开发', jobDescriptionProvided: false,
+      jobDescription: '', focus: '项目难点与技术选型', difficulty: 'intermediate',
+    },
+  })
+  const question = await fixture.application.createAtomicQuestion('resume-session', { prompt: '项目中最难的技术问题是什么？' })
+  assert.equal(created.resource.data.mode, 'resume_drill')
+  assert.equal(question.resource.data.capabilities.allowReveal, true)
+})
+
 test('重复题可以由删除与创建两个原子操作组合替换', async () => {
   const fixture = applicationFixture()
   await fixture.application.createAtomicPractice('session-1', { mode: 'bagu', config: { topic: 'MySQL' } })
