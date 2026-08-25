@@ -68,7 +68,7 @@ Practice
 - 重新作答追加 `Attempt`，不会覆盖旧回答及其评价；
 - 一道题只有一份当前讲解，明确执行 replace 才能替换；
 - 直接看答案只创建 `Explanation`，不会伪造 `Attempt` 或 `Evaluation`；
-- 力扣是一题一练习，下一题会完成旧练习并创建新的练习；
+- 力扣是一题一练习，下一题会完成旧练习并创建新的练习；模拟面试的手撕题复用同一份 Hot 100 题库，但仍保存为 mock 练习题，不改变练习模式；
 - 非力扣练习结束时保存总体总结，力扣只保存本题汇总。
 
 ## 会话绑定与卡片生命周期
@@ -109,7 +109,7 @@ AI 只看到按资源分组的七个业务工具：
 | --- | --- |
 | `interview_session` | read、bind |
 | `interview_practice` | create、read、list、update、complete、reopen、delete、export、insights |
-| `interview_question` | create、read、list、update、delete、focus |
+| `interview_question` | create、read、list、update、delete、focus、draw_hot100（仅模拟面试手撕） |
 | `interview_attempt` | create、list |
 | `interview_evaluation` | create |
 | `interview_explanation` | create、replace |
