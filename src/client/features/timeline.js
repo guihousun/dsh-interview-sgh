@@ -15,10 +15,10 @@ function EmptyTimelineContent({ children }) {
 }
 
 function TimelineContent({ question, view }) {
-  if (view === 'question') return question.leetcode
+  if (view === 'question') return (question.leetcode || question.hot100)
     ? h('div', { className: 'di-time-lc-question' },
-        h('a', { className: 'di-link', href: question.leetcode.url, target: '_blank', rel: 'noreferrer' }, question.prompt, ' ↗'),
-        h('div', { className: 'di-meta' }, `${question.leetcode.category} · ${leetcodeDifficultyLabel(question.leetcode.difficulty)}`))
+        h('a', { className: 'di-link', href: (question.leetcode || question.hot100).url, target: '_blank', rel: 'noreferrer' }, question.prompt, ' ↗'),
+        h('div', { className: 'di-meta' }, `${(question.leetcode || question.hot100).category} · ${leetcodeDifficultyLabel((question.leetcode || question.hot100).difficulty)}`))
     : h(Markdown, null, question.prompt)
 
   if (view === 'attempts') {

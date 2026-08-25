@@ -50,6 +50,26 @@ test('原子操作通过真实数据推进完整知识练习', async () => {
   assert.equal((await fixture.application.getPractice(practiceId)).resource.data.questions.length, 1)
 })
 
+test('模拟面试手撕题从 Hot 100 抽取但仍保留 mock 练习语义', async () => {
+  const fixture = applicationFixture()
+  await fixture.application.createAtomicPractice('mock-session', {
+    mode: 'mock',
+    config: {
+      resume: '负责服务端项目。', targetRole: '通用技术开发', jobDescriptionProvided: false,
+      jobDescription: '', interviewerStyle: '深挖项目', coding: true, difficulty: 'intermediate',
+    },
+  })
+  const first = await fixture.application.drawAtomicMockCodingQuestion('mock-session')
+  const second = await fixture.application.drawAtomicMockCodingQuestion('mock-session')
+  const practice = (await fixture.application.readAtomicSession('mock-session')).resource.data.practice
+
+  assert.equal(practice.mode, 'mock')
+  assert.equal(practice.topic, '模拟面试')
+  assert.equal(first.resource.data.hot100.slug, 'two-sum')
+  assert.notEqual(second.resource.data.hot100.slug, first.resource.data.hot100.slug)
+  assert.equal(first.resource.data.leetcode, undefined)
+})
+
 test('重复题可以由删除与创建两个原子操作组合替换', async () => {
   const fixture = applicationFixture()
   await fixture.application.createAtomicPractice('session-1', { mode: 'bagu', config: { topic: 'MySQL' } })

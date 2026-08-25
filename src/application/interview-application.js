@@ -227,6 +227,28 @@ export class InterviewApplication {
     return this.#result('question-detail', toQuestionDto(drawn.question), drawn.binding)
   }
 
+  async drawAtomicMockCodingQuestion(sessionId) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#session(sessionId)
+    assertDomain(practice.mode === 'mock', 'MOCK_PRACTICE_REQUIRED', '只有模拟面试可以抽取手撕题')
+    assertDomain(practice.config.coding === true, 'MOCK_CODING_REQUIRED', '当前模拟面试未开启手撕代码')
+    const used = new Set(practice.questions.map((question) => question.hot100?.slug).filter(Boolean))
+    const unused = LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug))
+    const candidates = unused.length ? unused : LEETCODE_TOP_100
+    const randomValue = Number(this.random.next())
+    assertDomain(Number.isFinite(randomValue) && randomValue >= 0 && randomValue < 1, 'INVALID_RANDOM_VALUE', '随机数必须位于 [0, 1) 区间')
+    const problem = candidates[Math.floor(randomValue * candidates.length)]
+    const added = askQuestion(practice, {
+      id: this.ids.next('question'),
+      prompt: `手撕题：${problem.id}. ${problem.title}`,
+      hot100: { kind: 'hot100', slug: problem.slug },
+      now,
+    })
+    const nextBinding = focusSessionQuestion(binding, added.question.id, now)
+    await this.repository.commit({ practice: added.practice, binding: nextBinding })
+    return this.#result('question-detail', toQuestionDto(added.question), nextBinding)
+  }
+
   async drawNextAtomicLeetcode(sessionId) {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)

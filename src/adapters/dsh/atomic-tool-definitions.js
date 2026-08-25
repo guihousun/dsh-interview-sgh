@@ -88,7 +88,7 @@ const practiceParameters = {
 const questionParameters = {
   type: 'object',
   properties: {
-    operation: { type: 'string', enum: ['create', 'read', 'list', 'update', 'delete', 'focus'] },
+    operation: { type: 'string', enum: ['create', 'read', 'list', 'update', 'delete', 'focus', 'draw_hot100'] },
     practice_id: { type: 'string', minLength: 1 },
     question_id: { type: 'string', minLength: 1 },
     prompt: { type: 'string', minLength: 1, maxLength: 120 },
@@ -143,11 +143,12 @@ const definitions = [
   }),
   atomicTool({
     name: 'interview_question',
-    description: `对题目执行原子创建、读取、列表、修改、删除或聚焦。create 会把新题设为当前题；delete 当前题后可继续 create 完成重新出题；focus 用于重新作答历史题。${ATOMIC_QUESTION_POLICY}`,
+    description: `对题目执行原子创建、读取、列表、修改、删除、聚焦或从固定 Hot 100 抽取模拟面试手撕题。create 会把新题设为当前题；delete 当前题后可继续 create 完成重新出题；focus 用于重新作答历史题。${ATOMIC_QUESTION_POLICY}`,
     parameters: questionParameters,
     async execute(application, args, sessionId) {
       switch (args.operation) {
         case 'create': return application.createAtomicQuestion(sessionId, { prompt: args.prompt })
+        case 'draw_hot100': return application.drawAtomicMockCodingQuestion(sessionId)
         case 'read': return application.getQuestion(args.practice_id, args.question_id)
         case 'list': return application.getPractice(args.practice_id)
         case 'update': return application.updateQuestion(args.practice_id, args.question_id, { prompt: args.prompt })

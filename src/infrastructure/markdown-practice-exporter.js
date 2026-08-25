@@ -112,8 +112,9 @@ export function renderPracticeMarkdown(practice, include) {
     if (!['questions', 'answers', 'evaluations', 'explanations'].some((section) => sections.has(section))) break
     lines.push('', `## 第 ${question.sequence} 题`)
     if (sections.has('questions')) {
-      lines.push('', question.leetcode
-        ? `[${question.prompt}](${question.leetcode.url}) · ${question.leetcode.category} · ${leetcodeDifficultyLabel(question.leetcode.difficulty)}`
+      const fixedProblem = question.leetcode || question.hot100
+      lines.push('', fixedProblem
+        ? `[${question.prompt}](${fixedProblem.url}) · ${fixedProblem.category} · ${leetcodeDifficultyLabel(fixedProblem.difficulty)}`
         : question.prompt)
     }
     for (const attempt of question.attempts) {

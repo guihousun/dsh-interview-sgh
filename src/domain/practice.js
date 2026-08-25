@@ -119,7 +119,15 @@ function normalizeLeetcodeProblem(practice, input) {
   return { ...problem }
 }
 
-export function askQuestion(practice, { id, prompt, leetcode, now }) {
+function normalizeHot100Problem(practice, input) {
+  if (practice.mode !== 'mock' || input?.kind !== 'hot100') return null
+  assertDomain(practice.config.coding === true, 'MOCK_CODING_REQUIRED', '只有开启手撕代码的模拟面试才能抽取 Hot 100 题目')
+  const problem = leetcodeTop100Problem(input?.slug)
+  assertDomain(problem, 'HOT100_PROBLEM_REQUIRED', '模拟面试手撕题必须从固定 Hot 100 题库中选择')
+  return { ...problem }
+}
+
+export function askQuestion(practice, { id, prompt, leetcode, hot100, now }) {
   activePractice(practice)
   const questionId = requiredText(id, 'INVALID_QUESTION_ID', '题目 ID 不能为空')
   const normalizedPrompt = normalizeQuestionPrompt(prompt)
@@ -129,6 +137,7 @@ export function askQuestion(practice, { id, prompt, leetcode, now }) {
     '每条力扣练习只能包含一道题',
   )
   const normalizedLeetcode = normalizeLeetcodeProblem(practice, leetcode)
+  const normalizedHot100 = normalizeHot100Problem(practice, hot100)
   assertDomain(!practice.questions.some((item) => item.id === questionId), 'DUPLICATE_QUESTION', `题目已存在：${questionId}`)
   const question = {
     id: questionId,
@@ -138,6 +147,7 @@ export function askQuestion(practice, { id, prompt, leetcode, now }) {
     attempts: [],
     explanation: null,
     ...(normalizedLeetcode ? { leetcode: normalizedLeetcode } : {}),
+    ...(normalizedHot100 ? { hot100: normalizedHot100 } : {}),
   }
   return {
     practice: withUpdatedAt(practice, now, {
@@ -154,6 +164,7 @@ export function askQuestion(practice, { id, prompt, leetcode, now }) {
 export function updateQuestion(practice, { questionId, prompt, now }) {
   const target = findQuestion(practice, questionId)
   assertDomain(!target.leetcode, 'LEETCODE_QUESTION_IMMUTABLE', '固定题库中的力扣题目不允许修改')
+  assertDomain(!target.hot100, 'HOT100_QUESTION_IMMUTABLE', '模拟面试手撕题不允许修改')
   const questions = practice.questions.map((question) => question.id === target.id
     ? { ...question, prompt: normalizeQuestionPrompt(prompt) }
     : question)

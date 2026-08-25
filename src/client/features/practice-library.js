@@ -80,14 +80,15 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
         h('ul', null, practice.summary.improvements.map((item) => h('li', { key: item }, item))))) : null,
     practice.questions.length ? practice.questions.map((question) => {
       const latest = question.attempts.at(-1)
+      const fixedProblem = question.leetcode || question.hot100
       return h('article', { className: 'di-detail-question', key: question.id },
         h('div', { className: 'di-detail-question-head' },
           h('span', { className: 'di-sequence' }, `Q${String(question.sequence).padStart(2, '0')}`),
           h('div', { className: 'di-detail-question-text' }, editingQuestionId === question.id
             ? h('input', { className: 'di-input', value: questionDraft, onChange: (event) => setQuestionDraft(event.target.value) })
             : h(Markdown, null, question.prompt)),
-          question.leetcode
-            ? h('a', { className: 'di-link', href: question.leetcode.url, target: '_blank', rel: 'noreferrer' }, `${question.leetcode.category} · ${leetcodeDifficultyLabel(question.leetcode.difficulty)}`)
+          fixedProblem
+            ? h('a', { className: 'di-link', href: fixedProblem.url, target: '_blank', rel: 'noreferrer' }, `${fixedProblem.category} · ${leetcodeDifficultyLabel(fixedProblem.difficulty)}`)
             : h(ScoreRail, { score: question.latestScore, compact: true })),
         question.attempts.map((attempt) => h('div', { className: 'di-attempt', key: attempt.id },
           h('div', { className: 'di-attempt-head' }, h('span', null, `第 ${attempt.sequence} 次作答`), h('span', null, attempt.evaluation ? `${attempt.evaluation.score}/10` : '未评价')),
@@ -102,11 +103,11 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
                 h(Markdown, null, question.explanation.memorizationPoints))
             : null) : null,
         h('div', { className: 'di-detail-actions' },
-          !question.leetcode && editingQuestionId === question.id
+          !fixedProblem && editingQuestionId === question.id
             ? h(React.Fragment, null,
                 h(Button, { tone: 'primary', disabled: !questionDraft.trim(), busy: command.busy === 'question.update', onClick: () => updateQuestion(question.id) }, '保存题目'),
                 h(Button, { onClick: () => { setEditingQuestionId(null); setQuestionDraft('') } }, '取消'))
-            : !question.leetcode ? h(Button, { onClick: () => { setEditingQuestionId(question.id); setQuestionDraft(question.prompt) } }, '编辑题目') : null,
+            : !fixedProblem ? h(Button, { onClick: () => { setEditingQuestionId(question.id); setQuestionDraft(question.prompt) } }, '编辑题目') : null,
           !question.leetcode && practice.status === 'active' && latest?.evaluation
             ? h(Button, { onClick: () => retry(question.id) }, '重新作答')
             : null,

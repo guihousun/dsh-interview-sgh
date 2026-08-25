@@ -222,6 +222,28 @@ test('刷力扣题目只能引用固定题库并保留规范元数据', () => {
   assert.match(practice.questions[0].explanation.detail, /```cpp/)
 })
 
+test('模拟面试手撕题只能引用 Hot 100 且不改变练习模式', () => {
+  const practice = createPractice({
+    id: 'mock-1', mode: 'mock', config: {
+      resume: '服务端项目经历。', targetRole: '通用技术开发', jobDescriptionProvided: false,
+      jobDescription: '', interviewerStyle: '深挖项目', coding: true, difficulty: 'intermediate',
+    }, now: 1,
+  })
+  const asked = askQuestion(practice, {
+    id: 'question-1', prompt: '手撕题：1. 两数之和', hot100: { kind: 'hot100', slug: 'two-sum' }, now: 2,
+  })
+
+  assert.equal(asked.practice.mode, 'mock')
+  assert.equal(asked.practice.topic, '模拟面试')
+  assert.equal(asked.question.hot100.slug, 'two-sum')
+  assert.throws(() => askQuestion(practice, {
+    id: 'question-2', prompt: '手撕题：不存在', hot100: { kind: 'hot100', slug: 'not-in-hot100' }, now: 3,
+  }), { code: 'HOT100_PROBLEM_REQUIRED' })
+  assert.throws(() => updateQuestion(asked.practice, { questionId: 'question-1', prompt: '修改固定题' }), {
+    code: 'HOT100_QUESTION_IMMUTABLE',
+  })
+})
+
 test('练习和题目修改经过领域校验，删除题目后连续重排', () => {
   let practice = createPractice({ id: 'practice-1', mode: 'bagu', config: { topic: 'JVM' }, now: 1 })
   practice = askQuestion(practice, { id: 'question-1', prompt: '第一题', now: 2 }).practice

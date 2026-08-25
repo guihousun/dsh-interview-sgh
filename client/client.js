@@ -1311,6 +1311,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
     ) : null,
     practice.questions.length ? practice.questions.map((question) => {
       const latest = question.attempts.at(-1);
+      const fixedProblem = question.leetcode || question.hot100;
       return h(
         "article",
         { className: "di-detail-question", key: question.id },
@@ -1319,7 +1320,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
           { className: "di-detail-question-head" },
           h("span", { className: "di-sequence" }, `Q${String(question.sequence).padStart(2, "0")}`),
           h("div", { className: "di-detail-question-text" }, editingQuestionId === question.id ? h("input", { className: "di-input", value: questionDraft, onChange: (event) => setQuestionDraft(event.target.value) }) : h(Markdown, null, question.prompt)),
-          question.leetcode ? h("a", { className: "di-link", href: question.leetcode.url, target: "_blank", rel: "noreferrer" }, `${question.leetcode.category} \xB7 ${leetcodeDifficultyLabel(question.leetcode.difficulty)}`) : h(ScoreRail, { score: question.latestScore, compact: true })
+          fixedProblem ? h("a", { className: "di-link", href: fixedProblem.url, target: "_blank", rel: "noreferrer" }, `${fixedProblem.category} \xB7 ${leetcodeDifficultyLabel(fixedProblem.difficulty)}`) : h(ScoreRail, { score: question.latestScore, compact: true })
         ),
         question.attempts.map((attempt) => h(
           "div",
@@ -1343,7 +1344,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
         h(
           "div",
           { className: "di-detail-actions" },
-          !question.leetcode && editingQuestionId === question.id ? h(
+          !fixedProblem && editingQuestionId === question.id ? h(
             import_react7.default.Fragment,
             null,
             h(Button, { tone: "primary", disabled: !questionDraft.trim(), busy: command.busy === "question.update", onClick: () => updateQuestion(question.id) }, "\u4FDD\u5B58\u9898\u76EE"),
@@ -1351,7 +1352,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
               setEditingQuestionId(null);
               setQuestionDraft("");
             } }, "\u53D6\u6D88")
-          ) : !question.leetcode ? h(Button, { onClick: () => {
+          ) : !fixedProblem ? h(Button, { onClick: () => {
             setEditingQuestionId(question.id);
             setQuestionDraft(question.prompt);
           } }, "\u7F16\u8F91\u9898\u76EE") : null,
@@ -1574,11 +1575,11 @@ function EmptyTimelineContent({ children }) {
   return h("div", { className: "di-time-empty" }, children);
 }
 function TimelineContent({ question, view }) {
-  if (view === "question") return question.leetcode ? h(
+  if (view === "question") return question.leetcode || question.hot100 ? h(
     "div",
     { className: "di-time-lc-question" },
-    h("a", { className: "di-link", href: question.leetcode.url, target: "_blank", rel: "noreferrer" }, question.prompt, " \u2197"),
-    h("div", { className: "di-meta" }, `${question.leetcode.category} \xB7 ${leetcodeDifficultyLabel(question.leetcode.difficulty)}`)
+    h("a", { className: "di-link", href: (question.leetcode || question.hot100).url, target: "_blank", rel: "noreferrer" }, question.prompt, " \u2197"),
+    h("div", { className: "di-meta" }, `${(question.leetcode || question.hot100).category} \xB7 ${leetcodeDifficultyLabel((question.leetcode || question.hot100).difficulty)}`)
   ) : h(Markdown, null, question.prompt);
   if (view === "attempts") {
     if (!question.attempts.length) return h(EmptyTimelineContent, null, "\u5C1A\u672A\u4F5C\u7B54");
