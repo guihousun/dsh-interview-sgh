@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ModeToolCatalog, toolNamesForMode } from '../../src/adapters/dsh/mode-tool-catalog.js'
+import { ModeToolCatalog, deniedToolNamesForMode, toolNamesForMode } from '../../src/adapters/dsh/mode-tool-catalog.js'
 
 test('不同练习模式只披露所需工具目录', () => {
   const none = toolNamesForMode()
@@ -17,6 +17,9 @@ test('不同练习模式只披露所需工具目录', () => {
   assert.equal(resumeDrill.includes('interview_show_review'), true)
   assert.equal(leetcode.includes('interview_leetcode'), true)
   assert.equal(leetcode.includes('interview_evaluation'), true)
+  assert.equal(deniedToolNamesForMode('mock').includes('interview_evaluation'), true)
+  assert.equal(deniedToolNamesForMode('mock').includes('external_tool'), false)
+  assert.deepEqual(deniedToolNamesForMode('leetcode'), [])
 })
 
 test('会话绑定或切换练习后实时更新 Agent 工具目录', async () => {
@@ -46,11 +49,12 @@ test('会话绑定或切换练习后实时更新 Agent 工具目录', async () =
   mode = 'mock'
   await catalog.refresh(agent.id)
   assert.equal(catalog.modeFor(agent.id), 'mock')
-  assert.equal(restrictions.at(-1).filter.allow.includes('interview_evaluation'), false)
+  assert.equal(restrictions.at(-1).filter.deny.includes('interview_evaluation'), true)
+  assert.equal('allow' in restrictions.at(-1).filter, false)
 
   mode = 'resume_drill'
   await catalog.refresh(agent.id)
   assert.equal(catalog.modeFor(agent.id), 'resume_drill')
-  assert.equal(restrictions.at(-1).filter.allow.includes('interview_evaluation'), true)
+  assert.equal(restrictions.at(-1).filter.deny.includes('interview_evaluation'), false)
   assert.equal(restrictions.at(-2).disposed, true)
 })

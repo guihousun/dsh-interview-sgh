@@ -1,4 +1,6 @@
 import { assertDomain } from '../../domain/errors.js'
+import { ATOMIC_BUSINESS_TOOL_NAMES } from './atomic-tool-definitions.js'
+import { PRESENTATION_TOOL_NAMES } from './presentation-tool-definitions.js'
 
 const COMMON_TOOLS = Object.freeze([
   'interview_session',
@@ -32,10 +34,25 @@ const MODE_TOOL_NAMES = Object.freeze({
   leetcode: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, 'interview_leetcode']),
 })
 
+const PLUGIN_TOOL_NAMES = Object.freeze([
+  ...ATOMIC_BUSINESS_TOOL_NAMES,
+  ...PRESENTATION_TOOL_NAMES,
+])
+
 export function toolNamesForMode(mode = null) {
   const names = MODE_TOOL_NAMES[mode || 'none']
   assertDomain(names, 'INVALID_MODE', `不支持的面试模式：${String(mode)}`)
   return [...names]
+}
+
+export function deniedToolNamesForMode(mode = null) {
+  const allowed = new Set(toolNamesForMode(mode))
+  return PLUGIN_TOOL_NAMES.filter((name) => !allowed.has(name))
+}
+
+function restrictPluginTools(agent, mode) {
+  const denied = deniedToolNamesForMode(mode)
+  return denied.length === 0 ? null : agent.ctx.tools.restrict({ deny: denied })
 }
 
 export class ModeToolCatalog {
@@ -47,7 +64,7 @@ export class ModeToolCatalog {
 
   attach(agent) {
     if (!agent?.id || this.scopes.has(agent.id)) return
-    const restriction = agent.ctx.tools.restrict({ allow: toolNamesForMode() })
+    const restriction = restrictPluginTools(agent)
     this.scopes.set(agent.id, { agent, mode: null, restriction })
     void this.refresh(agent.id)
   }
@@ -62,8 +79,7 @@ export class ModeToolCatalog {
   setMode(sessionId, mode = null) {
     const state = this.scopes.get(sessionId)
     if (!state || state.mode === mode) return false
-    const names = toolNamesForMode(mode)
-    const restriction = state.agent.ctx.tools.restrict({ allow: names })
+    const restriction = restrictPluginTools(state.agent, mode)
     state.restriction?.()
     state.restriction = restriction
     state.mode = mode
@@ -83,4 +99,4 @@ export class ModeToolCatalog {
   }
 }
 
-export { COMMON_TOOLS, QUESTION_TOOLS, COACHING_TOOLS, MODE_TOOL_NAMES }
+export { COMMON_TOOLS, QUESTION_TOOLS, COACHING_TOOLS, MODE_TOOL_NAMES, PLUGIN_TOOL_NAMES }
