@@ -9,10 +9,12 @@ test('不同练习模式只披露所需工具目录', () => {
   const leetcode = toolNamesForMode('leetcode')
 
   assert.equal(none.includes('interview_question'), false)
+  assert.equal(none.includes('interview_show_summary'), true)
   assert.equal(mock.includes('interview_question'), true)
   assert.equal(mock.includes('interview_evaluation'), false)
   assert.equal(mock.includes('interview_explanation'), false)
   assert.equal(mock.includes('interview_show_review'), false)
+  assert.equal(mock.includes('interview_show_summary'), false)
   assert.equal(resumeDrill.includes('interview_evaluation'), true)
   assert.equal(resumeDrill.includes('interview_show_review'), true)
   assert.equal(leetcode.includes('interview_leetcode'), true)
@@ -57,4 +59,9 @@ test('会话绑定或切换练习后实时更新 Agent 工具目录', async () =
   assert.equal(catalog.modeFor(agent.id), 'resume_drill')
   assert.equal(restrictions.at(-1).filter.deny.includes('interview_evaluation'), false)
   assert.equal(restrictions.at(-2).disposed, true)
+
+  mode = null
+  await catalog.refresh(agent.id)
+  assert.equal(catalog.modeFor(agent.id), null)
+  assert.equal(restrictions.at(-1).filter.deny.includes('interview_show_summary'), false)
 })

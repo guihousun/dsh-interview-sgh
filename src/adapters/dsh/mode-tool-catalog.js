@@ -12,6 +12,8 @@ const COMMON_TOOLS = Object.freeze([
   'interview_show_leetcode_catalog',
 ])
 
+const SUMMARY_TOOLS = Object.freeze(['interview_show_summary'])
+
 const QUESTION_TOOLS = Object.freeze([
   'interview_question',
   'interview_attempt',
@@ -22,16 +24,15 @@ const COACHING_TOOLS = Object.freeze([
   'interview_evaluation',
   'interview_explanation',
   'interview_show_review',
-  'interview_show_summary',
 ])
 
 const MODE_TOOL_NAMES = Object.freeze({
-  none: Object.freeze([...COMMON_TOOLS]),
+  none: Object.freeze([...COMMON_TOOLS, ...SUMMARY_TOOLS]),
   mock: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS]),
-  bagu: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS]),
-  resume_drill: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS]),
-  scenario: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS]),
-  leetcode: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, 'interview_leetcode']),
+  bagu: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS]),
+  resume_drill: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS]),
+  scenario: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS]),
+  leetcode: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS, 'interview_leetcode']),
 })
 
 const PLUGIN_TOOL_NAMES = Object.freeze([
@@ -99,4 +100,4 @@ export class ModeToolCatalog {
   }
 }
 
-export { COMMON_TOOLS, QUESTION_TOOLS, COACHING_TOOLS, MODE_TOOL_NAMES, PLUGIN_TOOL_NAMES }
+export { COMMON_TOOLS, SUMMARY_TOOLS, QUESTION_TOOLS, COACHING_TOOLS, MODE_TOOL_NAMES, PLUGIN_TOOL_NAMES }
