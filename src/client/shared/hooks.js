@@ -35,6 +35,14 @@ export function useInterviewQuery(key, loader, dependencies = [], options = {}) 
   return { ...state, reload: () => load(true) }
 }
 
+// 客户端 bundle 与运行中的 Host 可能短暂处于不同版本：页面刷新后立刻加载了新前端，而 dsh web 进程还是旧代码。
+// 这时新命令会被旧路由拒绝（INVALID_COMMAND），把它翻译成可执行的提示，而不是抛一句“不支持的 UI command”。
+export function commandErrorMessage(error) {
+  const message = error?.message || '操作失败'
+  if (error?.code !== 'INVALID_COMMAND') return message
+  return `${message}（插件后端还是旧版本，重启 dsh web 后重试）`
+}
+
 export function useCommand(sessionId) {
   const [state, setState] = React.useState({ busy: '', error: '' })
   const sessionIdRef = React.useRef(sessionId)
@@ -46,7 +54,7 @@ export function useCommand(sessionId) {
       try {
         return await interviewApi.command(sessionIdRef.current, command, payload)
       } catch (error) {
-        setState({ busy: '', error: error.message || '操作失败' })
+        setState({ busy: '', error: commandErrorMessage(error) })
         throw error
       } finally {
         setState((current) => ({ ...current, busy: '' }))

@@ -99,7 +99,7 @@ function CustomProblemForm({ disabled, busy, onStart }) {
       h(Button, { tone: 'primary', disabled: disabled || !valid, busy, onClick: submit }, '开始这道题')))
 }
 
-function CatalogRow({ problem, pendingSlug, onToggle, onStart }) {
+function CatalogRow({ problem, pendingSlug, disabled = false, onToggle, onStart }) {
   return h('div', { className: `di-lc-row is-selectable${problem.completed ? ' is-complete' : ''}` },
     h(CompletionButton, { problem, pending: pendingSlug === problem.slug, onToggle }),
     h('a', { className: 'di-lc-problem-link', href: problem.url, target: '_blank', rel: 'noreferrer' },
@@ -110,12 +110,12 @@ function CatalogRow({ problem, pendingSlug, onToggle, onStart }) {
     h(LeetcodeStartButton, {
       problem,
       busy: pendingSlug === problem.slug,
-      disabled: Boolean(pendingSlug) && pendingSlug !== problem.slug,
+      disabled: disabled || (Boolean(pendingSlug) && pendingSlug !== problem.slug),
       onStart,
     }))
 }
 
-function CatalogGroup({ group, pendingSlug, onToggle, onStart }) {
+function CatalogGroup({ group, pendingSlug, disabled = false, onToggle, onStart }) {
   const completed = group.problems.filter((problem) => problem.completed).length
   return h('section', { className: 'di-lc-group' },
     h('div', { className: 'di-lc-group-head' },
@@ -125,6 +125,7 @@ function CatalogGroup({ group, pendingSlug, onToggle, onStart }) {
       key: problem.slug,
       problem,
       pendingSlug,
+      disabled,
       onToggle,
       onStart,
     }))))
@@ -147,6 +148,8 @@ export function LeetcodeCatalog({ sessionId }) {
   if (!catalog) return null
   const session = sessionQuery.data?.resource?.data
   const activeLeetcode = Boolean(session?.selected && session.practice?.mode === 'leetcode' && session.practice?.status === 'active')
+  // difficulties/categories 是 0.6.0 后端才有的字段：缺失说明 dsh web 仍是旧进程，新命令会被拒绝。
+  const hostOutdated = !Array.isArray(catalog.difficulties) || catalog.difficulties.length === 0
 
   const toggle = async (problem) => {
     setPendingSlug(problem.slug)
@@ -241,8 +244,10 @@ export function LeetcodeCatalog({ sessionId }) {
         onChange: setCategory,
         'aria-label': '按题型筛选',
       }),
-      h(Button, { onClick: () => setCustomOpen((value) => !value) }, customOpen ? '收起自定义' : '自定义题目')),
-    customOpen
+      h(Button, { onClick: () => setCustomOpen((value) => !value), disabled: hostOutdated }, customOpen ? '收起自定义' : '自定义题目')),
+    hostOutdated
+      ? h('div', { className: 'di-notice' }, '检测到插件后端仍是旧版本：搜索选题、提示阶梯和材料卡需要重启 dsh web 后生效。')
+      : null,    customOpen
       ? h(CustomProblemForm, { disabled: command.busy === 'leetcode.select', busy: false, onStart: start })
       : null,
     h('div', { className: 'di-lc-toolbar-note' },
@@ -256,6 +261,7 @@ export function LeetcodeCatalog({ sessionId }) {
         key: group.category,
         group,
         pendingSlug,
+        disabled: hostOutdated,
         onToggle: toggle,
         onStart: start,
       }))))

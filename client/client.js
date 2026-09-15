@@ -182,6 +182,11 @@ function useInterviewQuery(key, loader, dependencies = [], options = {}) {
   }, [load]);
   return { ...state, reload: () => load(true) };
 }
+function commandErrorMessage(error) {
+  const message = error?.message || "\u64CD\u4F5C\u5931\u8D25";
+  if (error?.code !== "INVALID_COMMAND") return message;
+  return `${message}\uFF08\u63D2\u4EF6\u540E\u7AEF\u8FD8\u662F\u65E7\u7248\u672C\uFF0C\u91CD\u542F dsh web \u540E\u91CD\u8BD5\uFF09`;
+}
 function useCommand(sessionId) {
   const [state, setState] = import_react.default.useState({ busy: "", error: "" });
   const sessionIdRef = import_react.default.useRef(sessionId);
@@ -193,7 +198,7 @@ function useCommand(sessionId) {
       try {
         return await interviewApi.command(sessionIdRef.current, command, payload);
       } catch (error) {
-        setState({ busy: "", error: error.message || "\u64CD\u4F5C\u5931\u8D25" });
+        setState({ busy: "", error: commandErrorMessage(error) });
         throw error;
       } finally {
         setState((current) => ({ ...current, busy: "" }));
@@ -996,7 +1001,7 @@ function CustomProblemForm({ disabled, busy, onStart }) {
     )
   );
 }
-function CatalogRow({ problem, pendingSlug, onToggle, onStart }) {
+function CatalogRow({ problem, pendingSlug, disabled = false, onToggle, onStart }) {
   return h(
     "div",
     { className: `di-lc-row is-selectable${problem.completed ? " is-complete" : ""}` },
@@ -1012,12 +1017,12 @@ function CatalogRow({ problem, pendingSlug, onToggle, onStart }) {
     h(LeetcodeStartButton, {
       problem,
       busy: pendingSlug === problem.slug,
-      disabled: Boolean(pendingSlug) && pendingSlug !== problem.slug,
+      disabled: disabled || Boolean(pendingSlug) && pendingSlug !== problem.slug,
       onStart
     })
   );
 }
-function CatalogGroup({ group, pendingSlug, onToggle, onStart }) {
+function CatalogGroup({ group, pendingSlug, disabled = false, onToggle, onStart }) {
   const completed = group.problems.filter((problem) => problem.completed).length;
   return h(
     "section",
@@ -1032,6 +1037,7 @@ function CatalogGroup({ group, pendingSlug, onToggle, onStart }) {
       key: problem.slug,
       problem,
       pendingSlug,
+      disabled,
       onToggle,
       onStart
     })))
@@ -1053,6 +1059,7 @@ function LeetcodeCatalog({ sessionId }) {
   if (!catalog) return null;
   const session = sessionQuery.data?.resource?.data;
   const activeLeetcode = Boolean(session?.selected && session.practice?.mode === "leetcode" && session.practice?.status === "active");
+  const hostOutdated = !Array.isArray(catalog.difficulties) || catalog.difficulties.length === 0;
   const toggle = async (problem) => {
     setPendingSlug(problem.slug);
     try {
@@ -1172,8 +1179,9 @@ function LeetcodeCatalog({ sessionId }) {
         onChange: setCategory,
         "aria-label": "\u6309\u9898\u578B\u7B5B\u9009"
       }),
-      h(Button, { onClick: () => setCustomOpen((value) => !value) }, customOpen ? "\u6536\u8D77\u81EA\u5B9A\u4E49" : "\u81EA\u5B9A\u4E49\u9898\u76EE")
+      h(Button, { onClick: () => setCustomOpen((value) => !value), disabled: hostOutdated }, customOpen ? "\u6536\u8D77\u81EA\u5B9A\u4E49" : "\u81EA\u5B9A\u4E49\u9898\u76EE")
     ),
+    hostOutdated ? h("div", { className: "di-notice" }, "\u68C0\u6D4B\u5230\u63D2\u4EF6\u540E\u7AEF\u4ECD\u662F\u65E7\u7248\u672C\uFF1A\u641C\u7D22\u9009\u9898\u3001\u63D0\u793A\u9636\u68AF\u548C\u6750\u6599\u5361\u9700\u8981\u91CD\u542F dsh web \u540E\u751F\u6548\u3002") : null,
     customOpen ? h(CustomProblemForm, { disabled: command.busy === "leetcode.select", busy: false, onStart: start }) : null,
     h(
       "div",
@@ -1185,6 +1193,7 @@ function LeetcodeCatalog({ sessionId }) {
       key: group.category,
       group,
       pendingSlug,
+      disabled: hostOutdated,
       onToggle: toggle,
       onStart: start
     })))

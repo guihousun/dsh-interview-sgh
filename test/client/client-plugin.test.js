@@ -171,6 +171,18 @@ test('配色跟随宿主主题令牌并提供暗色语义层', () => {
   }
 })
 
+test('前后端版本不一致时给出可执行的提示而不是原始报错', () => {
+  const hooks = readFileSync(new URL('../../src/client/shared/hooks.js', import.meta.url), 'utf8')
+  const leetcode = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
+  assert.match(hooks, /error\?\.code !== 'INVALID_COMMAND'/)
+  assert.match(hooks, /重启 dsh web 后重试/)
+  assert.match(hooks, /error: commandErrorMessage\(error\)/)
+  // 题库以 difficulties 字段判断后端版本，旧后端下不发新命令
+  assert.match(leetcode, /const hostOutdated = !Array\.isArray\(catalog\.difficulties\)/)
+  assert.match(leetcode, /需要重启 dsh web 后生效/)
+  assert.match(leetcode, /disabled: hostOutdated/)
+})
+
 test('界面只对主标题使用粗体且不渲染装饰性副标题', () => {  const featureFiles = [
     '../../src/client/features/leetcode.js',
     '../../src/client/features/live-interview.js',
