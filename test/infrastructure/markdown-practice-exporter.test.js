@@ -37,7 +37,7 @@ test('Markdown 导出支持内容筛选', () => {
 })
 
 test('Markdown 导出力扣题目地址、题型和难度', () => {
-  let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'cpp' }, now: 1 })
+  let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'cpp', guidance: 'standard' }, now: 1 })
   practice = askQuestion(practice, {
     id: 'question-1', prompt: '1. 两数之和', leetcode: { slug: 'two-sum' }, now: 2,
   }).practice

@@ -8,7 +8,7 @@ import { h, Icon } from '../shared/ui.js'
 const WORKSPACE_TABS = Object.freeze([
   { id: 'active', label: '进行中', icon: 'clock' },
   { id: 'library', label: '练习档案', icon: 'archive' },
-  { id: 'leetcode', label: '热题 100', icon: 'flame' },
+  { id: 'leetcode', label: '题库', icon: 'flame' },
 ])
 
 function WorkspaceContent({ tab, sessionId }) {

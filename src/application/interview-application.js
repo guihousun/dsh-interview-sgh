@@ -1,8 +1,9 @@
 import { DomainError, assertDomain } from '../domain/errors.js'
-import { LEETCODE_TOP_100, LEETCODE_TOP_100_GROUPS, LEETCODE_TOP_100_SOURCE, leetcodeTop100Problem } from '../domain/leetcode-top-100.js'
+import { LEETCODE_TOP_100, LEETCODE_TOP_100_GROUPS, LEETCODE_TOP_100_SOURCE, leetcodeDifficultyLabel, leetcodeTop100Problem } from '../domain/leetcode-top-100.js'
+import { LEETCODE_CATEGORIES, LEETCODE_DIFFICULTY_IDS, leetcodeProblemQueryLabel, listLeetcodeProblems, resolveLeetcodeProblem } from '../domain/leetcode-problems.js'
 import {
   askQuestion, completeLeetcodePractice, completePractice, createPractice, deleteQuestion,
-  evaluateAnswer, findQuestion, reopenPractice, saveExplanation, submitAnswer,
+  evaluateAnswer, findQuestion, reopenPractice, revealHint, saveExplanation, saveMaterials, submitAnswer,
   updatePractice, updateQuestion,
 } from '../domain/practice.js'
 import {
@@ -63,25 +64,42 @@ export class InterviewApplication {
     return new Map((await this.repository.listLeetcodeProgress()).map((item) => [item.slug, item]))
   }
 
-  async #drawLeetcodeQuestion(practice, binding, now, { excludedSlugs = [] } = {}) {
+  async #drawLeetcodeQuestion(practice, binding, now, { selection = null, filters = null, excludedSlugs = [] } = {}) {
     assertDomain(practice.mode === 'leetcode', 'INVALID_PRACTICE_MODE', '只有刷力扣模式可以从题库抽题')
-    const progress = await this.#leetcodeProgress()
-    const used = new Set([...practice.questions.map((question) => question.leetcode?.slug).filter(Boolean), ...excludedSlugs])
-    const incomplete = (problem) => progress.get(problem.slug)?.completed !== true
-    const pools = [
-      LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug) && incomplete(problem)),
-      LEETCODE_TOP_100.filter((problem) => !used.has(problem.slug)),
-      LEETCODE_TOP_100.filter(incomplete),
-      LEETCODE_TOP_100,
-    ]
-    const candidates = pools.find((pool) => pool.length > 0)
-    const randomValue = Number(this.random.next())
-    assertDomain(Number.isFinite(randomValue) && randomValue >= 0 && randomValue < 1, 'INVALID_RANDOM_VALUE', '随机数必须位于 [0, 1) 区间')
-    const problem = candidates[Math.floor(randomValue * candidates.length)]
+    const problem = selection
+      ? resolveLeetcodeProblem(selection)
+      : await this.#randomLeetcodeProblem(practice, excludedSlugs, filters)
+    assertDomain(
+      problem,
+      'LEETCODE_PROBLEM_NOT_FOUND',
+      selection
+        ? `找不到指定的力扣题目：${leetcodeProblemQueryLabel(selection)}`
+        : `没有符合条件的力扣题目：${[filters?.category, filters?.difficulty].filter(Boolean).join(' · ') || '（空）'}`,
+    )
     const added = askQuestion(practice, {
       id: this.ids.next('question'), prompt: `${problem.id}. ${problem.title}`, leetcode: problem, now,
     })
     return { ...added, binding: focusSessionQuestion(binding, added.question.id, now) }
+  }
+
+  async #randomLeetcodeProblem(practice, excludedSlugs, filters = null) {
+    const progress = await this.#leetcodeProgress()
+    const used = new Set([...practice.questions.map((question) => question.leetcode?.slug).filter(Boolean), ...excludedSlugs])
+    const base = filters
+      ? listLeetcodeProblems({ category: filters.category, difficulty: filters.difficulty, limit: LEETCODE_TOP_100.length })
+      : LEETCODE_TOP_100
+    if (base.length === 0) return null
+    const incomplete = (problem) => progress.get(problem.slug)?.completed !== true
+    const pools = [
+      base.filter((problem) => !used.has(problem.slug) && incomplete(problem)),
+      base.filter((problem) => !used.has(problem.slug)),
+      base.filter(incomplete),
+      base,
+    ]
+    const candidates = pools.find((pool) => pool.length > 0)
+    const randomValue = Number(this.random.next())
+    assertDomain(Number.isFinite(randomValue) && randomValue >= 0 && randomValue < 1, 'INVALID_RANDOM_VALUE', '随机数必须位于 [0, 1) 区间')
+    return { ...candidates[Math.floor(randomValue * candidates.length)] }
   }
 
   async createAtomicPractice(sessionId, input) {
@@ -201,6 +219,34 @@ export class InterviewApplication {
     return this.#result('explanation-detail', { questionId, ...added.explanation }, binding)
   }
 
+  async saveAtomicMaterials(sessionId, input) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#session(sessionId)
+    const questionId = requiredId(input.questionId || binding.currentQuestionId, 'questionId')
+    const saved = saveMaterials(practice, {
+      questionId,
+      materials: input.materials,
+      replace: input.replace === true,
+      now,
+    })
+    await this.repository.commit({ practice: saved.practice })
+    return this.#result('question-detail', toQuestionDto(saved.question, practice), binding, {
+      references: { questionId },
+    })
+  }
+
+  async revealAtomicHint(sessionId, questionId = null) {
+    const now = this.clock.now()
+    const { binding, practice } = await this.#session(sessionId)
+    const targetId = questionId || binding.currentQuestionId
+    assertDomain(Boolean(targetId), 'QUESTION_NOT_FOCUSED', '必须指定需要提示的题目')
+    const revealed = revealHint(practice, { questionId: targetId, now })
+    await this.repository.commit({ practice: revealed.practice })
+    return this.#result('question-detail', toQuestionDto(revealed.question, practice), binding, {
+      references: { questionId: targetId },
+    })
+  }
+
   async completeAtomicPractice(sessionId, input = {}) {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)
@@ -220,12 +266,38 @@ export class InterviewApplication {
     return this.#result('session-context', toSessionContextDto(binding, practice), binding)
   }
 
-  async drawAtomicLeetcode(sessionId) {
+  async drawAtomicLeetcode(sessionId, options = {}) {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)
-    const drawn = await this.#drawLeetcodeQuestion(practice, binding, now)
+    const drawn = await this.#drawLeetcodeQuestion(practice, binding, now, {
+      selection: options.selection || null,
+      filters: options.filters || null,
+    })
     await this.repository.commit({ practice: drawn.practice, binding: drawn.binding })
     return this.#result('question-detail', toQuestionDto(drawn.question, practice), drawn.binding)
+  }
+
+  async searchLeetcodeProblems(input = {}) {
+    const problems = listLeetcodeProblems({
+      keyword: input.keyword,
+      category: input.category,
+      difficulty: input.difficulty,
+      limit: input.limit,
+    })
+    const progress = await this.#leetcodeProgress()
+    return this.#result('leetcode-search', {
+      query: {
+        keyword: input.keyword || '',
+        category: input.category || '',
+        difficulty: input.difficulty || '',
+      },
+      total: problems.length,
+      categories: [...LEETCODE_CATEGORIES],
+      problems: problems.map((problem) => ({
+        ...problem,
+        completed: progress.get(problem.slug)?.completed === true,
+      })),
+    })
   }
 
   async drawAtomicMockCodingQuestion(sessionId) {
@@ -250,15 +322,19 @@ export class InterviewApplication {
     return this.#result('question-detail', toQuestionDto(added.question, practice), nextBinding)
   }
 
-  async drawNextAtomicLeetcode(sessionId) {
+  async drawNextAtomicLeetcode(sessionId, options = {}) {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)
     assertDomain(practice.mode === 'leetcode', 'LEETCODE_PRACTICE_REQUIRED', '当前练习不是力扣模式')
     const previousSlug = practice.questions[0]?.leetcode?.slug
     const completed = completeLeetcodePractice(practice, { now })
-    const nextPractice = createPractice({ id: this.ids.next('practice'), mode: 'leetcode', config: practice.config, now })
+    const nextPractice = createPractice({
+      id: this.ids.next('practice'), mode: 'leetcode', config: practice.config, now,
+    })
     const nextBinding = createSessionBinding({ sessionId, practiceId: nextPractice.id, now })
     const drawn = await this.#drawLeetcodeQuestion(nextPractice, nextBinding, now, {
+      selection: options.selection || null,
+      filters: options.filters || null,
       excludedSlugs: previousSlug ? [previousSlug] : [],
     })
     await this.repository.commit({ practices: [completed, drawn.practice], binding: drawn.binding })
@@ -328,7 +404,14 @@ export class InterviewApplication {
         return { ...problem, completed, completedAt: completed ? saved.completedAt : null }
       }),
     }))
-    return this.#result('leetcode-catalog', { source: LEETCODE_TOP_100_SOURCE, total: 100, completedCount, groups })
+    return this.#result('leetcode-catalog', {
+      source: LEETCODE_TOP_100_SOURCE,
+      total: LEETCODE_TOP_100.length,
+      completedCount,
+      categories: [...LEETCODE_CATEGORIES],
+      difficulties: LEETCODE_DIFFICULTY_IDS.map((id) => ({ id, label: leetcodeDifficultyLabel(id) })),
+      groups,
+    })
   }
 
   async setLeetcodeProblemCompletion(slug, completed) {

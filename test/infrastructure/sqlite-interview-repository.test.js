@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createPractice, askQuestion, submitAnswer, evaluateAnswer, saveExplanation } from '../../src/domain/practice.js'
+import { DatabaseSync } from 'node:sqlite'
+import { createPractice, askQuestion, submitAnswer, evaluateAnswer, revealHint, saveExplanation, saveMaterials } from '../../src/domain/practice.js'
 import { createSessionBinding, focusSessionQuestion, transferSessionBinding } from '../../src/domain/session.js'
 import { SqliteInterviewRepository } from '../../src/infrastructure/sqlite-interview-repository.js'
 
@@ -101,11 +102,83 @@ test('SQLite 保存并更新力扣热题完成状态', async () => {
 test('SQLite 保存并恢复力扣题库元数据', async () => {
   const context = fixture()
   try {
-    let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'python' }, now: 1 })
+    let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'python', guidance: 'guided' }, now: 1 })
     practice = askQuestion(practice, { id: 'question-1', prompt: '1. 两数之和', leetcode: { slug: 'two-sum' }, now: 2 }).practice
     await context.repository.commit({ practice })
     const restored = await context.repository.getPractice(practice.id)
-    assert.deepEqual(restored.config, { language: 'python' })
+    assert.deepEqual(restored.config, { language: 'python', guidance: 'guided' })
     assert.deepEqual(restored.questions[0].leetcode, practice.questions[0].leetcode)
   } finally { context.cleanup() }
+})
+
+test('SQLite 保存并恢复题目材料与提示阶梯进度', async () => {
+  const context = fixture()
+  try {
+    let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'cpp', guidance: 'guided' }, now: 1 })
+    practice = askQuestion(practice, { id: 'question-1', prompt: '1. 两数之和', leetcode: { slug: 'two-sum' }, now: 2 }).practice
+    practice = saveMaterials(practice, {
+      questionId: 'question-1',
+      materials: {
+        statement: '在数组中找到两个数，使它们的和等于目标值。',
+        examples: [{ input: 'nums = [2,7,11,15], target = 9', output: '[0,1]', note: '返回下标' }],
+        constraints: ['2 <= nums.length <= 10^4'],
+        hints: ['暴力枚举', '哈希表'],
+        knowledge: [{ title: '哈希表', detail: '平均 O(1) 查找。' }],
+        pitfalls: ['同一个元素不能使用两次'],
+        related: [{ id: '167', title: '两数之和 II', slug: 'two-sum-ii-input-array-is-sorted' }],
+      },
+      now: 3,
+    }).practice
+    practice = revealHint(practice, { questionId: 'question-1', now: 4 }).practice
+    practice = submitAnswer(practice, { questionId: 'question-1', attemptId: 'attempt-1', answer: '用哈希表。', now: 5 }).practice
+    await context.repository.commit({ practice })
+
+    const restored = await context.repository.getPractice(practice.id)
+    const question = restored.questions[0]
+    assert.equal(question.hintLevel, 1)
+    assert.equal(question.materials.statement, '在数组中找到两个数，使它们的和等于目标值。')
+    assert.deepEqual(question.materials.hints, ['暴力枚举', '哈希表'])
+    assert.equal(question.materials.knowledge[0].title, '哈希表')
+    assert.equal(question.materials.related[0].url, 'https://leetcode.cn/problems/two-sum-ii-input-array-is-sorted/')
+
+    // 作答与评价等既有数据不受新增列影响。
+    const answered = await context.repository.getPractice(practice.id)
+    assert.equal(answered.questions[0].attempts.length, 1)
+    assert.equal(answered.questions[0].attempts[0].answer, '用哈希表。')
+  } finally { context.cleanup() }
+})
+
+test('旧数据库缺少题目材料列时就地补齐且保留历史数据', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-interview-legacy-'))
+  const file = join(directory, 'interview.sqlite')
+  try {
+    const legacy = new DatabaseSync(file)
+    legacy.exec(`
+      CREATE TABLE questions (
+        id TEXT PRIMARY KEY,
+        practice_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        prompt TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        leetcode_json TEXT,
+        explanation_detail TEXT,
+        explanation_memo TEXT,
+        explained_at INTEGER,
+        UNIQUE (practice_id, sequence)
+      );
+      INSERT INTO questions (id, practice_id, sequence, prompt, created_at, leetcode_json)
+      VALUES ('question-1', 'practice-1', 1, '1. 两数之和', 1, '{"slug":"two-sum"}');
+    `)
+    legacy.close()
+
+    const repository = new SqliteInterviewRepository(file)
+    const columns = repository.database.prepare('PRAGMA table_info(questions)').all().map((column) => column.name)
+    assert.ok(columns.includes('materials_json'))
+    assert.ok(columns.includes('hint_level'))
+    const rows = repository.database.prepare('SELECT * FROM questions').all()
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].prompt, '1. 两数之和')
+    assert.equal(rows[0].hint_level, 0)
+    repository.close()
+  } finally { rmSync(directory, { recursive: true, force: true }) }
 })

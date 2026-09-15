@@ -45,9 +45,9 @@ test('不同模式只接受各自的显式配置', () => {
   assert.throws(() => createPractice({ id: 'practice-4', mode: 'leetcode', config: { language: 'rust' }, now: 1 }), {
     code: 'INVALID_LEETCODE_LANGUAGE',
   })
-  const leetcode = createPractice({ id: 'practice-4', mode: 'leetcode', config: { language: 'cpp' }, now: 1 })
+  const leetcode = createPractice({ id: 'practice-4', mode: 'leetcode', config: { language: 'cpp', guidance: 'standard' }, now: 1 })
   assert.equal(leetcode.topic, 'LeetCode 热题 100')
-  assert.deepEqual(leetcode.config, { language: 'cpp' })
+  assert.deepEqual(leetcode.config, { language: 'cpp', guidance: 'standard' })
   assert.deepEqual(leetcode.source, { kind: 'catalog', content: 'https://leetcode.cn/studyplan/top-100-liked/' })
 })
 
@@ -132,7 +132,7 @@ test('结束后的练习禁止继续出题，重新打开后恢复写入', () =>
 })
 
 test('力扣练习直接结束并只保存本次抽取的题目', () => {
-  let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'java' }, now: 1 })
+  let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'java', guidance: 'guided' }, now: 1 })
   practice = askQuestion(practice, {
     id: 'question-1', prompt: '1. 两数之和', leetcode: { slug: 'two-sum' }, now: 2,
   }).practice
@@ -175,7 +175,7 @@ test('题目必须保持简单扼要', () => {
 })
 
 test('刷力扣题目只能引用固定题库并保留规范元数据', () => {
-  let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'cpp' }, now: 1 })
+  let practice = createPractice({ id: 'leetcode-1', mode: 'leetcode', config: { language: 'cpp', guidance: 'standard' }, now: 1 })
   const asked = askQuestion(practice, {
     id: 'question-1',
     prompt: '1. 两数之和',

@@ -141,6 +141,7 @@ test('练习档案无需卡片凭证即可聚焦题目并请求展示', async ()
       practiceId: practice.resource.data.id,
       questionId: first.resource.data.id,
       mode: 'bagu',
+      guidance: null,
       includeModeContext: true,
     },
   })

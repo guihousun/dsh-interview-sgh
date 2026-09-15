@@ -1,5 +1,6 @@
 import React from 'react'
 import { LEETCODE_LANGUAGES, leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
+import { LEETCODE_GUIDANCE_LEVELS, leetcodeGuidanceLabel } from '../../domain/leetcode-guidance.js'
 import { useCommand } from '../shared/hooks.js'
 import { useCardLifecycle } from '../shared/card-transition.js'
 import { Button, ErrorNotice, h, Icon, Select } from '../shared/ui.js'
@@ -44,7 +45,9 @@ function completedConfigText(payload) {
     const jd = payload.config.jobDescriptionProvided ? '含 JD' : '未提供 JD'
     return `${modeLabel(payload.mode)} · ${payload.config.targetRole} · ${difficulty}难度 · ${jd}`
   }
-  if (payload.mode === 'leetcode') return `${modeLabel(payload.mode)} · ${leetcodeLanguageLabel(payload.config.language)}`
+  if (payload.mode === 'leetcode') {
+    return `${modeLabel(payload.mode)} · ${leetcodeLanguageLabel(payload.config.language)} · ${leetcodeGuidanceLabel(payload.config.guidance)}`
+  }
   return `${modeLabel(payload.mode)} · ${payload.config.topic}`
 }
 
@@ -68,11 +71,12 @@ export function PracticeConfigForm({
   const [coding, setCoding] = React.useState(typeof initial?.config?.coding === 'boolean' ? String(initial.config.coding) : '')
   const [difficulty, setDifficulty] = React.useState(initial?.config?.difficulty || '')
   const [language, setLanguage] = React.useState(initial?.config?.language || '')
+  const [guidance, setGuidance] = React.useState(initial?.config?.guidance || '')
   const topicMode = mode === 'bagu' || mode === 'scenario'
   const valid = topicMode
     ? Boolean(topic.trim())
     : mode === 'leetcode'
-      ? Boolean(language)
+      ? Boolean(language && guidance)
       : (mode === 'mock' && Boolean(
           resume.trim() && targetRole.trim() && jobDescriptionProvided !== ''
           && (jobDescriptionProvided !== 'true' || jobDescription.trim())
@@ -110,7 +114,7 @@ export function PracticeConfigForm({
               difficulty,
             },
           }
-        : mode === 'leetcode' ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } })
+        : mode === 'leetcode' ? { mode, config: { language, guidance } } : { mode, config: { topic: topic.trim() } })
   }
   const chooseMode = (value) => {
     if (disabled) return
@@ -135,8 +139,18 @@ export function PracticeConfigForm({
           h('div', { className: 'di-config-mode' }, h('span', null, '练习模式'), h('span', { className: `di-mode-badge is-${mode}` }, modeLabel(mode))),
           topicMode ? h('label', { className: 'di-field' }, h('span', null, '主题'),
             h('input', { className: 'di-input', disabled, value: topic, onChange: (event) => setTopic(event.target.value) })) : null,
-          mode === 'leetcode' ? h('label', { className: 'di-field' }, h('span', null, '编程语言'),
-            h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), disabled, onChange: setLanguage, 'aria-label': '选择编程语言' })) : null,
+          mode === 'leetcode' ? h(React.Fragment, null,
+            h('label', { className: 'di-field' }, h('span', null, '编程语言'),
+              h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), disabled, onChange: setLanguage, 'aria-label': '选择编程语言' })),
+            h('label', { className: 'di-field' }, h('span', null, '引导强度'),
+              h(Select, {
+                value: guidance,
+                options: LEETCODE_GUIDANCE_LEVELS.map((item) => ({ value: item.id, label: item.label })),
+                disabled,
+                onChange: setGuidance,
+                'aria-label': '选择引导强度',
+              })),
+            guidance ? h('div', { className: 'di-guidance-hint di-field-wide' }, LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance)?.detail || '') : null) : null,
           mode === 'mock' ? h(React.Fragment, null,
             h('label', { className: 'di-field di-field-wide' }, h('span', null, '简历'),
               h('textarea', { className: 'di-input di-textarea', disabled, value: resume, onChange: (event) => setResume(event.target.value) })),

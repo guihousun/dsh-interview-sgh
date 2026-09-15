@@ -9,7 +9,8 @@ const CAPABILITY_GROUPS = Object.freeze({
   ]),
   coaching: Object.freeze(['evaluation.create', 'explanation.create', 'explanation.replace', 'review.show', 'summary.show']),
   mockCoding: Object.freeze(['question.draw_hot100']),
-  leetcode: Object.freeze(['leetcode.catalog', 'leetcode.draw', 'leetcode.draw_next', 'leetcode.set_completion']),
+  leetcode: Object.freeze(['leetcode.catalog', 'leetcode.search', 'leetcode.draw', 'leetcode.draw_next', 'leetcode.set_completion']),
+  materials: Object.freeze(['materials.create', 'materials.replace', 'materials.reveal']),
 })
 
 const MODE_CAPABILITIES = Object.freeze({
@@ -22,6 +23,7 @@ const MODE_CAPABILITIES = Object.freeze({
     'question.read', 'question.list', 'question.focus', 'attempt.create', 'attempt.list',
     ...CAPABILITY_GROUPS.coaching,
     ...CAPABILITY_GROUPS.leetcode,
+    ...CAPABILITY_GROUPS.materials,
   ]),
 })
 

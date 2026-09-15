@@ -9,11 +9,19 @@ function pluginMessage(text) {
   }
 }
 
-const END = '完成工具调用后立即结束工具链，只输出展示工具规定的简短辅助文本；禁止用普通 Assistant Text 复述题目、点评、讲解或总结。'
+const END = '完成工具调用后立即结束工具链；除了材料围栏和展示工具规定的简短辅助文本，禁止用普通 Assistant Text 复述题目、点评、讲解或总结。'
 
 function activeModeContext(event) {
-  return event.includeModeContext ? `${modeContextForMode(event.mode)}当前练习配置和历史必须通过读取能力获得。` : ''
+  return event.includeModeContext ? `${modeContextForMode(event.mode, { guidance: event.guidance || null })}当前练习配置和历史必须通过读取能力获得。` : ''
 }
+
+const PRESENT_LEETCODE = [
+  '练习 UI 抽取或切换了一道力扣题。',
+  '第一步：调用 interview_practice read 读取这道题的题目元数据、已保存的材料和已解锁的提示级数。',
+  '第二步：如果这道题还没有题目材料，先调用 interview_materials create 保存题意、示例、数据范围、前置知识、分级提示、常见误区和相似题；已有材料就不要重复生成。',
+  '第三步：调用 interview_show_question 展示题目卡，并把返回的 materialsFence 原样输出到回复正文，材料卡会渲染在对话里。',
+  '引导模式下不要主动给提示或答案；标准模式下只在材料里保留提示，等他来要。',
+].join('')
 
 function instructionFor(event) {
   const practice = `practice_id=${event.practiceId}`
@@ -22,7 +30,11 @@ function instructionFor(event) {
     case 'question.generate':
       return `${activeModeContext(event)}练习 UI 请求生成一道新题。${practice}，phase=question。先调用 interview_session read 读取当前练习的真实配置与全部历史。完成对应原子操作后，用 interview_show_question 展示刚创建或抽取的题目。${END}`
     case 'question.show':
-      return `${activeModeContext(event)}练习 UI 请求展示已保存题目。${practice}${question}。只调用 interview_show_question 展示该题，不执行任何业务修改。${END}`
+      return `${activeModeContext(event)}练习 UI 请求展示已保存题目。${practice}${question}。只调用 interview_show_question 展示该题，不执行任何业务修改；如果工具返回了 materialsFence，把它原样输出到回复正文。${END}`
+    case 'leetcode.present':
+      return `${activeModeContext(event)}${PRESENT_LEETCODE}${END}`
+    case 'materials.generate':
+      return `${activeModeContext(event)}练习 UI 请求为当前力扣题生成题目材料。${practice}${question}。先调用 interview_practice read 读取真实题目与已保存材料；尚无材料时调用 interview_materials create 保存题意、示例、数据范围、前置知识、分级提示、常见误区和相似题，已有材料则调用 interview_materials replace 重写。最后把工具返回的 materialsFence 原样输出到回复正文。${END}`
     case 'review.generate':
       return `${activeModeContext(event)}练习 UI 请求当前题讲解。${practice}${question}，phase=reveal。调用 interview_practice read 读取真实配置与完整上下文。调用 interview_explanation create 保存，然后调用 interview_show_review 展示。直接看答案不创建作答、评价或评分。${END}`
     case 'review.show':

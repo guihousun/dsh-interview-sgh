@@ -40,7 +40,7 @@ module.exports = __toCommonJS(index_exports);
 var import_react10 = __toESM(require("react"), 1);
 
 // src/client/features/live-interview.js
-var import_react5 = __toESM(require("react"), 1);
+var import_react6 = __toESM(require("react"), 1);
 
 // src/client/shared/api.js
 var cache = /* @__PURE__ */ new Map();
@@ -544,7 +544,7 @@ var LEETCODE_TOP_100 = Object.freeze(LEETCODE_TOP_100_GROUPS.flatMap((group) => 
 var PROBLEM_BY_SLUG = new Map(LEETCODE_TOP_100.map((problem) => [problem.slug, problem]));
 
 // src/client/features/leetcode.js
-var import_react4 = __toESM(require("react"), 1);
+var import_react5 = __toESM(require("react"), 1);
 
 // src/domain/leetcode-languages.js
 var DEFINITIONS = [
@@ -561,6 +561,31 @@ function leetcodeLanguageDefinition(id) {
 }
 function leetcodeLanguageLabel(id) {
   return leetcodeLanguageDefinition(id)?.label || String(id || "");
+}
+
+// src/domain/leetcode-guidance.js
+var DEFINITIONS2 = [
+  {
+    id: "guided",
+    label: "\u5F15\u5BFC\u6A21\u5F0F",
+    detail: "\u5148\u8865\u524D\u7F6E\u77E5\u8BC6\uFF0C\u6309\u63D0\u793A\u9636\u68AF\u9010\u6B65\u63A8\u5BFC\uFF0C\u4E0D\u4E3B\u52A8\u7ED9\u7B54\u6848",
+    hintTotal: 4
+  },
+  {
+    id: "standard",
+    label: "\u6807\u51C6\u6A21\u5F0F",
+    detail: "\u76F4\u63A5\u52A8\u624B\u505A\u9898\uFF0C\u9700\u8981\u65F6\u81EA\u5DF1\u70B9\u63D0\u793A\u6216\u770B\u7B54\u6848",
+    hintTotal: 3
+  }
+];
+var LEETCODE_GUIDANCE_LEVELS = Object.freeze(DEFINITIONS2.map((item) => Object.freeze(item)));
+var LEETCODE_GUIDANCE_IDS = Object.freeze(LEETCODE_GUIDANCE_LEVELS.map((item) => item.id));
+var DEFAULT_LEETCODE_GUIDANCE = "standard";
+function leetcodeGuidanceDefinition(id) {
+  return LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === id) || null;
+}
+function leetcodeGuidanceLabel(id) {
+  return leetcodeGuidanceDefinition(id)?.label || leetcodeGuidanceDefinition(DEFAULT_LEETCODE_GUIDANCE).label;
 }
 
 // src/client/shared/card-activity.js
@@ -596,18 +621,329 @@ function useCardTransition(runCommand, artifact, disabled = false) {
   return { ...lifecycle, run };
 }
 
+// src/client/features/practice-config.js
+var import_react4 = __toESM(require("react"), 1);
+var PRACTICE_MODE_OPTIONS = Object.freeze([
+  { value: "bagu", label: "\u80CC\u516B\u80A1" },
+  { value: "mock", label: "\u6A21\u62DF\u9762\u8BD5" },
+  { value: "resume_drill", label: "\u7B80\u5386\u62BC\u9898" },
+  { value: "scenario", label: "\u573A\u666F\u9898" },
+  { value: "leetcode", label: "\u5237\u529B\u6263" }
+]);
+function modeLabel(mode) {
+  return PRACTICE_MODE_OPTIONS.find((option) => option.value === mode)?.label || "";
+}
+var CODING_OPTIONS = Object.freeze([
+  { value: "true", label: "\u662F" },
+  { value: "false", label: "\u5426" }
+]);
+var JD_OPTIONS = Object.freeze([
+  { value: "true", label: "\u63D0\u4F9B JD" },
+  { value: "false", label: "\u4E0D\u63D0\u4F9B JD" }
+]);
+var DIFFICULTY_OPTIONS = Object.freeze([
+  { value: "junior", label: "\u521D\u7EA7" },
+  { value: "intermediate", label: "\u4E2D\u7EA7" },
+  { value: "senior", label: "\u9AD8\u7EA7" }
+]);
+function completedConfigText(payload) {
+  if (!payload) return "";
+  if (payload.mode === "mock") {
+    const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || "";
+    const jd = payload.config.jobDescriptionProvided ? "\u542B JD" : "\u672A\u63D0\u4F9B JD";
+    return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
+  }
+  if (payload.mode === "resume_drill") {
+    const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || "";
+    const jd = payload.config.jobDescriptionProvided ? "\u542B JD" : "\u672A\u63D0\u4F9B JD";
+    return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
+  }
+  if (payload.mode === "leetcode") {
+    return `${modeLabel(payload.mode)} \xB7 ${leetcodeLanguageLabel(payload.config.language)} \xB7 ${leetcodeGuidanceLabel(payload.config.guidance)}`;
+  }
+  return `${modeLabel(payload.mode)} \xB7 ${payload.config.topic}`;
+}
+function PracticeConfigForm({
+  initial = null,
+  busy = false,
+  disabled = false,
+  onSubmit,
+  onCancel = null,
+  submitLabel = ""
+}) {
+  const [mode, setMode] = import_react4.default.useState(initial?.mode || "");
+  const [step, setStep] = import_react4.default.useState(initial ? "config" : "mode");
+  const [topic, setTopic] = import_react4.default.useState(initial?.config?.topic || "");
+  const [resume, setResume] = import_react4.default.useState(initial?.config?.resume || "");
+  const [targetRole, setTargetRole] = import_react4.default.useState(initial?.config?.targetRole || "");
+  const [jobDescriptionProvided, setJobDescriptionProvided] = import_react4.default.useState(typeof initial?.config?.jobDescriptionProvided === "boolean" ? String(initial.config.jobDescriptionProvided) : "");
+  const [jobDescription, setJobDescription] = import_react4.default.useState(initial?.config?.jobDescription || "");
+  const [focus, setFocus] = import_react4.default.useState(initial?.config?.focus || "");
+  const [interviewerStyle, setInterviewerStyle] = import_react4.default.useState(initial?.config?.interviewerStyle || "");
+  const [coding, setCoding] = import_react4.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
+  const [difficulty, setDifficulty] = import_react4.default.useState(initial?.config?.difficulty || "");
+  const [language, setLanguage] = import_react4.default.useState(initial?.config?.language || "");
+  const [guidance, setGuidance] = import_react4.default.useState(initial?.config?.guidance || "");
+  const topicMode = mode === "bagu" || mode === "scenario";
+  const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language && guidance) : mode === "mock" && Boolean(
+    resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && interviewerStyle.trim() && coding !== "" && difficulty
+  ) || mode === "resume_drill" && Boolean(
+    resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && focus.trim() && difficulty
+  );
+  const submit = () => {
+    if (step !== "config" || !valid || disabled) return;
+    onSubmit(mode === "mock" ? {
+      mode,
+      config: {
+        resume: resume.trim(),
+        targetRole: targetRole.trim(),
+        jobDescriptionProvided: jobDescriptionProvided === "true",
+        jobDescription: jobDescriptionProvided === "true" ? jobDescription.trim() : "",
+        interviewerStyle: interviewerStyle.trim(),
+        coding: coding === "true",
+        difficulty
+      }
+    } : mode === "resume_drill" ? {
+      mode,
+      config: {
+        resume: resume.trim(),
+        targetRole: targetRole.trim(),
+        jobDescriptionProvided: jobDescriptionProvided === "true",
+        jobDescription: jobDescriptionProvided === "true" ? jobDescription.trim() : "",
+        focus: focus.trim(),
+        difficulty
+      }
+    } : mode === "leetcode" ? { mode, config: { language, guidance } } : { mode, config: { topic: topic.trim() } });
+  };
+  const chooseMode = (value) => {
+    if (disabled) return;
+    setMode(value);
+    setStep("config");
+  };
+  return h(
+    "div",
+    { className: "di-practice-form" },
+    h(
+      "ol",
+      { className: "di-config-progress", "aria-label": "\u65B0\u5EFA\u7EC3\u4E60\u8FDB\u5EA6" },
+      h("li", { className: step === "mode" ? "is-current" : "is-complete" }, h("span", null, "1"), "\u9009\u62E9\u6A21\u5F0F"),
+      h("li", { className: step === "config" ? "is-current" : "" }, h("span", null, "2"), "\u586B\u5199\u914D\u7F6E")
+    ),
+    step === "mode" ? h(
+      "section",
+      { className: "di-config-stage di-field-wide", "aria-label": "\u9009\u62E9\u7EC3\u4E60\u6A21\u5F0F" },
+      h("div", { className: "di-mode-options" }, PRACTICE_MODE_OPTIONS.map((option) => h("button", {
+        type: "button",
+        className: `di-mode-option is-${option.value}`,
+        disabled,
+        key: option.value,
+        onClick: () => chooseMode(option.value)
+      }, option.label)))
+    ) : h(
+      "section",
+      { className: "di-config-stage di-config-fields di-field-wide", "aria-label": `${modeLabel(mode)}\u914D\u7F6E` },
+      h("div", { className: "di-config-mode" }, h("span", null, "\u7EC3\u4E60\u6A21\u5F0F"), h("span", { className: `di-mode-badge is-${mode}` }, modeLabel(mode))),
+      topicMode ? h(
+        "label",
+        { className: "di-field" },
+        h("span", null, "\u4E3B\u9898"),
+        h("input", { className: "di-input", disabled, value: topic, onChange: (event) => setTopic(event.target.value) })
+      ) : null,
+      mode === "leetcode" ? h(
+        import_react4.default.Fragment,
+        null,
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u7F16\u7A0B\u8BED\u8A00"),
+          h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), disabled, onChange: setLanguage, "aria-label": "\u9009\u62E9\u7F16\u7A0B\u8BED\u8A00" })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u5F15\u5BFC\u5F3A\u5EA6"),
+          h(Select, {
+            value: guidance,
+            options: LEETCODE_GUIDANCE_LEVELS.map((item) => ({ value: item.id, label: item.label })),
+            disabled,
+            onChange: setGuidance,
+            "aria-label": "\u9009\u62E9\u5F15\u5BFC\u5F3A\u5EA6"
+          })
+        ),
+        guidance ? h("div", { className: "di-guidance-hint di-field-wide" }, LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance)?.detail || "") : null
+      ) : null,
+      mode === "mock" ? h(
+        import_react4.default.Fragment,
+        null,
+        h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "\u7B80\u5386"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u76EE\u6807\u5C97\u4F4D"),
+          h("input", { className: "di-input", disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u5C97\u4F4D\u63CF\u8FF0"),
+          h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, "aria-label": "\u9009\u62E9\u662F\u5426\u63D0\u4F9B\u5C97\u4F4D\u63CF\u8FF0" })
+        ),
+        jobDescriptionProvided === "true" ? h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "JD"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })
+        ) : null,
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u9762\u8BD5\u5B98\u98CE\u683C"),
+          h("input", { className: "di-input", disabled, value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u662F\u5426\u624B\u6495\u4EE3\u7801"),
+          h(Select, { value: coding, options: CODING_OPTIONS, disabled, onChange: setCoding, "aria-label": "\u9009\u62E9\u662F\u5426\u624B\u6495\u4EE3\u7801" })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
+          h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
+        )
+      ) : null,
+      mode === "resume_drill" ? h(
+        import_react4.default.Fragment,
+        null,
+        h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "\u7B80\u5386"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u76EE\u6807\u5C97\u4F4D"),
+          h("input", { className: "di-input", disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u5C97\u4F4D\u63CF\u8FF0"),
+          h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, "aria-label": "\u9009\u62E9\u662F\u5426\u63D0\u4F9B\u5C97\u4F4D\u63CF\u8FF0" })
+        ),
+        jobDescriptionProvided === "true" ? h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "JD"),
+          h("textarea", { className: "di-input di-textarea", disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })
+        ) : null,
+        h(
+          "label",
+          { className: "di-field di-field-wide" },
+          h("span", null, "\u62BC\u9898\u8303\u56F4"),
+          h("input", { className: "di-input", disabled, value: focus, onChange: (event) => setFocus(event.target.value), placeholder: "\u4F8B\u5982\uFF1A\u9879\u76EE\u96BE\u70B9\u3001\u6280\u672F\u9009\u578B\u3001\u5E76\u53D1\u4E0E\u7A33\u5B9A\u6027" })
+        ),
+        h(
+          "label",
+          { className: "di-field" },
+          h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
+          h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
+        )
+      ) : null
+    ),
+    h(
+      "div",
+      { className: "di-actions di-field-wide" },
+      onCancel ? h(Button, { disabled, onClick: onCancel }, "\u53D6\u6D88") : null,
+      step === "config" ? h(Button, { disabled, onClick: () => setStep("mode") }, "\u4E0A\u4E00\u6B65") : null,
+      step === "config" ? h(Button, { tone: "primary", disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60")) : null
+    )
+  );
+}
+function PracticeSetupCard({ sessionId }) {
+  const command = useCommand(sessionId);
+  const lifecycle = useCardLifecycle(false);
+  const [completedConfig, setCompletedConfig] = import_react4.default.useState(null);
+  const start = (payload) => lifecycle.enter("session.start", () => {
+    setCompletedConfig(payload);
+    return command.run("session.start", payload);
+  });
+  if (lifecycle.consumedBy) {
+    return h(
+      "article",
+      { className: "di-card di-setup-card is-complete", "aria-label": "\u7EC3\u4E60\u914D\u7F6E\u5DF2\u5C31\u7EEA" },
+      h(
+        "div",
+        { className: "di-setup-complete", role: "status", "aria-live": "polite" },
+        h("span", { className: "di-setup-complete-icon", "aria-hidden": "true" }, h(Icon, { name: "check", size: 18 })),
+        h(
+          "div",
+          { className: "di-setup-complete-copy" },
+          h("div", { className: "di-title" }, "\u7EC3\u4E60\u914D\u7F6E\u5DF2\u5C31\u7EEA"),
+          h("div", { className: "di-meta" }, completedConfigText(completedConfig))
+        )
+      ),
+      h(ErrorNotice, null, command.error)
+    );
+  }
+  return h(
+    "article",
+    { className: "di-card di-setup-card", "aria-label": "\u65B0\u5EFA\u7EC3\u4E60\u914D\u7F6E" },
+    h("header", { className: "di-card-head" }, h("div", { className: "di-title" }, "\u65B0\u5EFA\u7EC3\u4E60")),
+    h(PracticeConfigForm, {
+      busy: command.busy === "session.start",
+      disabled: lifecycle.locked,
+      onSubmit: start,
+      submitLabel: "\u5F00\u59CB\u7EC3\u4E60"
+    }),
+    h(ErrorNotice, null, command.error)
+  );
+}
+
 // src/client/features/leetcode.js
 var DIFFICULTY = Object.freeze({
   easy: { label: "\u7B80\u5355", tone: "easy" },
   medium: { label: "\u4E2D\u7B49", tone: "medium" },
   hard: { label: "\u56F0\u96BE", tone: "hard" }
 });
-function catalogProblem(catalog, slug) {
-  return catalog?.groups?.flatMap((group) => group.problems).find((problem) => problem.slug === slug) || null;
+var DIFFICULTY_OPTIONS2 = Object.freeze([
+  { value: "", label: "\u5168\u90E8\u96BE\u5EA6" },
+  { value: "easy", label: "\u7B80\u5355" },
+  { value: "medium", label: "\u4E2D\u7B49" },
+  { value: "hard", label: "\u56F0\u96BE" }
+]);
+function catalogProblems(catalog) {
+  return catalog?.groups?.flatMap((group) => group.problems) || [];
 }
-function DifficultyBadge({ difficulty }) {
+function catalogProblem(catalog, slug) {
+  return catalogProblems(catalog).find((problem) => problem.slug === slug) || null;
+}
+function matchesKeyword(problem, keyword) {
+  if (!keyword) return true;
+  const haystack = `${problem.id} ${problem.title} ${problem.slug} ${problem.category}`.toLowerCase();
+  return keyword.toLowerCase().split(/\s+/).filter(Boolean).every((part) => haystack.includes(part));
+}
+function filterProblems(problems, { keyword, difficulty, category }) {
+  return problems.filter((problem) => !difficulty || problem.difficulty === difficulty).filter((problem) => !category || problem.category === category).filter((problem) => matchesKeyword(problem, keyword));
+}
+function DifficultyBadge({ difficulty, custom = false }) {
+  if (custom) return h("span", { className: "di-lc-difficulty is-custom" }, "\u81EA\u5B9A\u4E49");
   const value = DIFFICULTY[difficulty] || { label: leetcodeDifficultyLabel(difficulty), tone: "unknown" };
+  if (!value.label) return null;
   return h("span", { className: `di-lc-difficulty is-${value.tone}` }, value.label);
+}
+function GuidanceBadge({ guidance }) {
+  const definition = LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance);
+  if (!definition) return null;
+  return h("span", { className: `di-guidance-badge is-${definition.id}`, title: definition.detail }, definition.label);
 }
 function CompletionButton({ problem, pending, onToggle }) {
   return h("button", {
@@ -619,14 +955,104 @@ function CompletionButton({ problem, pending, onToggle }) {
     onClick: () => onToggle(problem)
   }, problem.completed ? "\u2713" : "");
 }
+function LeetcodeStartButton({ problem, busy, disabled, onStart }) {
+  return h("button", {
+    type: "button",
+    className: "di-lc-start",
+    disabled: disabled || busy,
+    "aria-label": `\u5F00\u59CB\u505A${problem.title}`,
+    onClick: () => onStart(problem)
+  }, busy ? "\u51C6\u5907\u4E2D\u2026" : "\u505A\u8FD9\u9898");
+}
+function CustomProblemForm({ disabled, busy, onStart }) {
+  const [number, setNumber] = import_react5.default.useState("");
+  const [title, setTitle] = import_react5.default.useState("");
+  const [slug, setSlug] = import_react5.default.useState("");
+  const valid = Boolean(title.trim() || slug.trim());
+  const submit = () => {
+    if (!valid || disabled) return;
+    onStart({ number: number.trim(), title: title.trim(), slug: slug.trim(), custom: true });
+  };
+  return h(
+    "section",
+    { className: "di-lc-custom" },
+    h(
+      "div",
+      { className: "di-lc-custom-head" },
+      h(
+        "div",
+        null,
+        h("div", { className: "di-lc-custom-title" }, "\u70ED\u9898 100 \u91CC\u6CA1\u6709\uFF1F\u76F4\u63A5\u70B9\u540D\u4E00\u9053"),
+        h("div", { className: "di-meta" }, "\u586B\u5199\u9898\u53F7\u3001\u9898\u540D\uFF0C\u6216\u8005\u529B\u6263\u7684\u82F1\u6587 slug\uFF08\u4F8B\u5982 sliding-window-maximum\uFF09\u3002")
+      )
+    ),
+    h(
+      "div",
+      { className: "di-lc-custom-fields" },
+      h("input", { className: "di-input", value: number, disabled, placeholder: "\u9898\u53F7\uFF0C\u4F8B\u5982 300", onChange: (event) => setNumber(event.target.value), "aria-label": "\u529B\u6263\u9898\u53F7" }),
+      h("input", { className: "di-input", value: title, disabled, placeholder: "\u9898\u540D\uFF0C\u4F8B\u5982 \u6700\u957F\u9012\u589E\u5B50\u5E8F\u5217", onChange: (event) => setTitle(event.target.value), "aria-label": "\u529B\u6263\u9898\u540D" }),
+      h("input", { className: "di-input", value: slug, disabled, placeholder: "slug\uFF08\u53EF\u9009\uFF09", onChange: (event) => setSlug(event.target.value), "aria-label": "\u529B\u6263\u9898\u76EE slug" }),
+      h(Button, { tone: "primary", disabled: disabled || !valid, busy, onClick: submit }, "\u5F00\u59CB\u8FD9\u9053\u9898")
+    )
+  );
+}
+function CatalogRow({ problem, pendingSlug, onToggle, onStart }) {
+  return h(
+    "div",
+    { className: `di-lc-row is-selectable${problem.completed ? " is-complete" : ""}` },
+    h(CompletionButton, { problem, pending: pendingSlug === problem.slug, onToggle }),
+    h(
+      "a",
+      { className: "di-lc-problem-link", href: problem.url, target: "_blank", rel: "noreferrer" },
+      h("span", { className: "di-lc-problem-id" }, problem.id),
+      h("span", null, problem.title),
+      h("span", { className: "di-lc-open", "aria-hidden": "true" }, "\u2197")
+    ),
+    h(DifficultyBadge, { difficulty: problem.difficulty }),
+    h(LeetcodeStartButton, {
+      problem,
+      busy: pendingSlug === problem.slug,
+      disabled: Boolean(pendingSlug) && pendingSlug !== problem.slug,
+      onStart
+    })
+  );
+}
+function CatalogGroup({ group, pendingSlug, onToggle, onStart }) {
+  const completed = group.problems.filter((problem) => problem.completed).length;
+  return h(
+    "section",
+    { className: "di-lc-group" },
+    h(
+      "div",
+      { className: "di-lc-group-head" },
+      h("h3", null, group.category),
+      h("span", null, `${completed}/${group.problems.length}`)
+    ),
+    h("div", { className: "di-lc-problems" }, group.problems.map((problem) => h(CatalogRow, {
+      key: problem.slug,
+      problem,
+      pendingSlug,
+      onToggle,
+      onStart
+    })))
+  );
+}
 function LeetcodeCatalog({ sessionId }) {
   const query = useInterviewQuery("leetcode-catalog", () => interviewApi.leetcodeCatalog(), [], { cache: false });
+  const sessionQuery = useInterviewQuery(`lc-session:${sessionId}`, () => interviewApi.session(sessionId), [sessionId], { cache: false });
   const command = useCommand(sessionId);
-  const [pendingSlug, setPendingSlug] = import_react4.default.useState("");
-  if (query.loading && !query.data) return h("div", { className: "di-lc-catalog" }, h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u529B\u6263\u70ED\u9898 100\u2026" }));
+  const [pendingSlug, setPendingSlug] = import_react5.default.useState("");
+  const [pendingProblem, setPendingProblem] = import_react5.default.useState(null);
+  const [keyword, setKeyword] = import_react5.default.useState("");
+  const [difficulty, setDifficulty] = import_react5.default.useState("");
+  const [category, setCategory] = import_react5.default.useState("");
+  const [customOpen, setCustomOpen] = import_react5.default.useState(false);
+  if (query.loading && !query.data) return h("div", { className: "di-lc-catalog" }, h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u529B\u6263\u9898\u5E93\u2026" }));
   if (query.error) return h("div", { className: "di-lc-catalog" }, h(ErrorNotice, null, query.error));
   const catalog = query.data?.resource?.data;
   if (!catalog) return null;
+  const session = sessionQuery.data?.resource?.data;
+  const activeLeetcode = Boolean(session?.selected && session.practice?.mode === "leetcode" && session.practice?.status === "active");
   const toggle = async (problem) => {
     setPendingSlug(problem.slug);
     try {
@@ -637,18 +1063,73 @@ function LeetcodeCatalog({ sessionId }) {
       setPendingSlug("");
     }
   };
+  const start = async (problem) => {
+    if (!activeLeetcode) {
+      setPendingProblem(problem);
+      return;
+    }
+    setPendingSlug(problem.slug || problem.title);
+    try {
+      await command.run("leetcode.select", { problem });
+      await Promise.all([query.reload(), sessionQuery.reload()]);
+    } catch {
+    } finally {
+      setPendingSlug("");
+    }
+  };
+  const startWithConfig = async (payload) => {
+    if (!pendingProblem) return;
+    try {
+      await command.run("leetcode.select", { problem: pendingProblem, config: payload.config });
+      setPendingProblem(null);
+      await Promise.all([query.reload(), sessionQuery.reload()]);
+    } catch {
+    }
+  };
+  if (pendingProblem) {
+    return h(
+      "section",
+      { className: "di-lc-catalog", "aria-label": "\u4E3A\u6307\u5B9A\u9898\u76EE\u521B\u5EFA\u5237\u529B\u6263\u7EC3\u4E60" },
+      h(
+        "header",
+        { className: "di-lc-catalog-head" },
+        h(
+          "div",
+          { className: "di-lc-heading" },
+          h("h2", { className: "di-lc-title" }, "\u5F00\u59CB\u8FD9\u9053\u9898"),
+          h("span", { className: "di-lc-source" }, `${pendingProblem.id ? `${pendingProblem.id}. ` : ""}${pendingProblem.title}`)
+        )
+      ),
+      h(
+        "div",
+        { className: "di-lc-catalog-config" },
+        h(PracticeConfigForm, {
+          initial: { mode: "leetcode", config: session?.practice?.mode === "leetcode" ? session.practice.config : {} },
+          busy: command.busy === "leetcode.select",
+          onSubmit: startWithConfig,
+          onCancel: () => setPendingProblem(null),
+          submitLabel: "\u5F00\u59CB\u7EC3\u4E60"
+        })
+      ),
+      h(ErrorNotice, null, command.error)
+    );
+  }
+  const problems = catalogProblems(catalog);
+  const filtered = filterProblems(problems, { keyword, difficulty, category });
+  const visibleGroups = catalog.groups.map((group) => ({ ...group, problems: group.problems.filter((problem) => filtered.includes(problem)) })).filter((group) => group.problems.length > 0);
   const progress = catalog.total ? Math.round(catalog.completedCount / catalog.total * 100) : 0;
+  const filtering = Boolean(keyword.trim() || difficulty || category);
   return h(
     "section",
-    { className: "di-lc-catalog", "aria-label": "\u529B\u6263\u70ED\u9898 100 \u9898\u76EE\u5217\u8868" },
+    { className: "di-lc-catalog", "aria-label": "\u529B\u6263\u9898\u5E93" },
     h(
       "header",
       { className: "di-lc-catalog-head" },
       h(
         "div",
         { className: "di-lc-heading" },
-        h("h2", { className: "di-lc-title" }, "\u70ED\u9898 100"),
-        h("a", { className: "di-lc-source", href: catalog.source.url, target: "_blank", rel: "noreferrer" }, "\u5B98\u65B9\u9898\u5355 \u2197")
+        h("h2", { className: "di-lc-title" }, "\u9898\u5E93"),
+        h("a", { className: "di-lc-source", href: catalog.source.url, target: "_blank", rel: "noreferrer" }, "\u70ED\u9898 100 \xB7 \u5B98\u65B9\u9898\u5355 \u2197")
       ),
       h(
         "div",
@@ -667,55 +1148,200 @@ function LeetcodeCatalog({ sessionId }) {
         )
       )
     ),
+    h(
+      "div",
+      { className: "di-lc-toolbar" },
+      h("input", {
+        className: "di-input di-lc-search",
+        value: keyword,
+        placeholder: "\u641C\u9898\u53F7\u3001\u9898\u540D\u6216\u9898\u578B\uFF0C\u4F8B\u5982 33 / \u4E8C\u5206 / two-sum",
+        "aria-label": "\u641C\u7D22\u529B\u6263\u9898\u76EE",
+        onChange: (event) => setKeyword(event.target.value)
+      }),
+      h(Select, {
+        className: "di-lc-filter-select",
+        value: difficulty,
+        options: DIFFICULTY_OPTIONS2,
+        onChange: setDifficulty,
+        "aria-label": "\u6309\u96BE\u5EA6\u7B5B\u9009"
+      }),
+      h(Select, {
+        className: "di-lc-filter-select",
+        value: category,
+        options: [{ value: "", label: "\u5168\u90E8\u9898\u578B" }, ...(catalog.categories || []).map((item) => ({ value: item, label: item }))],
+        onChange: setCategory,
+        "aria-label": "\u6309\u9898\u578B\u7B5B\u9009"
+      }),
+      h(Button, { onClick: () => setCustomOpen((value) => !value) }, customOpen ? "\u6536\u8D77\u81EA\u5B9A\u4E49" : "\u81EA\u5B9A\u4E49\u9898\u76EE")
+    ),
+    customOpen ? h(CustomProblemForm, { disabled: command.busy === "leetcode.select", busy: false, onStart: start }) : null,
+    h(
+      "div",
+      { className: "di-lc-toolbar-note" },
+      h("span", { className: "di-meta" }, filtering ? `\u7B5B\u9009\u51FA ${filtered.length} \u9053\u9898` : "\u70B9\u300C\u505A\u8FD9\u9898\u300D\u76F4\u63A5\u5F00\u59CB\uFF1B\u5DF2\u6709\u8FDB\u884C\u4E2D\u7684\u529B\u6263\u7EC3\u4E60\u65F6\u4F1A\u81EA\u52A8\u7ED3\u675F\u5B83\u5E76\u5207\u5230\u65B0\u9898\u3002")
+    ),
     h(ErrorNotice, null, command.error),
-    h("div", { className: "di-lc-groups" }, catalog.groups.map((group) => {
-      const completed = group.problems.filter((problem) => problem.completed).length;
-      return h(
-        "section",
-        { className: "di-lc-group", key: group.category },
-        h(
-          "div",
-          { className: "di-lc-group-head" },
-          h("h3", null, group.category),
-          h("span", null, `${completed}/${group.problems.length}`)
-        ),
-        h("div", { className: "di-lc-problems" }, group.problems.map((problem) => h(
-          "div",
-          {
-            className: `di-lc-row${problem.completed ? " is-complete" : ""}`,
-            key: problem.slug
-          },
-          h(CompletionButton, { problem, pending: pendingSlug === problem.slug, onToggle: toggle }),
-          h(
-            "a",
-            { className: "di-lc-problem-link", href: problem.url, target: "_blank", rel: "noreferrer" },
-            h("span", { className: "di-lc-problem-id" }, problem.id),
-            h("span", null, problem.title),
-            h("span", { className: "di-lc-open", "aria-hidden": "true" }, "\u2197")
-          ),
-          h(DifficultyBadge, { difficulty: problem.difficulty })
-        )))
-      );
-    }))
+    !visibleGroups.length ? h(Empty, { title: "\u6CA1\u6709\u5339\u914D\u7684\u9898\u76EE", detail: "\u6362\u4E2A\u5173\u952E\u5B57\uFF0C\u6216\u8005\u7528\u300C\u81EA\u5B9A\u4E49\u9898\u76EE\u300D\u70B9\u540D\u4E00\u9053\u70ED\u9898 100 \u4E4B\u5916\u7684\u9898\u3002" }) : h("div", { className: "di-lc-groups" }, visibleGroups.map((group) => h(CatalogGroup, {
+      key: group.category,
+      group,
+      pendingSlug,
+      onToggle: toggle,
+      onStart: start
+    })))
   );
 }
-function LeetcodeQuestionCard({ question, catalog, language, active, expanded, command, transition, onRun, onNext, onExplain }) {
-  const saved = catalogProblem(catalog, question.leetcode.slug);
-  const problem = { ...question.leetcode, completed: saved?.completed === true };
+function MaterialsBlock({ question }) {
+  const materials = question.materials;
+  if (!materials) return null;
+  const revealed = question.hintTotal ? Math.min(question.hintLevel || 0, question.hintTotal) : 0;
+  return h(
+    "div",
+    { className: "di-lc-materials" },
+    h(
+      "div",
+      { className: "di-lc-material-block" },
+      h("div", { className: "di-lc-material-label" }, "\u9898\u610F"),
+      h(Markdown, null, materials.statement)
+    ),
+    materials.examples?.length ? h(
+      "div",
+      { className: "di-lc-material-block" },
+      h("div", { className: "di-lc-material-label" }, "\u793A\u4F8B"),
+      h("div", { className: "di-lc-examples" }, materials.examples.map((example, index) => h(
+        "div",
+        { className: "di-lc-example", key: index },
+        h("div", null, h("span", null, "\u8F93\u5165"), h("code", null, example.input)),
+        h("div", null, h("span", null, "\u8F93\u51FA"), h("code", null, example.output)),
+        example.note ? h("div", null, h("span", null, "\u8BF4\u660E"), h("span", null, example.note)) : null
+      )))
+    ) : null,
+    materials.constraints?.length ? h(
+      "div",
+      { className: "di-lc-material-block" },
+      h("div", { className: "di-lc-material-label" }, "\u6570\u636E\u8303\u56F4"),
+      h("ul", { className: "di-lc-chips" }, materials.constraints.map((item, index) => h("li", { key: index }, h("code", null, item))))
+    ) : null,
+    materials.knowledge?.length ? h(
+      "div",
+      { className: "di-lc-material-block" },
+      h("div", { className: "di-lc-material-label" }, "\u524D\u7F6E\u77E5\u8BC6"),
+      materials.knowledge.map((item) => h(
+        "div",
+        { className: "di-lc-knowledge", key: item.title },
+        h("div", { className: "di-lc-knowledge-title" }, item.title),
+        h(Markdown, null, item.detail)
+      ))
+    ) : null,
+    materials.hints?.length ? h(
+      "div",
+      { className: "di-lc-material-block" },
+      h("div", { className: "di-lc-material-label" }, `\u63D0\u793A\u9636\u68AF ${revealed}/${materials.hints.length}`),
+      h("ol", { className: "di-lc-hints" }, materials.hints.map((hint, index) => h("li", {
+        key: index,
+        className: index < revealed ? "is-revealed" : "is-locked"
+      }, index < revealed ? h(Markdown, null, hint) : "\u672A\u89E3\u9501\uFF0C\u70B9\u300C\u63D0\u793A\u300D\u9010\u6B65\u6253\u5F00")))
+    ) : null,
+    materials.pitfalls?.length ? h(
+      "div",
+      { className: "di-lc-material-block" },
+      h("div", { className: "di-lc-material-label" }, "\u5E38\u89C1\u8BEF\u533A"),
+      h("ul", null, materials.pitfalls.map((item, index) => h("li", { key: index }, item)))
+    ) : null,
+    materials.related?.length ? h(
+      "div",
+      { className: "di-lc-material-block" },
+      h("div", { className: "di-lc-material-label" }, "\u76F8\u4F3C\u9898"),
+      h("ul", { className: "di-lc-related" }, materials.related.map((item) => h(
+        "li",
+        { key: `${item.id}-${item.title}` },
+        h("a", { className: "di-link", href: item.url, target: "_blank", rel: "noreferrer" }, `${item.id ? `${item.id}. ` : ""}${item.title}`)
+      )))
+    ) : null
+  );
+}
+function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
+  const [keyword, setKeyword] = import_react5.default.useState("");
+  const [difficulty, setDifficulty] = import_react5.default.useState("");
+  const problems = filterProblems(catalogProblems(catalog), { keyword, difficulty, category: "" });
+  const visible = problems.slice(0, 8);
+  return h(
+    "section",
+    { className: "di-lc-picker", "aria-label": "\u6362\u4E00\u9053\u9898" },
+    h(
+      "div",
+      { className: "di-lc-toolbar" },
+      h("input", {
+        className: "di-input di-lc-search",
+        value: keyword,
+        placeholder: "\u641C\u9898\u53F7\u3001\u9898\u540D\u6216\u9898\u578B",
+        "aria-label": "\u641C\u7D22\u8981\u505A\u7684\u9898\u76EE",
+        onChange: (event) => setKeyword(event.target.value)
+      }),
+      h(Select, { className: "di-lc-filter-select", value: difficulty, options: DIFFICULTY_OPTIONS2, onChange: setDifficulty, "aria-label": "\u6309\u96BE\u5EA6\u7B5B\u9009" }),
+      h(Button, { disabled: busy, onClick: onClose }, "\u6536\u8D77")
+    ),
+    visible.length ? h("div", { className: "di-lc-picker-list" }, visible.map((problem) => h(
+      "button",
+      {
+        type: "button",
+        className: "di-lc-picker-row",
+        key: problem.slug,
+        disabled: busy,
+        onClick: () => onPick({ slug: problem.slug })
+      },
+      h("span", { className: "di-lc-problem-id" }, problem.id),
+      h("span", { className: "di-lc-picker-title" }, problem.title),
+      h(DifficultyBadge, { difficulty: problem.difficulty })
+    ))) : h("div", { className: "di-empty" }, h("div", { className: "di-empty-title" }, "\u6CA1\u6709\u5339\u914D\u7684\u9898\u76EE")),
+    h(
+      "div",
+      { className: "di-lc-picker-foot" },
+      h(Button, {
+        disabled: busy,
+        onClick: () => onPick(difficulty ? { difficulty } : {})
+      }, consumedBy === "question.next" ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : difficulty ? `\u968F\u673A\u4E00\u9053${leetcodeDifficultyLabel(difficulty)}\u9898` : "\u968F\u673A\u62BD\u4E00\u9053"),
+      problems.length > visible.length ? h("span", { className: "di-meta" }, `\u8FD8\u6709 ${problems.length - visible.length} \u9053\u9898\uFF0C\u7EE7\u7EED\u8F93\u5165\u7F29\u5C0F\u8303\u56F4`) : null
+    )
+  );
+}
+function LeetcodeQuestionCard({
+  question,
+  catalog,
+  language,
+  active,
+  expanded,
+  command,
+  transition,
+  onRun,
+  onNext,
+  onExplain,
+  onHint,
+  onGenerateMaterials,
+  pendingMaterials
+}) {
+  const problem = question.leetcode;
+  const materials = question.materials;
+  const saved = catalogProblem(catalog, problem.slug);
+  const completed = saved?.completed === true;
+  const hintTotal = question.hintTotal || 0;
+  const hintLevel = question.hintLevel || 0;
+  const [showMaterials, setShowMaterials] = import_react5.default.useState(false);
+  const [pickerOpen, setPickerOpen] = import_react5.default.useState(false);
   return h(
     "article",
     { className: `di-card di-lc-problem-card${active ? " is-active" : " is-history"}`, "aria-label": active ? "\u5F53\u524D\u529B\u6263\u9898\u76EE" : "\u5386\u53F2\u529B\u6263\u9898\u76EE" },
     h(
       "div",
       { className: "di-lc-problem-main" },
-      h("div", { className: "di-lc-problem-title" }, h("span", null, problem.id), problem.title),
+      h("div", { className: "di-lc-problem-title" }, problem.id ? h("span", null, problem.id) : null, problem.title),
       h(
         "div",
         { className: "di-lc-problem-meta" },
         h("span", null, problem.category),
-        h(DifficultyBadge, { difficulty: problem.difficulty }),
+        h(DifficultyBadge, { difficulty: problem.difficulty, custom: Boolean(problem.custom) }),
         language ? h("span", null, leetcodeLanguageLabel(language)) : null,
-        h("span", { className: problem.completed ? "is-complete" : "" }, problem.completed ? "\u5DF2\u5B8C\u6210" : "\u672A\u5B8C\u6210")
+        h(GuidanceBadge, { guidance: question.guidance }),
+        problem.slug ? h("span", { className: completed ? "is-complete" : "" }, completed ? "\u5DF2\u5B8C\u6210" : "\u672A\u5B8C\u6210") : null
       )
     ),
     h(
@@ -723,22 +1349,46 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
       { className: "di-lc-problem-actions" },
       h("a", { className: "di-button is-primary", href: problem.url, target: "_blank", rel: "noreferrer" }, "\u6253\u5F00\u9898\u76EE \u2197"),
       active ? h(
-        import_react4.default.Fragment,
+        import_react5.default.Fragment,
         null,
-        h(Button, {
-          disabled: transition.locked,
-          busy: command.busy === "leetcode.set-completion",
-          onClick: () => onRun("leetcode.set-completion", { slug: problem.slug, completed: !problem.completed })
-        }, problem.completed ? "\u6807\u8BB0\u672A\u5B8C\u6210" : "\u6807\u8BB0\u5B8C\u6210"),
-        h(Button, { disabled: transition.locked, onClick: onNext }, transition.consumedBy === "question.next" ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898"),
+        materials && hintTotal ? h(Button, {
+          disabled: transition.locked || pendingMaterials || hintLevel >= hintTotal,
+          busy: command.busy === "question.hint",
+          onClick: () => onHint()
+        }, hintLevel >= hintTotal ? `\u63D0\u793A\u5DF2\u7528\u5B8C ${hintTotal}/${hintTotal}` : `\u63D0\u793A ${hintLevel}/${hintTotal}`) : h(Button, {
+          disabled: transition.locked || pendingMaterials,
+          busy: command.busy === "question.materials" || pendingMaterials,
+          onClick: () => onGenerateMaterials()
+        }, pendingMaterials ? "\u6B63\u5728\u751F\u6210\u6750\u6599\u2026" : "\u751F\u6210\u9898\u76EE\u6750\u6599"),
         h(Button, {
           disabled: transition.locked,
           busy: command.busy === "question.reveal",
           onClick: () => onExplain(question)
-        }, "\u8BB2\u89E3")
+        }, question.explanation ? expanded ? "\u6536\u8D77\u8BB2\u89E3" : "\u5C55\u5F00\u8BB2\u89E3" : "\u770B\u7B54\u6848"),
+        h(Button, { disabled: transition.locked, onClick: () => setPickerOpen((value) => !value) }, pickerOpen ? "\u6536\u8D77\u9009\u9898" : "\u6362\u4E00\u9898"),
+        problem.slug ? h(Button, {
+          disabled: transition.locked,
+          busy: command.busy === "leetcode.set-completion",
+          onClick: () => onRun("leetcode.set-completion", { slug: problem.slug, completed: !completed })
+        }, completed ? "\u6807\u8BB0\u672A\u5B8C\u6210" : "\u6807\u8BB0\u5B8C\u6210") : null
       ) : null
     ),
+    materials ? h(
+      "div",
+      { className: "di-lc-material-actions" },
+      h(Button, { onClick: () => setShowMaterials((value) => !value) }, showMaterials ? "\u6536\u8D77\u9898\u76EE\u6750\u6599" : "\u67E5\u770B\u9898\u76EE\u6750\u6599"),
+      h("span", { className: "di-meta" }, "\u6750\u6599\u540C\u65F6\u4EE5 dsh-ui \u5361\u7247\u5C55\u793A\u5728\u5BF9\u8BDD\u91CC")
+    ) : null,
+    pickerOpen && active ? h(ProblemPicker, {
+      catalog,
+      busy: transition.locked || command.busy === "question.next",
+      consumedBy: transition.consumedBy,
+      onPick: (selection) => onNext(selection),
+      onClose: () => setPickerOpen(false)
+    }) : null,
+    active && pendingMaterials ? h("div", { className: "di-notice" }, "\u6B63\u5728\u751F\u6210\u9898\u76EE\u6750\u6599\u4E0E\u63D0\u793A\u9636\u68AF\uFF0C\u5B8C\u6210\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\u5728\u8FD9\u91CC\u3002") : null,
     active ? h(ErrorNotice, null, command.error) : null,
+    showMaterials && materials ? h("section", { className: "di-section di-lc-material-section", "aria-label": "\u9898\u76EE\u6750\u6599" }, h(MaterialsBlock, { question })) : null,
     expanded && question.explanation ? h(
       "section",
       { className: "di-section", "aria-label": "\u9898\u76EE\u8BB2\u89E3" },
@@ -753,24 +1403,44 @@ function LeetcodeQuestionCard({ question, catalog, language, active, expanded, c
     ) : null
   );
 }
-function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, language = "", resourceRevision = 0 }) {
+function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, language = "", resourceRevision = 0, onRefresh = null }) {
   const sessionQuery = useInterviewQuery(`session:${sessionId}:${artifact.presentationId}`, () => interviewApi.session(sessionId), [sessionId, artifact.presentationId, resourceRevision], { version: resourceRevision, cache: false });
   const catalogQuery = useInterviewQuery("leetcode-catalog-current", () => interviewApi.leetcodeCatalog(), [], { cache: false });
   const command = useCommand(sessionId);
   const session = sessionQuery.data?.resource?.data;
   const current = initialQuestion;
-  const [showExplanation, setShowExplanation] = import_react4.default.useState(false);
+  const [showExplanation, setShowExplanation] = import_react5.default.useState(false);
+  const [pendingMaterials, setPendingMaterials] = import_react5.default.useState(false);
+  const [pollTick, setPollTick] = import_react5.default.useState(0);
+  const refreshRef = import_react5.default.useRef(null);
   const artifactActive = isCardActive(session, artifact);
   const transition = useCardTransition(command.run, artifact, !artifactActive);
-  import_react4.default.useEffect(() => {
+  refreshRef.current = () => {
+    onRefresh?.();
+    sessionQuery.reload();
+  };
+  import_react5.default.useEffect(() => {
     setShowExplanation(false);
+    setPendingMaterials(false);
+    setPollTick(0);
   }, [current?.id]);
+  import_react5.default.useEffect(() => {
+    if (pendingMaterials && current?.materials) setPendingMaterials(false);
+  }, [pendingMaterials, current?.materials]);
+  import_react5.default.useEffect(() => {
+    if (!pendingMaterials || current?.materials || pollTick >= 8) return void 0;
+    const timer = setTimeout(() => {
+      refreshRef.current?.();
+      setPollTick((value) => value + 1);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [pendingMaterials, current?.materials, pollTick]);
   if (sessionQuery.loading && !current) return h("div", { className: "di-card" }, h(Loading));
   if (!current?.leetcode) return null;
   const run = async (name2, payload) => {
     try {
       const result = await command.run(name2, payload);
-      await Promise.all([sessionQuery.reload(), catalogQuery.reload()]);
+      await Promise.all([sessionQuery.reload(), catalogQuery.reload(), Promise.resolve(onRefresh?.())]);
       return result;
     } catch {
       return null;
@@ -783,11 +1453,25 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, lang
     }
     await transition.run("question.reveal");
   };
-  const next = () => transition.run("question.next");
+  const next = (selection = null) => transition.run("question.next", selection || {});
+  const hint = async () => {
+    const result = await run("question.hint", { questionId: current.id });
+    if (result?.resource?.kind === "materials-pending") {
+      setPollTick(0);
+      setPendingMaterials(true);
+    }
+  };
+  const generateMaterials = async () => {
+    const result = await run("question.materials", { questionId: current.id });
+    if (result?.resource?.kind === "materials-pending") {
+      setPollTick(0);
+      setPendingMaterials(true);
+    }
+  };
   const catalog = catalogQuery.data?.resource?.data;
   const active = artifactActive;
   return h(LeetcodeQuestionCard, {
-    question: current,
+    question: { ...current, guidance: session?.practice?.config?.guidance || null },
     catalog,
     language: language || session?.practice?.config?.language,
     active,
@@ -796,7 +1480,10 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, lang
     transition,
     onRun: run,
     onNext: next,
-    onExplain: explain
+    onExplain: explain,
+    onHint: hint,
+    onGenerateMaterials: generateMaterials,
+    pendingMaterials
   });
 }
 
@@ -942,7 +1629,14 @@ function QuestionResourceCard({ artifact, revision, sessionId }) {
   const session = sessionQuery.data?.resource?.data;
   const question = practice?.questions?.find((item) => item.id === artifact.questionId);
   const active = isCardActive(session, artifact);
-  return h(ArtifactState, { query, missing: "\u627E\u4E0D\u5230\u9898\u76EE\u5361\u7247\u6570\u636E" }, question ? question.leetcode ? h(LeetcodeProblemCard, { sessionId, initialQuestion: question, artifact, language: practice.config?.language, resourceRevision: revision }) : h(QuestionResultCard, { sessionId, question, artifact, answerDisabled: !active }) : null);
+  return h(ArtifactState, { query, missing: "\u627E\u4E0D\u5230\u9898\u76EE\u5361\u7247\u6570\u636E" }, question ? question.leetcode ? h(LeetcodeProblemCard, {
+    sessionId,
+    initialQuestion: question,
+    artifact,
+    language: practice.config?.language,
+    resourceRevision: revision,
+    onRefresh: () => query.reload()
+  }) : h(QuestionResultCard, { sessionId, question, artifact, answerDisabled: !active }) : null);
 }
 function ReviewResourceCard({ artifact, revision, sessionId }) {
   const query = useArtifactPractice(artifact, revision);
@@ -972,7 +1666,7 @@ function PracticeSummaryCard({ artifact, revision }) {
       "div",
       { className: "di-card-body" },
       leetcode ? h(
-        import_react5.default.Fragment,
+        import_react6.default.Fragment,
         null,
         h("div", { className: "di-meta" }, `\u672C\u6B21\u5171\u8BB0\u5F55 ${summary.questionCount} \u9053\u9898`),
         h("ol", null, summary.problems.map((problem) => h(
@@ -982,7 +1676,7 @@ function PracticeSummaryCard({ artifact, revision }) {
           ` \xB7 ${problem.category} \xB7 ${leetcodeDifficultyLabel(problem.difficulty)}`
         )))
       ) : h(
-        import_react5.default.Fragment,
+        import_react6.default.Fragment,
         null,
         h(Markdown, null, summary.overall),
         h(
@@ -1005,275 +1699,6 @@ function PracticeSummaryCard({ artifact, revision }) {
 
 // src/client/features/practice-library.js
 var import_react7 = __toESM(require("react"), 1);
-
-// src/client/features/practice-config.js
-var import_react6 = __toESM(require("react"), 1);
-var PRACTICE_MODE_OPTIONS = Object.freeze([
-  { value: "bagu", label: "\u80CC\u516B\u80A1" },
-  { value: "mock", label: "\u6A21\u62DF\u9762\u8BD5" },
-  { value: "resume_drill", label: "\u7B80\u5386\u62BC\u9898" },
-  { value: "scenario", label: "\u573A\u666F\u9898" },
-  { value: "leetcode", label: "\u5237\u529B\u6263" }
-]);
-function modeLabel(mode) {
-  return PRACTICE_MODE_OPTIONS.find((option) => option.value === mode)?.label || "";
-}
-var CODING_OPTIONS = Object.freeze([
-  { value: "true", label: "\u662F" },
-  { value: "false", label: "\u5426" }
-]);
-var JD_OPTIONS = Object.freeze([
-  { value: "true", label: "\u63D0\u4F9B JD" },
-  { value: "false", label: "\u4E0D\u63D0\u4F9B JD" }
-]);
-var DIFFICULTY_OPTIONS = Object.freeze([
-  { value: "junior", label: "\u521D\u7EA7" },
-  { value: "intermediate", label: "\u4E2D\u7EA7" },
-  { value: "senior", label: "\u9AD8\u7EA7" }
-]);
-function completedConfigText(payload) {
-  if (!payload) return "";
-  if (payload.mode === "mock") {
-    const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || "";
-    const jd = payload.config.jobDescriptionProvided ? "\u542B JD" : "\u672A\u63D0\u4F9B JD";
-    return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
-  }
-  if (payload.mode === "resume_drill") {
-    const difficulty = DIFFICULTY_OPTIONS.find((option) => option.value === payload.config.difficulty)?.label || "";
-    const jd = payload.config.jobDescriptionProvided ? "\u542B JD" : "\u672A\u63D0\u4F9B JD";
-    return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
-  }
-  if (payload.mode === "leetcode") return `${modeLabel(payload.mode)} \xB7 ${leetcodeLanguageLabel(payload.config.language)}`;
-  return `${modeLabel(payload.mode)} \xB7 ${payload.config.topic}`;
-}
-function PracticeConfigForm({
-  initial = null,
-  busy = false,
-  disabled = false,
-  onSubmit,
-  onCancel = null,
-  submitLabel = ""
-}) {
-  const [mode, setMode] = import_react6.default.useState(initial?.mode || "");
-  const [step, setStep] = import_react6.default.useState(initial ? "config" : "mode");
-  const [topic, setTopic] = import_react6.default.useState(initial?.config?.topic || "");
-  const [resume, setResume] = import_react6.default.useState(initial?.config?.resume || "");
-  const [targetRole, setTargetRole] = import_react6.default.useState(initial?.config?.targetRole || "");
-  const [jobDescriptionProvided, setJobDescriptionProvided] = import_react6.default.useState(typeof initial?.config?.jobDescriptionProvided === "boolean" ? String(initial.config.jobDescriptionProvided) : "");
-  const [jobDescription, setJobDescription] = import_react6.default.useState(initial?.config?.jobDescription || "");
-  const [focus, setFocus] = import_react6.default.useState(initial?.config?.focus || "");
-  const [interviewerStyle, setInterviewerStyle] = import_react6.default.useState(initial?.config?.interviewerStyle || "");
-  const [coding, setCoding] = import_react6.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
-  const [difficulty, setDifficulty] = import_react6.default.useState(initial?.config?.difficulty || "");
-  const [language, setLanguage] = import_react6.default.useState(initial?.config?.language || "");
-  const topicMode = mode === "bagu" || mode === "scenario";
-  const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language) : mode === "mock" && Boolean(
-    resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && interviewerStyle.trim() && coding !== "" && difficulty
-  ) || mode === "resume_drill" && Boolean(
-    resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && focus.trim() && difficulty
-  );
-  const submit = () => {
-    if (step !== "config" || !valid || disabled) return;
-    onSubmit(mode === "mock" ? {
-      mode,
-      config: {
-        resume: resume.trim(),
-        targetRole: targetRole.trim(),
-        jobDescriptionProvided: jobDescriptionProvided === "true",
-        jobDescription: jobDescriptionProvided === "true" ? jobDescription.trim() : "",
-        interviewerStyle: interviewerStyle.trim(),
-        coding: coding === "true",
-        difficulty
-      }
-    } : mode === "resume_drill" ? {
-      mode,
-      config: {
-        resume: resume.trim(),
-        targetRole: targetRole.trim(),
-        jobDescriptionProvided: jobDescriptionProvided === "true",
-        jobDescription: jobDescriptionProvided === "true" ? jobDescription.trim() : "",
-        focus: focus.trim(),
-        difficulty
-      }
-    } : mode === "leetcode" ? { mode, config: { language } } : { mode, config: { topic: topic.trim() } });
-  };
-  const chooseMode = (value) => {
-    if (disabled) return;
-    setMode(value);
-    setStep("config");
-  };
-  return h(
-    "div",
-    { className: "di-practice-form" },
-    h(
-      "ol",
-      { className: "di-config-progress", "aria-label": "\u65B0\u5EFA\u7EC3\u4E60\u8FDB\u5EA6" },
-      h("li", { className: step === "mode" ? "is-current" : "is-complete" }, h("span", null, "1"), "\u9009\u62E9\u6A21\u5F0F"),
-      h("li", { className: step === "config" ? "is-current" : "" }, h("span", null, "2"), "\u586B\u5199\u914D\u7F6E")
-    ),
-    step === "mode" ? h(
-      "section",
-      { className: "di-config-stage di-field-wide", "aria-label": "\u9009\u62E9\u7EC3\u4E60\u6A21\u5F0F" },
-      h("div", { className: "di-mode-options" }, PRACTICE_MODE_OPTIONS.map((option) => h("button", {
-        type: "button",
-        className: `di-mode-option is-${option.value}`,
-        disabled,
-        key: option.value,
-        onClick: () => chooseMode(option.value)
-      }, option.label)))
-    ) : h(
-      "section",
-      { className: "di-config-stage di-config-fields di-field-wide", "aria-label": `${modeLabel(mode)}\u914D\u7F6E` },
-      h("div", { className: "di-config-mode" }, h("span", null, "\u7EC3\u4E60\u6A21\u5F0F"), h("span", { className: `di-mode-badge is-${mode}` }, modeLabel(mode))),
-      topicMode ? h(
-        "label",
-        { className: "di-field" },
-        h("span", null, "\u4E3B\u9898"),
-        h("input", { className: "di-input", disabled, value: topic, onChange: (event) => setTopic(event.target.value) })
-      ) : null,
-      mode === "leetcode" ? h(
-        "label",
-        { className: "di-field" },
-        h("span", null, "\u7F16\u7A0B\u8BED\u8A00"),
-        h(Select, { value: language, options: LEETCODE_LANGUAGES.map((item) => ({ value: item.id, label: item.label })), disabled, onChange: setLanguage, "aria-label": "\u9009\u62E9\u7F16\u7A0B\u8BED\u8A00" })
-      ) : null,
-      mode === "mock" ? h(
-        import_react6.default.Fragment,
-        null,
-        h(
-          "label",
-          { className: "di-field di-field-wide" },
-          h("span", null, "\u7B80\u5386"),
-          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
-        ),
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u76EE\u6807\u5C97\u4F4D"),
-          h("input", { className: "di-input", disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })
-        ),
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u5C97\u4F4D\u63CF\u8FF0"),
-          h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, "aria-label": "\u9009\u62E9\u662F\u5426\u63D0\u4F9B\u5C97\u4F4D\u63CF\u8FF0" })
-        ),
-        jobDescriptionProvided === "true" ? h(
-          "label",
-          { className: "di-field di-field-wide" },
-          h("span", null, "JD"),
-          h("textarea", { className: "di-input di-textarea", disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })
-        ) : null,
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u9762\u8BD5\u5B98\u98CE\u683C"),
-          h("input", { className: "di-input", disabled, value: interviewerStyle, onChange: (event) => setInterviewerStyle(event.target.value) })
-        ),
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u662F\u5426\u624B\u6495\u4EE3\u7801"),
-          h(Select, { value: coding, options: CODING_OPTIONS, disabled, onChange: setCoding, "aria-label": "\u9009\u62E9\u662F\u5426\u624B\u6495\u4EE3\u7801" })
-        ),
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
-          h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
-        )
-      ) : null,
-      mode === "resume_drill" ? h(
-        import_react6.default.Fragment,
-        null,
-        h(
-          "label",
-          { className: "di-field di-field-wide" },
-          h("span", null, "\u7B80\u5386"),
-          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
-        ),
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u76EE\u6807\u5C97\u4F4D"),
-          h("input", { className: "di-input", disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })
-        ),
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u5C97\u4F4D\u63CF\u8FF0"),
-          h(Select, { value: jobDescriptionProvided, options: JD_OPTIONS, disabled, onChange: setJobDescriptionProvided, "aria-label": "\u9009\u62E9\u662F\u5426\u63D0\u4F9B\u5C97\u4F4D\u63CF\u8FF0" })
-        ),
-        jobDescriptionProvided === "true" ? h(
-          "label",
-          { className: "di-field di-field-wide" },
-          h("span", null, "JD"),
-          h("textarea", { className: "di-input di-textarea", disabled, value: jobDescription, onChange: (event) => setJobDescription(event.target.value) })
-        ) : null,
-        h(
-          "label",
-          { className: "di-field di-field-wide" },
-          h("span", null, "\u62BC\u9898\u8303\u56F4"),
-          h("input", { className: "di-input", disabled, value: focus, onChange: (event) => setFocus(event.target.value), placeholder: "\u4F8B\u5982\uFF1A\u9879\u76EE\u96BE\u70B9\u3001\u6280\u672F\u9009\u578B\u3001\u5E76\u53D1\u4E0E\u7A33\u5B9A\u6027" })
-        ),
-        h(
-          "label",
-          { className: "di-field" },
-          h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
-          h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
-        )
-      ) : null
-    ),
-    h(
-      "div",
-      { className: "di-actions di-field-wide" },
-      onCancel ? h(Button, { disabled, onClick: onCancel }, "\u53D6\u6D88") : null,
-      step === "config" ? h(Button, { disabled, onClick: () => setStep("mode") }, "\u4E0A\u4E00\u6B65") : null,
-      step === "config" ? h(Button, { tone: "primary", disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60")) : null
-    )
-  );
-}
-function PracticeSetupCard({ sessionId }) {
-  const command = useCommand(sessionId);
-  const lifecycle = useCardLifecycle(false);
-  const [completedConfig, setCompletedConfig] = import_react6.default.useState(null);
-  const start = (payload) => lifecycle.enter("session.start", () => {
-    setCompletedConfig(payload);
-    return command.run("session.start", payload);
-  });
-  if (lifecycle.consumedBy) {
-    return h(
-      "article",
-      { className: "di-card di-setup-card is-complete", "aria-label": "\u7EC3\u4E60\u914D\u7F6E\u5DF2\u5C31\u7EEA" },
-      h(
-        "div",
-        { className: "di-setup-complete", role: "status", "aria-live": "polite" },
-        h("span", { className: "di-setup-complete-icon", "aria-hidden": "true" }, h(Icon, { name: "check", size: 18 })),
-        h(
-          "div",
-          { className: "di-setup-complete-copy" },
-          h("div", { className: "di-title" }, "\u7EC3\u4E60\u914D\u7F6E\u5DF2\u5C31\u7EEA"),
-          h("div", { className: "di-meta" }, completedConfigText(completedConfig))
-        )
-      ),
-      h(ErrorNotice, null, command.error)
-    );
-  }
-  return h(
-    "article",
-    { className: "di-card di-setup-card", "aria-label": "\u65B0\u5EFA\u7EC3\u4E60\u914D\u7F6E" },
-    h("header", { className: "di-card-head" }, h("div", { className: "di-title" }, "\u65B0\u5EFA\u7EC3\u4E60")),
-    h(PracticeConfigForm, {
-      busy: command.busy === "session.start",
-      disabled: lifecycle.locked,
-      onSubmit: start,
-      submitLabel: "\u5F00\u59CB\u7EC3\u4E60"
-    }),
-    h(ErrorNotice, null, command.error)
-  );
-}
-
-// src/client/features/practice-library.js
 function PracticeDetail({ practice, sessionId, onDeleted }) {
   const command = useCommand(sessionId);
   const [confirming, setConfirming] = import_react7.default.useState(false);
@@ -1322,7 +1747,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
       "div",
       { className: "di-detail-heading" },
       h("h3", { className: "di-ledger-title" }, practice.topic),
-      h("span", { className: "di-meta" }, practice.mode === "leetcode" ? `${practice.modeLabel} \xB7 ${leetcodeLanguageLabel(practice.config.language)}` : `${practice.modeLabel} \xB7 ${practice.questionCount} \u9898 \xB7 ${practice.evaluatedCount} \u6B21\u5DF2\u8BC4\u4EF7 \xB7 \u5747\u5206 ${practice.averageScore ?? "\u2014"}`)
+      h("span", { className: "di-meta" }, practice.mode === "leetcode" ? `${practice.modeLabel} \xB7 ${leetcodeLanguageLabel(practice.config.language)} \xB7 ${leetcodeGuidanceLabel(practice.config.guidance)}` : `${practice.modeLabel} \xB7 ${practice.questionCount} \u9898 \xB7 ${practice.evaluatedCount} \u6B21\u5DF2\u8BC4\u4EF7 \xB7 \u5747\u5206 ${practice.averageScore ?? "\u2014"}`)
     ),
     h(
       "div",
@@ -1752,7 +2177,7 @@ var import_react9 = __toESM(require("react"), 1);
 var WORKSPACE_TABS = Object.freeze([
   { id: "active", label: "\u8FDB\u884C\u4E2D", icon: "clock" },
   { id: "library", label: "\u7EC3\u4E60\u6863\u6848", icon: "archive" },
-  { id: "leetcode", label: "\u70ED\u9898 100", icon: "flame" }
+  { id: "leetcode", label: "\u9898\u5E93", icon: "flame" }
 ]);
 function WorkspaceContent({ tab, sessionId }) {
   if (tab === "active") return h(PracticeLibrary, {
@@ -1891,6 +2316,7 @@ var INTERVIEW_TOOL_NAMES = Object.freeze([
   "interview_evaluation",
   "interview_explanation",
   "interview_leetcode",
+  "interview_materials",
   "interview_show_practice_setup",
   "interview_show_question",
   "interview_show_review",
@@ -1934,6 +2360,12 @@ var STYLE_TEXT = `
 @media(max-width:760px){.di-question-card,.di-lc-problem-card{grid-template-columns:1fr;padding:22px}.di-lc-problem-actions{justify-content:flex-start;max-width:none}.di-lc-group{grid-template-columns:1fr;gap:10px}.di-lc-group-head{justify-content:flex-start}.di-answer-button{justify-self:start}.di-history-table th,.di-history-table td{padding-left:16px;padding-right:16px}.di-history-filters{flex-wrap:wrap}.di-input{flex-basis:100%}.di-timeline{display:none}.di-workspace-backdrop{padding:8px;place-items:stretch}.di-workspace-panel{width:100%;height:100%;min-height:0;border-radius:12px}.di-workspace-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}.di-workspace-tabs{flex-direction:row;padding:6px;border-right:0;border-bottom:1px solid var(--di-line);overflow-x:auto}.di-workspace-tabs button{white-space:nowrap}.di-workspace-count{display:none}.di-workspace-content{padding:16px}.di-lc-catalog-head{align-items:flex-start;flex-direction:column}}
 @media(max-width:520px){.di-card-body{padding:18px}.di-question-text{font-size:17px}.di-review-score{flex-wrap:wrap;padding:18px}.di-review-score-summary{flex:1}.di-stars{width:100%;margin-left:56px}.di-review-content{padding:20px 18px}.di-review-actions{justify-content:flex-start}.di-history-head{padding:17px 18px}.di-history-filters{padding:10px 18px}.di-history-mode-select{width:100%;flex:1 1 100%}.di-practice-form{grid-template-columns:1fr;padding:16px 18px}.di-field-wide{grid-column:1}.di-config-fields{grid-template-columns:1fr}.di-mode-options{grid-template-columns:repeat(2,minmax(0,1fr))}.di-config-progress li+li::before{width:24px;margin-right:7px;margin-left:7px}.di-delete-confirm{align-items:flex-start;flex-direction:column;margin:10px 18px}.di-lc-catalog-head{align-items:flex-start;padding:20px;}.di-lc-progress{margin-right:20px;margin-left:20px}.di-lc-groups{padding-right:20px;padding-left:20px}.di-lc-row{grid-template-columns:22px minmax(0,1fr) 44px}.di-lc-problem-id{display:none}}
 @media(prefers-reduced-motion:reduce){.di-button,.di-time-node,.di-lc-progress>i,.di-mode-option{transition:none}.di-config-stage{animation:none}.di-spinner{animation-duration:1.5s}}
+.di-lc-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 0 12px}.di-lc-toolbar .di-lc-search{flex:1 1 260px;height:34px}.di-lc-filter-select{width:132px;flex:0 0 132px}.di-lc-toolbar-note{display:flex;align-items:center;gap:10px;padding-bottom:14px}.di-lc-catalog-config{padding:0 0 20px}.di-lc-row.is-selectable{grid-template-columns:24px minmax(0,1fr) 52px 88px}.di-lc-start{appearance:none;height:26px;padding:0 10px;border:1px solid #dbe3f0;border-radius:8px;background:#fff;color:#2563eb;font:var(--di-weight-text) 11px/1 Inter,"Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;transition:border-color .15s ease,background .15s ease,color .15s ease}.di-lc-start:hover:not(:disabled){border-color:#2563eb;background:#eff6ff}.di-lc-start:disabled{opacity:.5;cursor:not-allowed}.di-lc-difficulty.is-custom{color:#5b5bd6;background:#f1f1fd}
+.di-lc-custom{margin:0 0 14px;padding:14px 16px;border:1px dashed #dbe3f0;border-radius:12px;background:rgba(248,250,252,.6)}.di-lc-custom-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.di-lc-custom-title{color:#1e293b;font-size:13px;font-weight:var(--di-weight-title)}.di-lc-custom-fields{display:grid;grid-template-columns:120px minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center}
+.di-guidance-badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:6px;background:#f1f5f9;color:#475569;font-size:10px}.di-guidance-badge.is-guided{background:#ecfdf5;color:#047857}.di-guidance-hint{padding:8px 10px;border-radius:8px;background:rgba(37,99,235,.06);color:#1e40af;font-size:12px;line-height:1.6}
+.di-lc-material-actions{display:flex;align-items:center;gap:10px;padding-top:14px}.di-lc-material-section{border-top:1px solid #f1f5f9;margin-top:14px}.di-lc-materials{display:grid;gap:16px;margin-top:12px}.di-lc-material-block{display:grid;gap:6px}.di-lc-material-label{color:#94a3b8;font-size:11px;font-weight:var(--di-weight-text)}.di-lc-materials .di-markdown{font-size:13px;line-height:1.75}.di-lc-examples{display:grid;gap:8px}.di-lc-example{display:grid;gap:4px;padding:9px 11px;border:1px solid #f1f5f9;border-radius:10px;background:rgba(248,250,252,.7);font-size:12px;line-height:1.6}.di-lc-example>div{display:flex;gap:8px;align-items:baseline}.di-lc-example>div>span:first-child{flex:0 0 32px;color:#94a3b8}.di-lc-example code{word-break:break-all}.di-lc-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}.di-lc-chips li code{padding:2px 7px;border-radius:6px;background:#f1f5f9;color:#334155;font-size:11px}.di-lc-knowledge+.di-lc-knowledge{margin-top:8px}.di-lc-knowledge{font-size:12px;line-height:1.7}.di-lc-knowledge strong{display:block;color:#1e293b}.di-lc-hints{display:grid;gap:6px;margin:0;padding-left:18px;font-size:12px;line-height:1.7}.di-lc-hints li.is-locked{color:#94a3b8}.di-lc-hints li.is-revealed{color:#334155}.di-lc-related{display:grid;gap:4px;margin:0;padding-left:18px;font-size:12px}
+.di-lc-picker{margin-top:14px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.06)}.di-lc-picker-list{display:grid;gap:2px;max-height:264px;overflow:auto}.di-lc-picker-row{appearance:none;display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:#334155;font:var(--di-weight-text) 12px/1.4 Inter,"Segoe UI","Microsoft YaHei",sans-serif;text-align:left;cursor:pointer}.di-lc-picker-row:hover:not(:disabled){background:#f8fafc;color:#0f172a}.di-lc-picker-row:disabled{opacity:.55;cursor:wait}.di-lc-picker-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.di-lc-picker-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px}
+@media(max-width:760px){.di-lc-row.is-selectable{grid-template-columns:22px minmax(0,1fr) 44px;row-gap:6px}.di-lc-row.is-selectable .di-lc-start{grid-column:2/-1;justify-self:start}.di-lc-custom-fields{grid-template-columns:1fr}.di-lc-filter-select{width:100%;flex:1 1 100%}.di-lc-material-actions{flex-wrap:wrap}}
 `;
 function installStyles() {
   if (document.getElementById("dsh-interview-styles")) return;

@@ -1,6 +1,9 @@
 import { assertDomain } from './errors.js'
 import { LEETCODE_TOP_100_SOURCE, leetcodeTop100Problem } from './leetcode-top-100.js'
 import { LEETCODE_LANGUAGES, leetcodeLanguageDefinition } from './leetcode-languages.js'
+import { leetcodeGuidanceDefinition } from './leetcode-guidance.js'
+import { hintTotalOf, normalizeLeetcodeMaterials } from './leetcode-materials.js'
+import { leetcodeProblemQueryLabel, resolveLeetcodeProblem } from './leetcode-problems.js'
 import { modeDefinition } from './modes.js'
 import { assertModeCapability } from './mode-capabilities.js'
 
@@ -36,7 +39,9 @@ function normalizeConfiguration(definition, config) {
   if (definition.configuration === 'catalog') {
     const language = requiredText(config.language, 'LEETCODE_LANGUAGE_REQUIRED', '刷力扣必须明确选择编程语言')
     assertDomain(leetcodeLanguageDefinition(language), 'INVALID_LEETCODE_LANGUAGE', `不支持的力扣编程语言：${language}`)
-    return { language }
+    const guidance = requiredText(config.guidance, 'LEETCODE_GUIDANCE_REQUIRED', '刷力扣必须明确选择引导强度')
+    assertDomain(leetcodeGuidanceDefinition(guidance), 'INVALID_LEETCODE_GUIDANCE', `不支持的引导强度：${guidance}`)
+    return { language, guidance }
   }
 
   const resume = requiredText(config.resume, 'RESUME_REQUIRED', `${definition.label}必须明确提供简历内容`)
@@ -122,8 +127,12 @@ export function findAttempt(question, attemptId) {
 
 function normalizeLeetcodeProblem(practice, input) {
   if (practice.mode !== 'leetcode') return null
-  const problem = leetcodeTop100Problem(input?.slug)
-  assertDomain(problem, 'LEETCODE_PROBLEM_REQUIRED', '刷力扣模式必须从固定题库中选择题目')
+  const problem = resolveLeetcodeProblem(input)
+  assertDomain(
+    problem,
+    'LEETCODE_PROBLEM_REQUIRED',
+    `刷力扣模式必须选择一道明确的力扣题目：${leetcodeProblemQueryLabel(input)}`,
+  )
   return { ...problem }
 }
 
@@ -155,7 +164,7 @@ export function askQuestion(practice, { id, prompt, leetcode, hot100, now }) {
     createdAt: now,
     attempts: [],
     explanation: null,
-    ...(normalizedLeetcode ? { leetcode: normalizedLeetcode } : {}),
+    ...(normalizedLeetcode ? { leetcode: normalizedLeetcode, materials: null, hintLevel: 0 } : {}),
     ...(normalizedHot100 ? { hot100: normalizedHot100 } : {}),
   }
   return {
@@ -273,6 +282,50 @@ export function saveExplanation(practice, { questionId, detail, memorizationPoin
     ? { ...question, explanation }
     : question)
   return { practice: withUpdatedAt(practice, now, { questions }), explanation }
+}
+
+export function saveMaterials(practice, { questionId, materials, replace = false, now }) {
+  activePractice(practice)
+  assertModeCapability(
+    practice,
+    replace ? 'materials.replace' : 'materials.create',
+    'MATERIALS_NOT_ALLOWED',
+    '当前模式不提供题目材料',
+  )
+  const target = findQuestion(practice, questionId)
+  assertDomain(target.leetcode, 'MATERIALS_LEETCODE_ONLY', '只有力扣题目支持题目材料')
+  assertDomain(replace || !target.materials, 'MATERIALS_ALREADY_EXISTS', '该题已经存在题目材料')
+  const normalized = normalizeLeetcodeMaterials(materials)
+  const hintLevel = Math.min(Number(target.hintLevel) || 0, hintTotalOf(normalized))
+  const questions = practice.questions.map((question) => question.id === target.id
+    ? { ...question, materials: normalized, hintLevel }
+    : question)
+  return {
+    practice: withUpdatedAt(practice, now, { questions }),
+    materials: normalized,
+    question: questions.find((question) => question.id === target.id),
+  }
+}
+
+export function revealHint(practice, { questionId, now }) {
+  activePractice(practice)
+  assertModeCapability(practice, 'materials.reveal', 'HINTS_NOT_ALLOWED', '当前模式不提供提示阶梯')
+  const target = findQuestion(practice, questionId)
+  assertDomain(target.materials, 'MATERIALS_REQUIRED', '当前题目还没有题目材料，无法给出提示')
+  const total = hintTotalOf(target.materials)
+  const current = Math.min(Number(target.hintLevel) || 0, total)
+  assertDomain(current < total, 'NO_MORE_HINTS', '该题的全部提示都已经给出')
+  const questions = practice.questions.map((question) => question.id === target.id
+    ? { ...question, hintLevel: current + 1 }
+    : question)
+  const updated = questions.find((question) => question.id === target.id)
+  return {
+    practice: withUpdatedAt(practice, now, { questions }),
+    question: updated,
+    hint: target.materials.hints[current],
+    hintLevel: updated.hintLevel,
+    hintTotal: total,
+  }
 }
 
 export function completePractice(practice, { overall, strengths, improvements, now }) {

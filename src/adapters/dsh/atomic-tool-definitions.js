@@ -1,9 +1,13 @@
 import { LEETCODE_LANGUAGE_IDS } from '../../domain/leetcode-languages.js'
+import { LEETCODE_GUIDANCE_IDS } from '../../domain/leetcode-guidance.js'
+import { LEETCODE_CATEGORIES, LEETCODE_DIFFICULTY_IDS } from '../../domain/leetcode-problems.js'
 import { createAtomicOperationResult } from '../../protocol/atomic-operation-protocol.js'
 import {
   ATOMIC_ANSWER_POLICY,
   ATOMIC_CONFIGURATION_POLICY,
   ATOMIC_INTERVIEW_POLICY,
+  ATOMIC_LEETCODE_POLICY,
+  ATOMIC_MATERIALS_POLICY,
   ATOMIC_QUESTION_POLICY,
   ATOMIC_REVIEW_POLICY,
   modeContextForMode,
@@ -42,7 +46,7 @@ function configOf(args) {
       difficulty: args.difficulty,
     }
   }
-  if (args.mode === 'leetcode') return { language: args.language }
+  if (args.mode === 'leetcode') return { language: args.language, guidance: args.guidance }
   return { topic: args.topic }
 }
 
@@ -62,11 +66,26 @@ function atomicTool({ name, description, parameters, execute, afterExecute = nul
   })
 }
 
+function guidanceOf(result) {
+  const data = result?.resource?.data
+  return data?.config?.guidance ?? data?.practice?.config?.guidance ?? null
+}
+
 function attachModeContext(result, mode) {
   return {
     ...result,
-    instruction: `${result.instruction}当前练习已激活${modeContextForMode(mode)}后续操作只需遵守这份模式上下文，不要重复注入其他模式规则。`,
+    instruction: `${result.instruction}当前练习已激活${modeContextForMode(mode, { guidance: guidanceOf(result) })}后续操作只需遵守这份模式上下文，不要重复注入其他模式规则。`,
   }
+}
+
+function leetcodeSelectionOf(args) {
+  if (!args.slug && !args.number && !args.title) return null
+  return { slug: args.slug, number: args.number, title: args.title }
+}
+
+function leetcodeFiltersOf(args) {
+  if (!args.category && !args.difficulty) return null
+  return { category: args.category, difficulty: args.difficulty }
 }
 
 const practiceParameters = {
@@ -85,6 +104,7 @@ const practiceParameters = {
     coding: { type: 'boolean' },
     focus: { type: 'string', minLength: 1 },
     difficulty: { type: 'string', enum: ['junior', 'intermediate', 'senior'] },
+    guidance: { type: 'string', enum: LEETCODE_GUIDANCE_IDS, description: '刷力扣专用：guided 引导模式、standard 标准模式' },
     status: { type: 'string', enum: ['active', 'completed'] },
     query: { type: 'string' },
     overall: { type: 'string', minLength: 1 },
@@ -247,13 +267,19 @@ function definitionsFor(afterExecute = null) {
   }),
   atomicTool({
     name: 'interview_leetcode',
-    description: '读取力扣热题 100、从固定题库抽取当前题、原子结束旧练习并随机创建下一题，或保存用户明确指定的完成状态。AI禁止自行生成力扣题。',
+    description: `读取力扣热题 100、按题号或题名搜索题库、自由选题（可按题型和难度筛选题单）、抽取当前题、原子结束旧练习并创建下一题，或保存用户明确指定的完成状态。${ATOMIC_LEETCODE_POLICY}`,
     parameters: {
       type: 'object',
       properties: {
-        operation: { type: 'string', enum: ['catalog', 'draw', 'draw_next', 'set_completion'] },
-        slug: { type: 'string', minLength: 1 },
-        completed: { type: 'boolean' },
+        operation: { type: 'string', enum: ['catalog', 'search', 'draw', 'draw_next', 'set_completion'] },
+        slug: { type: 'string', minLength: 1, description: '热题 100 中的题目 slug，例如 two-sum' },
+        number: { type: 'string', minLength: 1, description: '力扣题号，例如 33；仅在用户明确点名该题时使用' },
+        title: { type: 'string', minLength: 1, description: '力扣题名，例如 搜索旋转排序数组；热题 100 之外的题目必须由用户明确说出题名' },
+        keyword: { type: 'string', minLength: 1, description: '搜索关键字，匹配题号、题名、slug 或题型' },
+        category: { type: 'string', enum: LEETCODE_CATEGORIES, description: '按题型筛选或抽题' },
+        difficulty: { type: 'string', enum: LEETCODE_DIFFICULTY_IDS, description: '按难度筛选或抽题：easy、medium、hard' },
+        limit: { type: 'integer', minimum: 1, maximum: 100, description: 'search 最多返回多少道题' },
+        completed: { type: 'boolean', description: 'set_completion 专用的完成状态' },
       },
       required: ['operation'],
       additionalProperties: false,
@@ -262,11 +288,91 @@ function definitionsFor(afterExecute = null) {
     execute(application, args, sessionId) {
       switch (args.operation) {
         case 'catalog': return application.getLeetcodeCatalog()
-        case 'draw': return application.drawAtomicLeetcode(sessionId)
-        case 'draw_next': return application.drawNextAtomicLeetcode(sessionId)
+        case 'search': return application.searchLeetcodeProblems({
+          keyword: args.keyword, category: args.category, difficulty: args.difficulty, limit: args.limit,
+        })
+        case 'draw': return application.drawAtomicLeetcode(sessionId, {
+          selection: leetcodeSelectionOf(args), filters: leetcodeFiltersOf(args),
+        })
+        case 'draw_next': return application.drawNextAtomicLeetcode(sessionId, {
+          selection: leetcodeSelectionOf(args), filters: leetcodeFiltersOf(args),
+        })
         case 'set_completion': return application.setLeetcodeProblemCompletion(args.slug, args.completed, sessionId)
         default: throw new TypeError(`不支持的力扣操作：${String(args.operation)}`)
       }
+    },
+  }),
+  atomicTool({
+    name: 'interview_materials',
+    description: `保存一道力扣题的题目材料，包含题意、示例、数据范围、前置知识、分级提示、常见误区和相似题；保存后题目卡与对话里的材料卡都读取这份权威数据。${ATOMIC_MATERIALS_POLICY}`,
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: { type: 'string', enum: ['create', 'replace'] },
+        question_id: { type: 'string', minLength: 1, description: '不传时使用当前会话的当前题' },
+        statement: { type: 'string', minLength: 1, maxLength: 2000, description: '用中文复述题意：输入是什么、要求输出什么、有什么约束' },
+        examples: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              input: { type: 'string', minLength: 1 },
+              output: { type: 'string', minLength: 1 },
+              note: { type: 'string' },
+            },
+            required: ['input', 'output'],
+            additionalProperties: false,
+          },
+        },
+        constraints: { type: 'array', items: { type: 'string', minLength: 1 }, description: '数据范围与约束，例如 1 <= nums.length <= 10^4' },
+        hints: { type: 'array', items: { type: 'string', minLength: 1 }, description: '由浅入深的分级提示，引导模式 4 级、标准模式 3 级；最后一级才允许接近伪代码' },
+        knowledge: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', minLength: 1 },
+              detail: { type: 'string', minLength: 1 },
+            },
+            required: ['title', 'detail'],
+            additionalProperties: false,
+          },
+          description: '本题需要的前置知识，例如二分查找的边界处理',
+        },
+        pitfalls: { type: 'array', items: { type: 'string', minLength: 1 }, description: '本题最常见的一两个错误' },
+        related: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              title: { type: 'string', minLength: 1 },
+              slug: { type: 'string' },
+            },
+            required: ['title'],
+            additionalProperties: false,
+          },
+          description: '同类型相似题推荐',
+        },
+      },
+      required: ['operation', 'statement'],
+      additionalProperties: false,
+    },
+    afterExecute: syncCatalog,
+    execute(application, args, sessionId) {
+      return application.saveAtomicMaterials(sessionId, {
+        questionId: args.question_id,
+        replace: args.operation === 'replace',
+        materials: {
+          statement: args.statement,
+          examples: args.examples,
+          constraints: args.constraints,
+          hints: args.hints,
+          knowledge: args.knowledge,
+          pitfalls: args.pitfalls,
+          related: args.related,
+        },
+      })
     },
   }),
   ]

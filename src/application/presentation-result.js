@@ -7,7 +7,10 @@ function nextPresentationId() {
   return globalThis.crypto?.randomUUID?.() || `presentation-${Date.now()}-${++presentationSequence}`
 }
 
-export function createPresentationResult({ kind, references = {}, resource = null, revision = 0, text }) {
+export function createPresentationResult({
+  kind, references = {}, resource = null, revision = 0, text,
+  materialsFence = '', assistantInstruction = '',
+}) {
   const presentationId = nextPresentationId()
   return {
     protocol: INTERACTION_PROTOCOL,
@@ -19,7 +22,8 @@ export function createPresentationResult({ kind, references = {}, resource = nul
       text,
       mustNotRepeatArtifact: true,
     },
-    assistantInstruction: `立即结束工具链，最终回复必须且只能是“${text}”，禁止复述卡片内容。`,
+    assistantInstruction: assistantInstruction || `立即结束工具链，最终回复必须且只能是“${text}”，禁止复述卡片内容。`,
+    ...(materialsFence ? { materialsFence } : {}),
     resource,
     events: [],
   }

@@ -11,6 +11,8 @@ function toSavedSummaryDto(summary) {
 
 export function toQuestionDto(question, practice = null) {
   const latestAttempt = question.attempts.at(-1) || null
+  const materials = question.materials || null
+  const hintTotal = materials?.hints?.length || 0
   return {
     id: question.id,
     sequence: question.sequence,
@@ -25,9 +27,16 @@ export function toQuestionDto(question, practice = null) {
     })),
     latestScore: latestAttempt?.evaluation?.score ?? null,
     explanation: question.explanation ? { ...question.explanation } : null,
-    capabilities: { allowReveal: practice?.mode !== 'mock' },
+    capabilities: {
+      allowReveal: practice?.mode !== 'mock',
+      allowHints: hintTotal > 0,
+      allowMaterials: Boolean(question.leetcode) && practice?.mode === 'leetcode',
+    },
     ...(question.leetcode ? { leetcode: { ...question.leetcode } } : {}),
     ...(question.hot100 ? { hot100: { ...question.hot100 } } : {}),
+    materials: materials ? { ...materials } : null,
+    hintLevel: Math.min(Number(question.hintLevel) || 0, hintTotal),
+    hintTotal,
   }
 }
 

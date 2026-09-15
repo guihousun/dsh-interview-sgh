@@ -4,6 +4,7 @@ import { useCommand, useInterviewQuery } from '../shared/hooks.js'
 import { Button, Empty, ErrorNotice, h, Icon, Loading, Markdown, ScoreRail, Select } from '../shared/ui.js'
 import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
+import { leetcodeGuidanceLabel } from '../../domain/leetcode-guidance.js'
 import { PRACTICE_MODE_OPTIONS, PracticeConfigForm } from './practice-config.js'
 
 function PracticeDetail({ practice, sessionId, onDeleted }) {
@@ -48,7 +49,7 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
     h('div', { className: 'di-detail-heading' },
       h('h3', { className: 'di-ledger-title' }, practice.topic),
       h('span', { className: 'di-meta' }, practice.mode === 'leetcode'
-        ? `${practice.modeLabel} · ${leetcodeLanguageLabel(practice.config.language)}`
+        ? `${practice.modeLabel} · ${leetcodeLanguageLabel(practice.config.language)} · ${leetcodeGuidanceLabel(practice.config.guidance)}`
         : `${practice.modeLabel} · ${practice.questionCount} 题 · ${practice.evaluatedCount} 次已评价 · 均分 ${practice.averageScore ?? '—'}`)),
     h('div', { className: 'di-actions' },
       h(Button, { tone: 'primary', busy: Boolean(command.busy?.startsWith('session.')), onClick: activate }, practice.status === 'completed' ? '重新打开' : '切换到练习'),

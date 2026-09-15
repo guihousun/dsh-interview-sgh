@@ -4,6 +4,28 @@ function practiceInput(payload) {
   return { mode: payload.mode, config: payload.config }
 }
 
+// 自由选题：题号、题名、slug 是「就做这道题」，题型和难度是「按条件抽一道」。
+function selectionOf(payload) {
+  if (!payload) return null
+  if (!payload.slug && !payload.number && !payload.title) return null
+  return { slug: payload.slug, number: payload.number, title: payload.title }
+}
+
+function filtersOf(payload) {
+  if (!payload) return null
+  if (!payload.category && !payload.difficulty) return null
+  return { category: payload.category, difficulty: payload.difficulty }
+}
+
+function leetcodeRequestOf(payload) {
+  const source = payload?.problem || payload?.selection || payload
+  return { selection: selectionOf(source), filters: filtersOf(source) }
+}
+
+function guidanceOf(practice) {
+  return practice?.config?.guidance || null
+}
+
 function dispatchAgent(eventBridge, sessionId, event) {
   eventBridge?.dispatch(sessionId, event)
 }
@@ -31,7 +53,8 @@ async function consumeCard(application, sessionId, payload) {
 export const UI_COMMANDS = Object.freeze([
   'session.start', 'session.continue', 'session.select', 'session.reopen', 'session.finish',
   'practice.update', 'question.open', 'question.focus', 'question.update', 'question.delete', 'question.next',
-  'question.retry', 'question.reveal', 'leetcode.set-completion', 'library.delete', 'library.export',
+  'question.retry', 'question.reveal', 'question.hint', 'question.materials',
+  'leetcode.select', 'leetcode.set-completion', 'library.delete', 'library.export',
 ])
 
 export async function dispatchCommand({ application, eventBridge }, sessionId, command, payload = {}) {
@@ -40,10 +63,11 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       await application.createAtomicPractice(sessionId, practiceInput(payload))
       let session = await application.readAtomicSession(sessionId)
       if (payload.mode === 'leetcode') {
-        const question = await application.drawAtomicLeetcode(sessionId)
+        const request = leetcodeRequestOf(payload)
+        const question = await application.drawAtomicLeetcode(sessionId, request)
         dispatchAgent(eventBridge, sessionId, {
-          type: 'question.show', practiceId: question.references.practiceId, questionId: question.references.questionId,
-          mode: payload.mode, includeModeContext: true,
+          type: 'leetcode.present', practiceId: question.references.practiceId, questionId: question.references.questionId,
+          mode: payload.mode, guidance: guidanceOf(session.resource.data.practice), includeModeContext: true,
         })
         session = await application.readAtomicSession(sessionId)
       } else {
@@ -52,6 +76,24 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
           includeModeContext: true,
         })
       }
+      return session
+    }
+    case 'leetcode.select': {
+      const request = leetcodeRequestOf(payload)
+      const current = (await application.readAtomicSession(sessionId)).resource.data
+      const activeLeetcode = current.selected && current.practice.mode === 'leetcode' && current.practice.status === 'active'
+      if (!activeLeetcode) {
+        await application.createAtomicPractice(sessionId, { mode: 'leetcode', config: payload.config })
+      }
+      const question = activeLeetcode
+        ? await application.drawNextAtomicLeetcode(sessionId, request)
+        : await application.drawAtomicLeetcode(sessionId, request)
+      const session = await application.readAtomicSession(sessionId)
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'leetcode.present', practiceId: question.references.practiceId, questionId: question.references.questionId,
+        mode: 'leetcode', guidance: guidanceOf(session.resource.data.practice), includeModeContext: true,
+      })
+      refreshAgentTools(eventBridge, sessionId)
       return session
     }
     case 'session.continue': {
@@ -65,7 +107,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const result = await application.bindAtomicPractice(sessionId, payload.practiceId)
       dispatchAgent(eventBridge, sessionId, {
         type: 'practice.selected', practiceId: result.resource.data.practice.id,
-        mode: result.resource.data.practice.mode, includeModeContext: true,
+        mode: result.resource.data.practice.mode, guidance: guidanceOf(result.resource.data.practice), includeModeContext: true,
       })
       return result
     }
@@ -73,7 +115,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const result = await application.reopenAtomicPractice(sessionId, payload.practiceId)
       dispatchAgent(eventBridge, sessionId, {
         type: 'practice.continue', practiceId: result.resource.data.practice.id, mode: result.resource.data.practice.mode,
-        includeModeContext: true,
+        guidance: guidanceOf(result.resource.data.practice), includeModeContext: true,
       })
       return result
     }
@@ -103,7 +145,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const session = await application.readAtomicSession(sessionId)
       dispatchAgent(eventBridge, sessionId, {
         type: 'question.show', practiceId: result.references.practiceId, questionId: result.references.questionId,
-        mode: session.resource.data.practice.mode, includeModeContext: true,
+        mode: session.resource.data.practice.mode, guidance: guidanceOf(session.resource.data.practice), includeModeContext: true,
       })
       return result
     }
@@ -131,6 +173,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         practiceId: current.practiceId,
         questionId,
         mode: current.data.practice.mode,
+        guidance: guidanceOf(current.data.practice),
       })
       return application.readAtomicSession(sessionId)
     }
@@ -138,9 +181,10 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const current = await selected(application, sessionId)
       await consumeCard(application, sessionId, payload)
       if (current.data.practice.mode === 'leetcode') {
-        const question = await application.drawNextAtomicLeetcode(sessionId)
+        const question = await application.drawNextAtomicLeetcode(sessionId, leetcodeRequestOf(payload))
         dispatchAgent(eventBridge, sessionId, {
-          type: 'question.show', practiceId: question.references.practiceId, questionId: question.references.questionId,
+          type: 'leetcode.present', practiceId: question.references.practiceId, questionId: question.references.questionId,
+          mode: 'leetcode', guidance: guidanceOf(current.data.practice),
         })
         return application.readAtomicSession(sessionId)
       }
@@ -148,6 +192,33 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         type: 'question.generate', practiceId: current.practiceId, mode: current.data.practice.mode,
       })
       return application.readAtomicSession(sessionId)
+    }
+    case 'question.hint': {
+      const current = await selected(application, sessionId)
+      const questionId = payload.questionId || current.questionId
+      const question = current.data.practice.questions.find((item) => item.id === questionId)
+      if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
+      assertModeCapability(current.data.practice, 'materials.reveal', 'HINTS_NOT_ALLOWED', '当前模式不提供提示阶梯')
+      if (!question.materials) {
+        dispatchAgent(eventBridge, sessionId, {
+          type: 'materials.generate', practiceId: current.practiceId, questionId,
+          mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
+        })
+        return { ...current.result, resource: { kind: 'materials-pending', data: { questionId } } }
+      }
+      return application.revealAtomicHint(sessionId, questionId)
+    }
+    case 'question.materials': {
+      const current = await selected(application, sessionId)
+      const questionId = payload.questionId || current.questionId
+      const question = current.data.practice.questions.find((item) => item.id === questionId)
+      if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
+      assertModeCapability(current.data.practice, 'materials.create', 'MATERIALS_NOT_ALLOWED', '当前模式不提供题目材料')
+      dispatchAgent(eventBridge, sessionId, {
+        type: 'materials.generate', practiceId: current.practiceId, questionId,
+        mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
+      })
+      return { ...current.result, resource: { kind: 'materials-pending', data: { questionId } } }
     }
     case 'leetcode.set-completion':
       return application.setLeetcodeProblemCompletion(payload.slug, payload.completed)

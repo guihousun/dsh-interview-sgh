@@ -1,7 +1,9 @@
 import { DomainError } from '../../domain/errors.js'
 import { assertModeCapability } from '../../domain/mode-capabilities.js'
+import { effectiveLeetcodeGuidance } from '../../domain/leetcode-guidance.js'
 import { ARTIFACT_KINDS } from '../../application/interaction-artifact.js'
 import { createPresentationResult } from '../../application/presentation-result.js'
+import { createMaterialsFence, materialsFenceInstruction } from '../../application/leetcode-materials-fence.js'
 
 const output = {
   schema: { type: 'object', additionalProperties: true },
@@ -64,11 +66,16 @@ const definitions = [
   }),
   presentationTool({
     name: 'interview_show_question',
-    description: '展示数据库中已经存在的一道题目卡片。当用户需要查看、回答、继续或重新作答某道题，或者新题创建后需要呈现时，必须调用本工具。禁止使用普通 Assistant Text 输出或复述题目。本工具只展示，不创建、修改或聚焦题目。',
+    description: '展示数据库中已经存在的一道题目卡片。当用户需要查看、回答、继续或重新作答某道题，或者新题创建后需要呈现时，必须调用本工具。禁止使用普通 Assistant Text 输出或复述题目。本工具只展示，不创建、修改或聚焦题目。力扣题会同时返回 materialsFence：必须把它原样输出成对话里的 dsh-ui 材料卡；还没有材料时先用 interview_materials create 保存材料再展示。',
     parameters: practiceQuestionParameters,
     async execute(application, args, sessionId) {
       const { practice, question } = await practiceAndQuestion(application, args.practice_id, args.question_id)
       const sessionRevision = await sessionRevisionFor(application, sessionId, practice.id, question.id)
+      const text = '题目已展示，请开始作答。'
+      const isLeetcode = Boolean(question.leetcode)
+      const fence = isLeetcode && question.materials
+        ? createMaterialsFence(question, { guidance: effectiveLeetcodeGuidance(practice.config) })
+        : ''
       return createPresentationResult({
         kind: ARTIFACT_KINDS.QUESTION,
         references: {
@@ -78,7 +85,13 @@ const definitions = [
         },
         resource: { kind: 'question-detail', data: question },
         revision: practice.updatedAt,
-        text: '题目已展示，请开始作答。',
+        text,
+        materialsFence: fence,
+        assistantInstruction: isLeetcode
+          ? (fence
+              ? `立即结束工具链。最终回复必须先原样输出 materialsFence 字段的完整内容（它已经是合法的 dsh-ui 围栏，含开头的 \`\`\`dsh-ui 和结尾的 \`\`\`），再写一句“${text}”；禁止改写、删减或重新排版围栏内容，禁止改用普通文本复述题目或材料。`
+              : `立即结束工具链。这道力扣题还没有题目材料：先调用 interview_materials create 保存题意、示例、数据范围、前置知识、分级提示、常见误区和相似题，再把返回的 materialsFence 原样输出到回复正文，最后写一句“${text}”。`)
+          : `立即结束工具链，最终回复必须且只能是“${text}”，禁止复述卡片内容。`,
       })
     },
   }),

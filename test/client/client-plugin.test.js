@@ -189,18 +189,46 @@ test('力扣题目卡使用讲解入口且不重复展示题目列表入口', ()
   const liveInterview = readFileSync(new URL('../../src/client/features/live-interview.js', import.meta.url), 'utf8')
   assert.doesNotMatch(leetcode, /查看题目列表|收起题目列表/)
   assert.match(leetcode, /run\('question\.reveal'/)
-  assert.match(leetcode, /}, '讲解'\)/)
+  assert.match(leetcode, /'展开讲解'/)
   assert.match(leetcode, /'解题要点'/)
   assert.match(liveInterview, /isLeetcode \? '解题要点' : '直接背'/)
   assert.match(liveInterview, /!isLeetcode \? h\(Button/)
 })
 
-test('力扣练习表单必须显式选择编程语言', () => {
+test('题库支持搜索筛选自由选题，题目卡提供提示阶梯与题目材料', () => {
+  const leetcode = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
+  const styles = readFileSync(new URL('../../src/client/shared/styles.js', import.meta.url), 'utf8')
+  const workspace = readFileSync(new URL('../../src/client/features/workspace-dock.js', import.meta.url), 'utf8')
+
+  assert.match(leetcode, /搜题号、题名或题型/)
+  assert.match(leetcode, /'按难度筛选'/)
+  assert.match(leetcode, /'按题型筛选'/)
+  assert.match(leetcode, /'做这题'/)
+  assert.match(leetcode, /function CustomProblemForm/)
+  assert.match(leetcode, /run\('leetcode\.select'/)
+  assert.match(leetcode, /run\('question\.materials'/)
+  assert.match(leetcode, /busy: command\.busy === 'question\.hint'/)
+  assert.match(leetcode, /提示 \$\{hintLevel\}\/\$\{hintTotal\}/)
+  assert.match(leetcode, /function MaterialsBlock/)
+  assert.match(leetcode, /'前置知识'/)
+  assert.match(leetcode, /提示阶梯 \$\{revealed\}/)
+  assert.match(leetcode, /'相似题'/)
+  assert.match(leetcode, /function ProblemPicker/)
+  assert.match(styles, /\.di-lc-hints/)
+  assert.match(styles, /\.di-lc-materials/)
+  assert.match(styles, /\.di-lc-start/)
+  assert.match(workspace, /label: '题库'/)
+})
+
+test('力扣练习表单必须显式选择编程语言和引导强度', () => {
   const config = readFileSync(new URL('../../src/client/features/practice-config.js', import.meta.url), 'utf8')
   assert.match(config, /initial\?\.config\?\.language \|\| ''/)
-  assert.match(config, /mode === 'leetcode'[\s\S]*Boolean\(language\)/)
+  assert.match(config, /initial\?\.config\?\.guidance \|\| ''/)
+  assert.match(config, /mode === 'leetcode'[\s\S]*Boolean\(language && guidance\)/)
   assert.match(config, /h\('span', null, '编程语言'\)/)
-  assert.match(config, /config: \{ language \}/)
+  assert.match(config, /h\('span', null, '引导强度'\)/)
+  assert.match(config, /LEETCODE_GUIDANCE_LEVELS\.map/)
+  assert.match(config, /config: \{ language, guidance \}/)
 })
 
 test('力扣结束卡和档案只展示本次刷题汇总', () => {
@@ -216,9 +244,11 @@ test('力扣切题不使用本地临时卡片槽位', () => {
   const api = readFileSync(new URL('../../src/client/shared/api.js', import.meta.url), 'utf8')
   const index = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')
 
-  assert.match(leetcode, /transition\.run\('question\.next'\)/)
+  assert.match(leetcode, /transition\.run\('question\.next'/)
   assert.match(leetcode, /const current = initialQuestion/)
   assert.match(leetcode, /const active = artifactActive/)
+  assert.match(leetcode, /run\('leetcode\.select'/)
+  assert.match(leetcode, /run\('question\.hint'/)
   assert.doesNotMatch(index, /interview-latest-question/)
   assert.doesNotMatch(api, /subscribeLocalQuestions/)
 })
@@ -233,7 +263,7 @@ test('会话中的下一题不会改变先前力扣消息卡片', () => {
   assert.match(cardActivity, /session\.revision === artifact\?\.sessionRevision/)
   assert.match(leetcode, /const transition = useCardTransition\(command\.run, artifact, !artifactActive\)/)
   assert.doesNotMatch(leetcode, /live = false|sessionQuestion/)
-  assert.match(liveInterview, /LeetcodeProblemCard, \{ sessionId, initialQuestion: question, artifact, language: practice\.config\?\.language/)
+  assert.match(liveInterview, /LeetcodeProblemCard, \{[\s\S]{0,240}initialQuestion: question[\s\S]{0,240}language: practice\.config\?\.language/)
 })
 
 test('重新作答创建新题卡且不主动打开练习工作台', () => {
@@ -248,8 +278,9 @@ test('重新作答创建新题卡且不主动打开练习工作台', () => {
 
 test('力扣随机下一题点击后立即锁定为已出下一题', () => {
   const leetcodeSource = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
-  assert.match(leetcodeSource, /transition\.consumedBy === 'question\.next'/)
+  assert.match(leetcodeSource, /consumedBy === 'question\.next'/)
   assert.match(leetcodeSource, /disabled: transition\.locked/)
+  assert.match(leetcodeSource, /useCardTransition\(command\.run, artifact, !artifactActive\)/)
   assert.doesNotMatch(leetcodeSource, /nextRequestedRef|nextRequested/)
 })
 

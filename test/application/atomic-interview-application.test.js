@@ -168,7 +168,7 @@ test('展示卡片消费后会推进会话版本且不能重复消费', async ()
 test('力扣抽题与随机下一题是无待办的原子操作', async () => {
   const fixture = applicationFixture()
   await fixture.application.createAtomicPractice('leetcode-session', {
-    mode: 'leetcode', config: { language: 'java' },
+    mode: 'leetcode', config: { language: 'java', guidance: 'guided' },
   })
   const first = await fixture.application.drawAtomicLeetcode('leetcode-session')
   const firstPracticeId = first.references.practiceId

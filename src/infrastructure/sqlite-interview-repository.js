@@ -40,6 +40,8 @@ export class SqliteInterviewRepository {
         prompt TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         leetcode_json TEXT,
+        materials_json TEXT,
+        hint_level INTEGER NOT NULL DEFAULT 0,
         explanation_detail TEXT,
         explanation_memo TEXT,
         explained_at INTEGER,
@@ -79,6 +81,14 @@ export class SqliteInterviewRepository {
       CREATE INDEX IF NOT EXISTS idx_questions_practice ON questions(practice_id, sequence);
       CREATE INDEX IF NOT EXISTS idx_attempts_question ON attempts(question_id, sequence);
     `)
+    this.#addMissingColumns()
+  }
+
+  // 旧数据库缺少题目材料与提示进度列时就地补齐，不重建表、不丢历史数据。
+  #addMissingColumns() {
+    const columns = new Set(this.database.prepare('PRAGMA table_info(questions)').all().map((column) => column.name))
+    if (!columns.has('materials_json')) this.database.exec('ALTER TABLE questions ADD COLUMN materials_json TEXT')
+    if (!columns.has('hint_level')) this.database.exec('ALTER TABLE questions ADD COLUMN hint_level INTEGER NOT NULL DEFAULT 0')
   }
 
   #readQuestion(row) {
@@ -108,7 +118,7 @@ export class SqliteInterviewRepository {
         memorizationPoints: row.explanation_memo || '',
         createdAt: row.explained_at,
       },
-      ...(leetcode ? { leetcode } : {}),
+      ...(leetcode ? { leetcode, materials: parseJson(row.materials_json, null), hintLevel: Number(row.hint_level) || 0 } : {}),
     }
   }
 
@@ -201,8 +211,9 @@ export class SqliteInterviewRepository {
     const insertQuestion = this.database.prepare(`
       INSERT INTO questions (
         id, practice_id, sequence, prompt, created_at,
-        leetcode_json, explanation_detail, explanation_memo, explained_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        leetcode_json, materials_json, hint_level,
+        explanation_detail, explanation_memo, explained_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     const insertAttempt = this.database.prepare(`
       INSERT INTO attempts (
@@ -218,6 +229,8 @@ export class SqliteInterviewRepository {
         question.prompt,
         question.createdAt,
         question.leetcode ? JSON.stringify(question.leetcode) : null,
+        question.materials ? JSON.stringify(question.materials) : null,
+        Number(question.hintLevel) || 0,
         question.explanation?.detail ?? null,
         question.explanation?.memorizationPoints ?? null,
         question.explanation?.createdAt ?? null,

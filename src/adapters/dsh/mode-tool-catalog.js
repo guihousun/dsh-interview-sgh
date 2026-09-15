@@ -32,7 +32,7 @@ const MODE_TOOL_NAMES = Object.freeze({
   bagu: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS]),
   resume_drill: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS]),
   scenario: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS]),
-  leetcode: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS, 'interview_leetcode']),
+  leetcode: Object.freeze([...COMMON_TOOLS, ...QUESTION_TOOLS, ...COACHING_TOOLS, ...SUMMARY_TOOLS, 'interview_leetcode', 'interview_materials']),
 })
 
 const PLUGIN_TOOL_NAMES = Object.freeze([

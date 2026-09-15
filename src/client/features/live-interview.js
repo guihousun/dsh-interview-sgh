@@ -118,7 +118,14 @@ export function QuestionResourceCard({ artifact, revision, sessionId }) {
   const active = isCardActive(session, artifact)
   return h(ArtifactState, { query, missing: '找不到题目卡片数据' }, question
     ? question.leetcode
-      ? h(LeetcodeProblemCard, { sessionId, initialQuestion: question, artifact, language: practice.config?.language, resourceRevision: revision })
+      ? h(LeetcodeProblemCard, {
+        sessionId,
+        initialQuestion: question,
+        artifact,
+        language: practice.config?.language,
+        resourceRevision: revision,
+        onRefresh: () => query.reload(),
+      })
       : h(QuestionResultCard, { sessionId, question, artifact, answerDisabled: !active })
     : null)
 }
