@@ -21,6 +21,7 @@
 - `interview_practice` 创建与修改刷力扣练习时必须显式提供 `language` 和 `guidance`，历史练习只保存 `language` 时按标准模式读取。
 - 力扣抽题后的会话卡片改由一次性 `leetcode.present` 请求承接：先补材料、再展示题目卡、最后把材料围栏输出到正文。
 - `interview_show_question` 在题目缺少材料时明确要求先调用 `interview_materials create`，避免材料卡长期缺失。
+- Markdown 导出新增题目材料、前置知识、提示解锁进度与引导强度；自定义题目不再产生空题号。
 
 ### 修复
 

@@ -77,7 +77,10 @@ export class InterviewApplication {
         : `没有符合条件的力扣题目：${[filters?.category, filters?.difficulty].filter(Boolean).join(' · ') || '（空）'}`,
     )
     const added = askQuestion(practice, {
-      id: this.ids.next('question'), prompt: `${problem.id}. ${problem.title}`, leetcode: problem, now,
+      id: this.ids.next('question'),
+      prompt: [problem.id, problem.title].map((item) => String(item || '').trim()).filter(Boolean).join('. '),
+      leetcode: problem,
+      now,
     })
     return { ...added, binding: focusSessionQuestion(binding, added.question.id, now) }
   }

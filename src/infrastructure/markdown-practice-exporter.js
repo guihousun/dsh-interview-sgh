@@ -3,11 +3,17 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { INTERVIEW_MODES } from '../domain/modes.js'
 import { leetcodeDifficultyLabel } from '../domain/leetcode-top-100.js'
+import { leetcodeGuidanceLabel } from '../domain/leetcode-guidance.js'
 import { leetcodeLanguageLabel } from '../domain/leetcode-languages.js'
 import { summarizePractice } from '../domain/practice.js'
 import { defaultDataDirectory } from './paths.js'
 
 const ALL_SECTIONS = ['metadata', 'questions', 'answers', 'evaluations', 'explanations', 'summary']
+
+// 自定义题目可能只有题名没有题号，标题统一在这里拼装，避免出现空题号。
+function leetcodeProblemLabel(problem) {
+  return [problem?.id, problem?.title].map((item) => String(item || '').trim()).filter(Boolean).join('. ')
+}
 
 function timestamp(value) {
   const date = new Date(value)
@@ -67,6 +73,7 @@ export function renderPracticeMarkdown(practice, include) {
     }
     if (practice.mode === 'leetcode') lines.push(
       `- 编程语言：${leetcodeLanguageLabel(practice.config.language)}`,
+      `- 引导强度：${leetcodeGuidanceLabel(practice.config.guidance)}`,
       `- 题目地址：${practice.source.content}`,
     )
   }
@@ -90,7 +97,7 @@ export function renderPracticeMarkdown(practice, include) {
       lines.push(
         '',
         ...practice.summary.problems.map((problem) =>
-          `- [${problem.id}. ${problem.title}](${problem.url}) · ${problem.category} · ${leetcodeDifficultyLabel(problem.difficulty)}`),
+          `- [${leetcodeProblemLabel(problem)}](${problem.url}) · ${problem.category} · ${leetcodeDifficultyLabel(problem.difficulty)}`),
       )
     } else if (practice.summary) {
       lines.push(
@@ -114,8 +121,36 @@ export function renderPracticeMarkdown(practice, include) {
     if (sections.has('questions')) {
       const fixedProblem = question.leetcode || question.hot100
       lines.push('', fixedProblem
-        ? `[${question.prompt}](${fixedProblem.url}) · ${fixedProblem.category} · ${leetcodeDifficultyLabel(fixedProblem.difficulty)}`
+        ? `[${leetcodeProblemLabel(fixedProblem)}](${fixedProblem.url}) · ${fixedProblem.category} · ${leetcodeDifficultyLabel(fixedProblem.difficulty)}`
         : question.prompt)
+      if (question.leetcode && question.materials) {
+        lines.push('', '### 题目材料', '', question.materials.statement)
+        if (question.materials.examples.length) {
+          lines.push('')
+          for (const example of question.materials.examples) {
+            lines.push(`- 输入：\`${example.input}\` → 输出：\`${example.output}\`${example.note ? `（${example.note}）` : ''}`)
+          }
+        }
+        if (question.materials.constraints.length) {
+          lines.push('', '数据范围：', '', ...question.materials.constraints.map((item) => `- \`${item}\``))
+        }
+        if (question.materials.knowledge.length) {
+          lines.push('', '前置知识：', '', ...question.materials.knowledge.map((item) => `- ${item.title}：${item.detail}`))
+        }
+        if (question.materials.hints.length) {
+          const revealed = Math.min(Number(question.hintLevel) || 0, question.materials.hints.length)
+          lines.push('', `提示阶梯（已解锁 ${revealed}/${question.materials.hints.length}）：`, '')
+          question.materials.hints.forEach((hint, index) => {
+            lines.push(`${index + 1}. ${index < revealed ? hint : '（未解锁）'}`)
+          })
+        }
+        if (question.materials.pitfalls.length) {
+          lines.push('', '常见误区：', '', ...question.materials.pitfalls.map((item) => `- ${item}`))
+        }
+        if (question.materials.related.length) {
+          lines.push('', '相似题：', '', ...question.materials.related.map((item) => `- [${leetcodeProblemLabel(item)}](${item.url})`))
+        }
+      }
     }
     for (const attempt of question.attempts) {
       if (!sections.has('answers') && !sections.has('evaluations')) continue
