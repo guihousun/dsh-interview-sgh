@@ -293,6 +293,26 @@ practice.create（language + guidance）
 
 AI 先调用 `interview_session read`，再依据真实数据选择操作：没有题则创建题目；当前题可回答则展示题目；有未评价作答则补齐评价和讲解；已有讲解则展示点评讲解；力扣题则展示当前题。不存在固定的 continue 后端事件，也不从历史 Assistant Text 猜测状态。
 
+## 主题与暗色模式
+
+客户端样式表只有一份，颜色全部走语义变量，主题差异只体现在变量取值上：
+
+```text
+body{--di-surface:#fff;--di-ink:#0f172a;…}                     亮色
+body[data-ds-dark-theme]{--di-surface:var(--dsw-alias-bg-layer-1,#232324);…}   暗色
+body{--di-weight-text:400;--di-weight-title:600}               与主题无关的字重
+```
+
+几条必须遵守的约束：
+
+1. **语义层声明在 `body`，不能声明在 `:root`。** 宿主的 `--dsw-*` 令牌定义在 `body`（`dsh-client-ui-theme` 的样式表），而自定义属性在**声明它的元素**上完成 `var()` 替换。声明在 `:root` 会让替换发生在 `html` 上，读不到宿主的 body 令牌，直接落到兜底色——暗色主题不会生效。
+2. **暗色令牌优先、字面量兜底。** 取值写成 `var(--dsw-alias-bg-layer-1,#232324)`：宿主主题或皮肤改了令牌就跟随，令牌缺失（离屏渲染、测试环境）时仍然可读。使用到的宿主令牌：`bg-base`、`bg-layer-1/2`、`label-primary/secondary/tertiary`、`border-l1…l4`、`link`、`state-success-primary/tertiary`、`state-warn-label/tertiary`、`state-error-primary`。
+3. **规则体不出现颜色字面量。** 只有实色填充上的文字保留 `#fff`；其余一律引用语义变量，因此新增规则也必须用变量。
+4. **实色填充上的文字单独取色。** `--di-on-accent` 用于强调色/危险色按钮，`--di-on-success` 用于亮绿填充上的对勾（暗色下亮绿底要配深色字形），`--di-accent` 只用于文字与描边，`--di-accent-strong` 才是填充色。
+5. **对比度按 WCAG AA 校验。** 暗色下正文、次要文字、标签、徽标、按钮实测均 ≥ 4.5:1；`.di-star` 的空白轨道使用 `--di-line-3`，在两种模式下都可见。
+
+客户端契约测试会断言：亮暗两套变量名完全一致、规则体不再硬编码颜色、所有 `var(--di-*)` 都有声明（组件内联写入的 `--di-star-fill` 除外）。
+
 ## 持久化
 
 SQLite 表包括：

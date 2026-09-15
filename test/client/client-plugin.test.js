@@ -136,8 +136,42 @@ test('Client 与服务端共享交互协议版本并拒绝过期结果', () => {
   )
 })
 
-test('界面只对主标题使用粗体且不渲染装饰性副标题', () => {
-  const featureFiles = [
+test('配色跟随宿主主题令牌并提供暗色语义层', () => {
+  const styles = readFileSync(new URL('../../src/client/shared/styles.js', import.meta.url), 'utf8')
+  const light = styles.match(/body\{--di-ink:#0f172a;[\s\S]*?--di-white:var\(--di-surface\);\}/)?.[0] || ''
+  const dark = styles.match(/body\[data-ds-dark-theme\]\{--di-ink:[\s\S]*?--di-white:var\(--di-surface\);\}/)?.[0] || ''
+  assert.ok(light, '缺少亮色语义层')
+  assert.ok(dark, '缺少暗色语义层')
+
+  // 宿主的 --dsw-* 令牌定义在 body 上，自定义属性在声明元素上完成替换，所以语义层也必须声明在 body。
+  assert.doesNotMatch(styles, /:root\{--di-ink/)
+  assert.match(dark, /--di-surface:var\(--dsw-alias-bg-layer-1,/)
+  assert.match(dark, /--di-ink:var\(--dsw-alias-label-primary,/)
+  assert.match(dark, /--di-muted:var\(--dsw-alias-label-secondary,/)
+  assert.match(dark, /--di-line:var\(--dsw-alias-border-l1,/)
+  // 每个暗色令牌都要有兜底字面量：宿主未提供该令牌时仍可读。
+  for (const declaration of dark.matchAll(/(--di-[a-z0-9-]+):var\(--dsw-[a-z0-9-]+([^;]*)\)/g)) {
+    assert.match(declaration[2], /,#/, `${declaration[1]} 缺少兜底色`)
+  }
+
+  // 两个模式必须声明同一组变量，切换主题才不会漏项。
+  const names = (block) => [...block.matchAll(/(--di-[a-z0-9-]+):/g)].map((match) => match[1]).sort()
+  assert.deepEqual(names(dark), names(light))
+
+  // 规则体只能使用语义变量，规则里不再硬编码颜色（实色填充上的白字除外）。
+  const rules = styles.slice(styles.indexOf('export const STYLE_TEXT')).replace(light, '').replace(dark, '')
+  const declared = new Set([...styles.matchAll(/(--di-[a-z0-9-]+)\s*:/g)].map((match) => match[1]))
+  // --di-star-fill 由星级组件内联写入，不在样式表里声明。
+  const runtimeVariables = new Set(['--di-star-fill'])
+  const missing = [...new Set([...rules.matchAll(/var\((--di-[a-z0-9-]+)/g)].map((match) => match[1]))]
+    .filter((name) => !declared.has(name) && !runtimeVariables.has(name))
+  assert.deepEqual(missing, [], '存在未声明的语义变量')
+  for (const literal of ['#f1f5f9', '#e2e8f0', '#94a3b8', '#0f172a', '#2563eb', '#fff1f2', '#f8fafc', '#fbfcfe']) {
+    assert.equal(rules.includes(literal), false, `规则体仍硬编码 ${literal}`)
+  }
+})
+
+test('界面只对主标题使用粗体且不渲染装饰性副标题', () => {  const featureFiles = [
     '../../src/client/features/leetcode.js',
     '../../src/client/features/live-interview.js',
     '../../src/client/features/practice-config.js',
