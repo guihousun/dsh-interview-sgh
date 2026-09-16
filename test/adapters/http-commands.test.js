@@ -26,6 +26,35 @@ async function cardPayload(application, sessionId = 'session-1', presentationId 
   }
 }
 
+test('工作台选题对升级前的旧练习仍可用，并接受界面补选的配置', async () => {
+  const context = fixture()
+  const started = await dispatchCommand(context.runtime, 'session-1', 'session.start', {
+    mode: 'leetcode', config: { language: 'python', guidance: 'guided' }, problem: { slug: 'permutations' },
+  })
+  // 模拟 0.6.0 之前的存量练习：只有 language。
+  const legacy = await context.repository.getPractice(started.resource.data.practice.id)
+  legacy.config = { language: 'python' }
+  await context.repository.commit({ practice: legacy })
+
+  // 不带配置也能换题：引导强度按标准模式补齐，不再抛“必须明确选择引导强度”。
+  const plain = await dispatchCommand(context.runtime, 'session-1', 'leetcode.select', {
+    problem: { slug: 'two-sum' },
+  })
+  const plainPractice = await context.repository.getPractice(plain.resource.data.practice.id)
+  assert.deepEqual(plainPractice.config, { language: 'python', guidance: 'standard' })
+  assert.equal(plain.resource.data.currentQuestion.leetcode.slug, 'two-sum')
+  assert.equal(context.dispatched.at(-1).event.type, 'leetcode.present')
+
+  // 界面补选的配置覆盖旧配置。
+  const picked = await dispatchCommand(context.runtime, 'session-1', 'leetcode.select', {
+    problem: { slug: 'permutations' },
+    config: { language: 'java', guidance: 'guided' },
+  })
+  const pickedPractice = await context.repository.getPractice(picked.resource.data.practice.id)
+  assert.deepEqual(pickedPractice.config, { language: 'java', guidance: 'guided' })
+  assert.equal(context.dispatched.at(-1).event.guidance, 'guided')
+})
+
 test('UI 新建知识练习只保存练习并投递一次性出题请求', async () => {
   const context = fixture()
   const result = await dispatchCommand(context.runtime, 'session-1', 'session.start', {

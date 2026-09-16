@@ -147,9 +147,12 @@ export function LeetcodeCatalog({ sessionId }) {
   const catalog = query.data?.resource?.data
   if (!catalog) return null
   const session = sessionQuery.data?.resource?.data
-  const activeLeetcode = Boolean(session?.selected && session.practice?.mode === 'leetcode' && session.practice?.status === 'active')
+  const activePractice = session?.selected && session.practice?.mode === 'leetcode' ? session.practice : null
+  const activeLeetcode = Boolean(activePractice && activePractice.status === 'active')
   // difficulties/categories 是 0.6.0 后端才有的字段：缺失说明 dsh web 仍是旧进程，新命令会被拒绝。
   const hostOutdated = !Array.isArray(catalog.difficulties) || catalog.difficulties.length === 0
+  // 0.6.0 之前建的练习只存了 language：换题会用旧配置创建新练习，必须先让用户补选引导强度。
+  const needsConfig = !activeLeetcode || !activePractice.config?.guidance
 
   const toggle = async (problem) => {
     setPendingSlug(problem.slug)
@@ -163,7 +166,7 @@ export function LeetcodeCatalog({ sessionId }) {
     }
   }
   const start = async (problem) => {
-    if (!activeLeetcode) {
+    if (needsConfig) {
       setPendingProblem(problem)
       return
     }
@@ -195,8 +198,11 @@ export function LeetcodeCatalog({ sessionId }) {
           h('h2', { className: 'di-lc-title' }, '开始这道题'),
           h('span', { className: 'di-lc-source' }, `${pendingProblem.id ? `${pendingProblem.id}. ` : ''}${pendingProblem.title}`))),
       h('div', { className: 'di-lc-catalog-config' },
+        activeLeetcode
+          ? h('div', { className: 'di-meta di-lc-config-note' }, '这条力扣练习是升级前创建的，只记录了编程语言；补选引导强度后会归档旧练习并开始这道题。')
+          : null,
         h(PracticeConfigForm, {
-          initial: { mode: 'leetcode', config: session?.practice?.mode === 'leetcode' ? session.practice.config : {} },
+          initial: { mode: 'leetcode', config: activePractice ? activePractice.config : {} },
           busy: command.busy === 'leetcode.select',
           onSubmit: startWithConfig,
           onCancel: () => setPendingProblem(null),

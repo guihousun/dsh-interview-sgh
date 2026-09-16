@@ -83,6 +83,32 @@ test('题目材料与提示阶梯通过应用层保存并回读', async () => {
   await assert.rejects(fixture.application.revealAtomicHint('session-1', questionId), /提示都已经给出/)
 })
 
+test('升级前建的练习（只有 language）换题时自动补齐引导强度', async () => {
+  const fixture = applicationFixture()
+  const created = await fixture.application.createAtomicPractice('session-1', {
+    mode: 'leetcode', config: { language: 'cpp', guidance: 'guided' },
+  })
+  // 模拟 0.6.0 之前的存量数据：config 里没有 guidance。
+  const legacy = await fixture.repository.getPractice(created.resource.data.id)
+  legacy.config = { language: 'python' }
+  await fixture.repository.commit({ practice: legacy })
+
+  const drawn = await fixture.application.drawNextAtomicLeetcode('session-1', {
+    selection: { slug: 'two-sum' },
+  })
+  const next = await fixture.repository.getPractice(drawn.references.practiceId)
+  assert.deepEqual(next.config, { language: 'python', guidance: 'standard' })
+  assert.equal(next.questions[0].leetcode.slug, 'two-sum')
+
+  // 界面补选的配置优先于旧练习里的语言与默认强度。
+  const picked = await fixture.application.drawNextAtomicLeetcode('session-1', {
+    selection: { slug: 'permutations' },
+    config: { language: 'java', guidance: 'guided' },
+  })
+  const repicked = await fixture.repository.getPractice(picked.references.practiceId)
+  assert.deepEqual(repicked.config, { language: 'java', guidance: 'guided' })
+})
+
 test('材料围栏是可渲染的 dsh-ui 规格并区分引导强度', async () => {
   const fixture = await leetcodeSession()
   const drawn = await fixture.application.drawAtomicLeetcode('session-1', { selection: { slug: 'two-sum' } })

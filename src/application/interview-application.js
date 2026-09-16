@@ -1,6 +1,7 @@
 import { DomainError, assertDomain } from '../domain/errors.js'
 import { LEETCODE_TOP_100, LEETCODE_TOP_100_GROUPS, LEETCODE_TOP_100_SOURCE, leetcodeDifficultyLabel, leetcodeTop100Problem } from '../domain/leetcode-top-100.js'
 import { LEETCODE_CATEGORIES, LEETCODE_DIFFICULTY_IDS, leetcodeProblemQueryLabel, listLeetcodeProblems, resolveLeetcodeProblem } from '../domain/leetcode-problems.js'
+import { effectiveLeetcodeGuidance } from '../domain/leetcode-guidance.js'
 import {
   askQuestion, completeLeetcodePractice, completePractice, createPractice, deleteQuestion,
   evaluateAnswer, findQuestion, reopenPractice, revealHint, saveExplanation, saveMaterials, submitAnswer,
@@ -16,6 +17,16 @@ import { assertModeCapability } from '../domain/mode-capabilities.js'
 function requiredId(value, name) {
   assertDomain(typeof value === 'string' && value.trim(), `INVALID_${name.toUpperCase()}`, `${name} 不能为空`)
   return value.trim()
+}
+
+// 换下一题会用旧练习的配置创建新练习：0.6.0 之前的练习只存了 language，
+// 这里补齐引导强度（缺省按标准模式），显式传来的新配置优先。
+function leetcodeConfigFor(currentConfig = {}, requestedConfig = null) {
+  const source = requestedConfig || currentConfig
+  return {
+    language: source.language,
+    guidance: effectiveLeetcodeGuidance(source),
+  }
 }
 
 export class InterviewApplication {
@@ -332,7 +343,7 @@ export class InterviewApplication {
     const previousSlug = practice.questions[0]?.leetcode?.slug
     const completed = completeLeetcodePractice(practice, { now })
     const nextPractice = createPractice({
-      id: this.ids.next('practice'), mode: 'leetcode', config: practice.config, now,
+      id: this.ids.next('practice'), mode: 'leetcode', config: leetcodeConfigFor(practice.config, options.config), now,
     })
     const nextBinding = createSessionBinding({ sessionId, practiceId: nextPractice.id, now })
     const drawn = await this.#drawLeetcodeQuestion(nextPractice, nextBinding, now, {

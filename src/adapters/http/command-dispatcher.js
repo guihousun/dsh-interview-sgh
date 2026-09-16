@@ -85,8 +85,9 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       if (!activeLeetcode) {
         await application.createAtomicPractice(sessionId, { mode: 'leetcode', config: payload.config })
       }
+      // 旧练习可能只存了 language：界面补选的配置要覆盖到新练习，否则领域层会要求引导强度。
       const question = activeLeetcode
-        ? await application.drawNextAtomicLeetcode(sessionId, request)
+        ? await application.drawNextAtomicLeetcode(sessionId, { ...request, config: payload.config || null })
         : await application.drawAtomicLeetcode(sessionId, request)
       const session = await application.readAtomicSession(sessionId)
       dispatchAgent(eventBridge, sessionId, {

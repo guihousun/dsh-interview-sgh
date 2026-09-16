@@ -183,7 +183,16 @@ test('前后端版本不一致时给出可执行的提示而不是原始报错',
   assert.match(leetcode, /disabled: hostOutdated/)
 })
 
-test('界面只对主标题使用粗体且不渲染装饰性副标题', () => {  const featureFiles = [
+test('升级前建的力扣练习会先要求补选引导强度', () => {
+  const leetcode = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
+  assert.match(leetcode, /const needsConfig = !activeLeetcode \|\| !activePractice\.config\?\.guidance/)
+  assert.match(leetcode, /if \(needsConfig\)/)
+  assert.match(leetcode, /升级前创建的，只记录了编程语言/)
+  assert.match(leetcode, /config: activePractice \? activePractice\.config : \{\}/)
+})
+
+test('界面只对主标题使用粗体且不渲染装饰性副标题', () => {
+  const featureFiles = [
     '../../src/client/features/leetcode.js',
     '../../src/client/features/live-interview.js',
     '../../src/client/features/practice-config.js',
