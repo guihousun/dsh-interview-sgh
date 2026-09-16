@@ -109,6 +109,8 @@ export function createMaterialsSpec(question, { guidance } = {}) {
       ? `提示 ${revealed}/${materials.hints.length} 已解锁，题目卡上可以继续要下一级提示。`
       : '题目卡的「提示」按钮可以逐级解锁提示；「看答案」会给出完整解法与代码。',
   })
+  const sourceLine = materialsSourceLine(materials.source)
+  if (sourceLine) items.push({ type: 'text', size: 'caption', content: sourceLine })
 
   return {
     title: problemTitle(problem),
@@ -117,8 +119,16 @@ export function createMaterialsSpec(question, { guidance } = {}) {
   }
 }
 
-export function createMaterialsFence(question, options = {}) {
-  const spec = createMaterialsSpec(question, options)
+// 材料来源说明：示例与数据范围来自官方题面，思路参考了用户自己的题解笔记。
+export function materialsSourceLine(source) {
+  if (!source || typeof source !== 'object') return ''
+  const anchor = typeof source.anchor === 'string' ? source.anchor.replace(/^#+\s*/, '') : ''
+  const parts = []
+  parts.push(source.official ? '示例与数据范围取自官方题面' : '题目材料由 AI 撰写')
+  if (source.file) parts.push(`参考了你的《${source.file}${anchor ? ` · ${anchor}` : ''}》，已按需重写`)
+  return parts.join('；')
+}
+export function createMaterialsFence(question, options = {}) {  const spec = createMaterialsSpec(question, options)
   if (!spec) return ''
   return ['```dsh-ui', JSON.stringify(spec), '```'].join('\n')
 }

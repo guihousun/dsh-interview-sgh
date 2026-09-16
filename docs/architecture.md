@@ -200,6 +200,20 @@ AI 只看到按资源分组的八个业务工具：
 
 选择这条链路的原因：GenUI 只在 Assistant Text 的 markdown 里渲染围栏，工具结果一律按纯文本展示，插件也无法直接写入助手正文；因此材料必须由宿主编译、由模型原样转述。围栏内容只包含可序列化 JSON，不含任何宿主对象。题目还没有材料时，展示工具改为要求模型先调用 `interview_materials create`。
 
+## 题解库：事实层与参考层
+
+本地 SQLite 里另有两张只读表，由 `scripts/import-leetcode-reference.mjs` 导入、做题时只读：
+
+- `leetcode_reference`：每题一条，含官方题面（`statement` / `examples_json` / `constraints_json` / `advanced`）、用户题解笔记（`idea` / `mnemonic` / `diagram` / `steps` / `background` / `code` / `complexity` / `variants_json` / `hardcode_json`）、来源（`source_file` / `source_anchor` / `official_source` / `fetched_at`）；
+- `leetcode_topic_notes`：按题型存放专题前置知识与易错点。
+
+两条边界必须守住：
+
+1. **事实层与参考层分开。** 官方题面是事实基线：`interview_materials` 保存时由 `mergeOfficialFacts` 用官方的示例与数据范围覆盖模型版本，模型写错数字会被纠正；题意复述、思路、提示阶梯、前置知识、易错点、相似题属于表达层，由模型撰写，笔记只作参考、可以改写再加工。材料里的 `source` 记录 `official` / `file` / `anchor`，围栏与题目卡据此显示来源。
+2. **导入是运行时行为，不打包内容。** 脚本从用户指定的目录读 Markdown 与 CSV，官方题面默认实时抓取 `leetcode.cn`（逐题失败回退 CSV 快照，缓存在题解目录的 `.official-cache.json`），`--verify` 只比对漂移不写库。npm 包里只有解析器，不含任何 LeetCode 题面，避免把第三方内容随插件分发。
+
+解析细节（都有单测锁定）：官方 GraphQL 返回的是 HTML，块级标签转换行、`<li>` 还原成 `- `、`<sup>` 还原成 `^`；兜底剥标签必须要求标签名以字母开头，否则会把官方文本里未转义的裸 `<`（如 `-100 <= matrix[i][j]`）到下一个 `>` 之间整段吃掉。示例标记行可能带前导 `&nbsp;`，标记正则要容忍行首尾空白，否则多个示例会被合并成一个。
+
 `dsh-interview/interaction-v2` 只负责把展示产物交给 Client：
 
 ```json

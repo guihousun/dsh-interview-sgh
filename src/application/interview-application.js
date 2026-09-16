@@ -11,6 +11,8 @@ import {
   clearSessionQuestion, consumeSessionBinding, createSessionBinding, focusSessionQuestion, transferSessionBinding,
 } from '../domain/session.js'
 import { buildInsights, toPracticeDetailDto, toPracticeSummaryDto, toQuestionDto, toSessionContextDto } from './dto.js'
+import { referenceBrief, referenceSearchItem, topicBrief } from './leetcode-reference-view.js'
+import { materialsWithReference } from '../domain/leetcode-reference.js'
 import { validateApplicationPorts } from './ports.js'
 import { assertModeCapability } from '../domain/mode-capabilities.js'
 
@@ -77,9 +79,11 @@ export class InterviewApplication {
 
   async #drawLeetcodeQuestion(practice, binding, now, { selection = null, filters = null, excludedSlugs = [] } = {}) {
     assertDomain(practice.mode === 'leetcode', 'INVALID_PRACTICE_MODE', '只有刷力扣模式可以从题库抽题')
-    const problem = selection
+    const picked = selection
       ? resolveLeetcodeProblem(selection)
       : await this.#randomLeetcodeProblem(practice, excludedSlugs, filters)
+    // 点名热题 100 之外的题时，题解库里的官方元数据比“只有题名”的自定义题目更准。
+    const problem = picked?.custom ? await this.#enrichCustomProblem(picked) : picked
     assertDomain(
       problem,
       'LEETCODE_PROBLEM_NOT_FOUND',
@@ -94,6 +98,20 @@ export class InterviewApplication {
       now,
     })
     return { ...added, binding: focusSessionQuestion(binding, added.question.id, now) }
+  }
+
+  async #enrichCustomProblem(problem) {
+    const reference = await this.#referenceForSlug(problem.slug)
+    if (!reference) return problem
+    return {
+      ...problem,
+      id: reference.number || problem.id,
+      title: reference.title || problem.title,
+      slug: reference.slug,
+      difficulty: reference.difficulty || problem.difficulty,
+      category: reference.category || problem.category,
+      url: reference.url || problem.url,
+    }
   }
 
   async #randomLeetcodeProblem(practice, excludedSlugs, filters = null) {
@@ -237,15 +255,85 @@ export class InterviewApplication {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)
     const questionId = requiredId(input.questionId || binding.currentQuestionId, 'questionId')
+    const target = findQuestion(practice, questionId)
+    // 示例与数据范围属于事实：题解库里有官方题面时以官方为准，其余表达仍按模型提供的内容保存。
+    const reference = await this.#referenceForSlug(target.leetcode?.slug)
     const saved = saveMaterials(practice, {
       questionId,
-      materials: input.materials,
+      materials: materialsWithReference(input.materials, reference),
       replace: input.replace === true,
       now,
     })
     await this.repository.commit({ practice: saved.practice })
     return this.#result('question-detail', toQuestionDto(saved.question, practice), binding, {
       references: { questionId },
+    })
+  }
+
+  async #referenceForSlug(slug) {
+    if (!slug) return null
+    return this.repository.findReference(slug)
+  }
+
+  // 题解库读取：优先看会话当前题，也可以直接按 slug / 题号 / 题名取一道题的参考。
+  async readAtomicReference(sessionId, input = {}) {
+    const anchor = resolveLeetcodeProblem({ slug: input.slug, number: input.number, title: input.title })
+    let question = null
+    let practice = null
+    if (!anchor) {
+      const session = await this.#session(sessionId).catch(() => null)
+      if (!session) throw new DomainError('REFERENCE_NOT_SPECIFIED', '必须指定题目，或先在会话里绑定一道力扣题')
+      practice = session.practice
+      question = findQuestion(practice, requiredId(input.questionId || session.binding.currentQuestionId, 'questionId'))
+      if (!question.leetcode) throw new DomainError('REFERENCE_LEETCODE_ONLY', '题解库只覆盖力扣题')
+    }
+    const slug = anchor?.slug || question.leetcode.slug
+    const reference = await this.#referenceForSlug(slug)
+    if (!reference) {
+      throw new DomainError('REFERENCE_NOT_FOUND', `题解库里没有这道题：${slug || anchor?.title || '（未知）'}`, { slug })
+    }
+    const topicNotes = reference.category ? await this.repository.findTopicNotes(reference.category) : null
+    const brief = referenceBrief(reference, {
+      topicNotes,
+      hardcode: reference.hardcode,
+      question: question ? toQuestionDto(question, practice) : null,
+    })
+    return this.#result('reference-brief', brief, null, { references: { problemSlug: reference.slug } })
+  }
+
+  async searchAtomicReferences(input = {}) {
+    const problems = await this.repository.listReferences({
+      keyword: input.keyword,
+      category: input.category,
+      difficulty: input.difficulty,
+      limit: input.limit,
+    })
+    const progress = await this.#leetcodeProgress()
+    return this.#result('reference-search', {
+      query: { keyword: input.keyword || '', category: input.category || '', difficulty: input.difficulty || '' },
+      total: problems.length,
+      categories: [...LEETCODE_CATEGORIES],
+      problems: problems.map((problem) => ({
+        ...referenceSearchItem(problem),
+        completed: progress.get(problem.slug)?.completed === true,
+      })),
+    })
+  }
+
+  async readAtomicTopicNotes(category) {
+    const name = requiredId(category, 'category')
+    const topicNotes = await this.repository.findTopicNotes(name)
+    if (!topicNotes) throw new DomainError('TOPIC_NOTES_NOT_FOUND', `题解库里没有「${name}」的前置知识`)
+    const related = LEETCODE_TOP_100.filter((problem) => problem.category === name).slice(0, 6)
+      .map((problem) => ({ slug: problem.slug, number: problem.id, title: problem.title, difficulty: problem.difficulty }))
+    return this.#result('topic-notes', topicBrief(topicNotes, { category: name, related }))
+  }
+
+  async listAtomicTopics() {
+    const topics = await this.repository.listTopicNotes()
+    return this.#result('topic-list', {
+      total: topics.length,
+      topics: topics.map((topic) => ({ category: topic.category, count: topic.topics.length, sourceFile: topic.sourceFile })),
     })
   }
 

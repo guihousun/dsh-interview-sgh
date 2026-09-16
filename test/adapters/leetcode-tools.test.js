@@ -111,6 +111,62 @@ test('没有材料的力扣题先被要求生成材料再展示', async () => {
   assert.match(shown.assistantInstruction, /interview_materials create/)
 })
 
+test('题解库工具支持取证、检索与专题前置知识', async () => {
+  const context = fixture()
+  await context.repository.saveReferenceLibrary({
+    references: [{
+      slug: 'two-sum', number: '1', title: '两数之和', difficulty: 'easy', category: '哈希',
+      url: 'https://leetcode.cn/problems/two-sum/', statement: '官方题意：返回和为目标值的两个下标。',
+      examples: [{ input: 'nums = [2,7,11,15], target = 9', output: '[0,1]', note: '' }],
+      constraints: ['2 <= nums.length <= 10^4'],
+      idea: '边遍历边查补数。', mnemonic: '边走边查配对数', code: 'def solve(): pass',
+      sourceFile: 'Hot100_哈希题解.md', sourceAnchor: '## 1. 两数之和',
+    }],
+    topics: [{
+      category: '哈希', core: '用空间换时间。',
+      topics: [{ title: '什么时候该想到哈希', detail: '出现「找配对」时。' }],
+      pitfalls: ['先放后查会自己配自己'], sourceFile: 'Hot100_哈希题解.md',
+    }],
+  })
+  await context.tools.interview_practice.execute({
+    operation: 'create', mode: 'leetcode', language: 'python', guidance: 'guided',
+  }, context.exec)
+  const drawn = await context.tools.interview_leetcode.execute({ operation: 'draw', slug: 'two-sum' }, context.exec)
+
+  const read = await context.tools.interview_notes.execute({ operation: 'read' }, context.exec)
+  assert.equal(read.resource.kind, 'reference-brief')
+  assert.equal(read.resource.data.official.statement, '官方题意：返回和为目标值的两个下标。')
+  assert.equal(read.resource.data.official.examples[0].output, '[0,1]')
+  assert.equal(read.resource.data.notes.mnemonic, '边走边查配对数')
+  assert.match(read.resource.data.source.note, /官方题面是事实基线/)
+  assert.equal(read.resource.data.question.id, drawn.references.questionId)
+
+  const search = await context.tools.interview_notes.execute({ operation: 'search', keyword: '两数' }, context.exec)
+  assert.equal(search.resource.data.problems[0].slug, 'two-sum')
+  const topics = await context.tools.interview_notes.execute({ operation: 'topics', category: '哈希' }, context.exec)
+  assert.equal(topics.resource.data.topics[0].title, '什么时候该想到哈希')
+  const list = await context.tools.interview_notes.execute({ operation: 'topic_list' }, context.exec)
+  assert.deepEqual(list.resource.data.topics.map((item) => item.category), ['哈希'])
+
+  // 材料保存时官方示例覆盖模型版本
+  await context.tools.interview_materials.execute({
+    operation: 'create',
+    question_id: drawn.references.questionId,
+    statement: '自己的题意复述',
+    examples: [{ input: '模型写错', output: 'x' }],
+    constraints: ['模型写错'],
+  }, context.exec)
+  const saved = await context.tools.interview_materials.execute({
+    operation: 'replace',
+    question_id: drawn.references.questionId,
+    statement: '自己的题意复述（重写）',
+    examples: [{ input: '模型又写错', output: 'y' }],
+  }, context.exec)
+  assert.equal(saved.resource.data.materials.examples[0].input, 'nums = [2,7,11,15], target = 9')
+  assert.deepEqual(saved.resource.data.materials.constraints, ['2 <= nums.length <= 10^4'])
+  assert.equal(saved.resource.data.materials.source.file, 'Hot100_哈希题解.md')
+})
+
 test('只有刷力扣模式披露力扣题库与材料工具', () => {
   const leetcode = toolNamesForMode('leetcode')
   assert.ok(leetcode.includes('interview_leetcode'))

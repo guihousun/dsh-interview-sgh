@@ -7,6 +7,7 @@ export const INTERVIEW_TOOL_NAMES = Object.freeze([
   'interview_explanation',
   'interview_leetcode',
   'interview_materials',
+  'interview_notes',
   'interview_show_practice_setup',
   'interview_show_question',
   'interview_show_review',

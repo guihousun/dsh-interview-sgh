@@ -8,6 +8,7 @@ import { LEETCODE_GUIDANCE_LEVELS } from '../../domain/leetcode-guidance.js'
 import { isCardActive } from '../shared/card-activity.js'
 import { useCardTransition } from '../shared/card-transition.js'
 import { PracticeConfigForm } from './practice-config.js'
+import { materialsSourceLine } from '../../application/leetcode-materials-fence.js'
 
 const DIFFICULTY = Object.freeze({
   easy: { label: '简单', tone: 'easy' },
@@ -307,7 +308,10 @@ function MaterialsBlock({ question }) {
     materials.related?.length ? h('div', { className: 'di-lc-material-block' },
       h('div', { className: 'di-lc-material-label' }, '相似题'),
       h('ul', { className: 'di-lc-related' }, materials.related.map((item) => h('li', { key: `${item.id}-${item.title}` },
-        h('a', { className: 'di-link', href: item.url, target: '_blank', rel: 'noreferrer' }, `${item.id ? `${item.id}. ` : ''}${item.title}`))))) : null)
+        h('a', { className: 'di-link', href: item.url, target: '_blank', rel: 'noreferrer' }, `${item.id ? `${item.id}. ` : ''}${item.title}`))))) : null,
+    materialsSourceLine(materials.source)
+      ? h('div', { className: 'di-lc-material-source' }, materialsSourceLine(materials.source))
+      : null)
 }
 
 function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {

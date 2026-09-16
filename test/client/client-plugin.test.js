@@ -183,6 +183,17 @@ test('前后端版本不一致时给出可执行的提示而不是原始报错',
   assert.match(leetcode, /disabled: hostOutdated/)
 })
 
+test('题目材料卡显示来源标注', () => {
+  const leetcode = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
+  const fence = readFileSync(new URL('../../src/application/leetcode-materials-fence.js', import.meta.url), 'utf8')
+  const styles = readFileSync(new URL('../../src/client/shared/styles.js', import.meta.url), 'utf8')
+  assert.match(leetcode, /materialsSourceLine\(materials\.source\)/)
+  assert.match(leetcode, /className: 'di-lc-material-source'/)
+  assert.match(fence, /示例与数据范围取自官方题面/)
+  assert.match(fence, /参考了你的《/)
+  assert.match(styles, /\.di-lc-material-source\{/)
+})
+
 test('升级前建的力扣练习会先要求补选引导强度', () => {
   const leetcode = readFileSync(new URL('../../src/client/features/leetcode.js', import.meta.url), 'utf8')
   assert.match(leetcode, /const needsConfig = !activeLeetcode \|\| !activePractice\.config\?\.guidance/)

@@ -76,10 +76,52 @@ export class SqliteInterviewRepository {
         updated_at INTEGER NOT NULL
       );
 
+      -- 题解库：热题 100 的官方题面（事实层）+ 用户自己的题解笔记（参考层）。由导入脚本写入，做题时只读。
+      CREATE TABLE IF NOT EXISTS leetcode_reference (
+        slug TEXT PRIMARY KEY,
+        number TEXT,
+        title TEXT,
+        title_en TEXT,
+        difficulty TEXT,
+        category TEXT,
+        tags_json TEXT,
+        url TEXT,
+        statement TEXT,
+        examples_json TEXT,
+        constraints_json TEXT,
+        advanced TEXT,
+        idea TEXT,
+        mnemonic TEXT,
+        diagram TEXT,
+        steps TEXT,
+        background TEXT,
+        notes TEXT,
+        code TEXT,
+        complexity TEXT,
+        variants_json TEXT,
+        hardcode_json TEXT,
+        source_file TEXT,
+        source_anchor TEXT,
+        official_source TEXT,
+        fetched_at INTEGER,
+        updated_at INTEGER
+      );
+
+      -- 专题前置知识（栈预备课 / 图论基础…），按题型存放，引导模式补齐前置知识时读取。
+      CREATE TABLE IF NOT EXISTS leetcode_topic_notes (
+        category TEXT PRIMARY KEY,
+        core TEXT,
+        topics_json TEXT,
+        pitfalls_json TEXT,
+        source_file TEXT,
+        updated_at INTEGER
+      );
+
       CREATE INDEX IF NOT EXISTS idx_practices_updated_at ON practices(updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_practices_mode_status ON practices(mode, status);
       CREATE INDEX IF NOT EXISTS idx_questions_practice ON questions(practice_id, sequence);
       CREATE INDEX IF NOT EXISTS idx_attempts_question ON attempts(question_id, sequence);
+      CREATE INDEX IF NOT EXISTS idx_reference_category ON leetcode_reference(category);
     `)
     this.#addMissingColumns()
   }
@@ -89,6 +131,10 @@ export class SqliteInterviewRepository {
     const columns = new Set(this.database.prepare('PRAGMA table_info(questions)').all().map((column) => column.name))
     if (!columns.has('materials_json')) this.database.exec('ALTER TABLE questions ADD COLUMN materials_json TEXT')
     if (!columns.has('hint_level')) this.database.exec('ALTER TABLE questions ADD COLUMN hint_level INTEGER NOT NULL DEFAULT 0')
+    // 题解库表是后加的：早期导入过的库需要补上来源与抓取时间两列。
+    const referenceColumns = new Set(this.database.prepare('PRAGMA table_info(leetcode_reference)').all().map((column) => column.name))
+    if (referenceColumns.size && !referenceColumns.has('official_source')) this.database.exec('ALTER TABLE leetcode_reference ADD COLUMN official_source TEXT')
+    if (referenceColumns.size && !referenceColumns.has('fetched_at')) this.database.exec('ALTER TABLE leetcode_reference ADD COLUMN fetched_at INTEGER')
   }
 
   #readQuestion(row) {
@@ -306,6 +352,175 @@ export class SqliteInterviewRepository {
         completed_at = excluded.completed_at,
         updated_at = excluded.updated_at
     `).run(progress.slug, progress.completed ? 1 : 0, progress.completedAt, progress.updatedAt)
+  }
+
+  #readReference(row) {
+    if (!row) return null
+    return {
+      slug: row.slug,
+      number: row.number || '',
+      title: row.title || '',
+      titleEn: row.title_en || '',
+      difficulty: row.difficulty || '',
+      category: row.category || '',
+      tags: parseJson(row.tags_json, []),
+      url: row.url || '',
+      statement: row.statement || '',
+      examples: parseJson(row.examples_json, []),
+      constraints: parseJson(row.constraints_json, []),
+      advanced: row.advanced || '',
+      idea: row.idea || '',
+      mnemonic: row.mnemonic || '',
+      diagram: row.diagram || '',
+      steps: row.steps || '',
+      background: row.background || '',
+      notes: row.notes || '',
+      code: row.code || '',
+      complexity: row.complexity || '',
+      variants: parseJson(row.variants_json, []),
+      hardcode: parseJson(row.hardcode_json, null),
+      sourceFile: row.source_file || '',
+      sourceAnchor: row.source_anchor || '',
+      officialSource: row.official_source || '',
+      fetchedAt: row.fetched_at || 0,
+      updatedAt: row.updated_at || 0,
+    }
+  }
+
+  // 题解库整批导入：一次事务里 upsert，导入脚本可以反复执行。
+  async saveReferenceLibrary({ references = [], topics = [], now = Date.now() } = {}) {
+    const insertReference = this.database.prepare(`
+      INSERT INTO leetcode_reference (
+        slug, number, title, title_en, difficulty, category, tags_json, url,
+        statement, examples_json, constraints_json, advanced,
+        idea, mnemonic, diagram, steps, background, notes, code, complexity, variants_json, hardcode_json,
+        source_file, source_anchor, official_source, fetched_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(slug) DO UPDATE SET
+        number = excluded.number, title = excluded.title, title_en = excluded.title_en,
+        difficulty = excluded.difficulty, category = excluded.category, tags_json = excluded.tags_json,
+        url = excluded.url, statement = excluded.statement, examples_json = excluded.examples_json,
+        constraints_json = excluded.constraints_json, advanced = excluded.advanced,
+        idea = excluded.idea, mnemonic = excluded.mnemonic, diagram = excluded.diagram, steps = excluded.steps,
+        background = excluded.background, notes = excluded.notes, code = excluded.code,
+        complexity = excluded.complexity, variants_json = excluded.variants_json, hardcode_json = excluded.hardcode_json,
+        source_file = excluded.source_file, source_anchor = excluded.source_anchor,
+        official_source = excluded.official_source, fetched_at = excluded.fetched_at, updated_at = excluded.updated_at
+    `)
+    const insertTopic = this.database.prepare(`
+      INSERT INTO leetcode_topic_notes (category, core, topics_json, pitfalls_json, source_file, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(category) DO UPDATE SET
+        core = excluded.core, topics_json = excluded.topics_json, pitfalls_json = excluded.pitfalls_json,
+        source_file = excluded.source_file, updated_at = excluded.updated_at
+    `)
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      for (const reference of references) {
+        insertReference.run(
+          reference.slug,
+          reference.number || '',
+          reference.title || '',
+          reference.titleEn || '',
+          reference.difficulty || '',
+          reference.category || '',
+          JSON.stringify(reference.tags || []),
+          reference.url || '',
+          reference.statement || '',
+          JSON.stringify(reference.examples || []),
+          JSON.stringify(reference.constraints || []),
+          reference.advanced || '',
+          reference.idea || '',
+          reference.mnemonic || '',
+          reference.diagram || '',
+          reference.steps || '',
+          reference.background || '',
+          reference.notes || '',
+          reference.code || '',
+          reference.complexity || '',
+          JSON.stringify(reference.variants || []),
+          reference.hardcode ? JSON.stringify(reference.hardcode) : null,
+          reference.sourceFile || '',
+          reference.sourceAnchor || '',
+          reference.officialSource || '',
+          reference.fetchedAt || now,
+          now,
+        )
+      }
+      for (const topic of topics) {
+        insertTopic.run(
+          topic.category,
+          topic.core || '',
+          JSON.stringify(topic.topics || []),
+          JSON.stringify(topic.pitfalls || []),
+          topic.sourceFile || '',
+          now,
+        )
+      }
+      this.database.exec('COMMIT')
+    } catch (error) {
+      this.database.exec('ROLLBACK')
+      throw error
+    }
+    return { references: references.length, topics: topics.length }
+  }
+
+  async findReference(slug) {
+    if (typeof slug !== 'string' || !slug.trim()) return null
+    return this.#readReference(this.database.prepare('SELECT * FROM leetcode_reference WHERE slug = ?').get(slug.trim()))
+  }
+
+  async listReferences({ category, difficulty, keyword, limit = 20 } = {}) {
+    const clauses = []
+    const parameters = []
+    if (category) { clauses.push('category = ?'); parameters.push(category) }
+    if (difficulty) { clauses.push('difficulty = ?'); parameters.push(difficulty) }
+    if (keyword) {
+      // 关键字同时匹配题号、题名、slug、题型与标签，和题库的检索口径保持一致。
+      clauses.push('(slug LIKE ? OR title LIKE ? OR number = ? OR category LIKE ? OR tags_json LIKE ?)')
+      const like = `%${keyword}%`
+      parameters.push(like, like, keyword, like, like)
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+    const size = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.min(Number(limit), 200) : 20
+    const rows = this.database.prepare(`
+      SELECT slug, number, title, title_en, difficulty, category, tags_json, url
+      FROM leetcode_reference ${where}
+      ORDER BY CAST(number AS INTEGER) ASC, number ASC LIMIT ?
+    `).all(...parameters, size)
+    return rows.map((row) => this.#readReference(row))
+  }
+
+  async findTopicNotes(category) {
+    if (typeof category !== 'string' || !category.trim()) return null
+    const row = this.database.prepare('SELECT * FROM leetcode_topic_notes WHERE category = ?').get(category.trim())
+    if (!row) return null
+    return {
+      category: row.category,
+      core: row.core || '',
+      topics: parseJson(row.topics_json, []),
+      pitfalls: parseJson(row.pitfalls_json, []),
+      sourceFile: row.source_file || '',
+      updatedAt: row.updated_at || 0,
+    }
+  }
+
+  async listTopicNotes() {
+    return this.database.prepare('SELECT * FROM leetcode_topic_notes ORDER BY category ASC').all().map((row) => ({
+      category: row.category,
+      core: row.core || '',
+      topics: parseJson(row.topics_json, []),
+      pitfalls: parseJson(row.pitfalls_json, []),
+      sourceFile: row.source_file || '',
+      updatedAt: row.updated_at || 0,
+    }))
+  }
+
+  async referenceStats() {
+    const total = this.database.prepare('SELECT COUNT(*) AS total FROM leetcode_reference').get().total
+    const withNotes = this.database.prepare('SELECT COUNT(*) AS total FROM leetcode_reference WHERE idea != \'\' OR mnemonic != \'\'').get().total
+    const topics = this.database.prepare('SELECT COUNT(*) AS total FROM leetcode_topic_notes').get().total
+    return { total, withNotes, topics }
   }
 
   close() {

@@ -8,6 +8,7 @@ import {
   ATOMIC_INTERVIEW_POLICY,
   ATOMIC_LEETCODE_POLICY,
   ATOMIC_MATERIALS_POLICY,
+  ATOMIC_NOTES_POLICY,
   ATOMIC_QUESTION_POLICY,
   ATOMIC_REVIEW_POLICY,
   modeContextForMode,
@@ -373,6 +374,39 @@ function definitionsFor(afterExecute = null) {
           related: args.related,
         },
       })
+    },
+  }),
+  atomicTool({
+    name: 'interview_notes',
+    description: `读取力扣题解库：每题都有官方题面（题意、示例、数据范围，事实基线）和用户自己的题解笔记（思路、口诀、图解、代码、复杂度、易错点，参考素材）。写题目材料或讲解前先 read 取证。${ATOMIC_NOTES_POLICY}`,
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: { type: 'string', enum: ['read', 'search', 'topics', 'topic_list'] },
+        slug: { type: 'string', minLength: 1, description: '热题 100 或题解库中的题目 slug' },
+        number: { type: 'string', minLength: 1, description: '力扣题号，例如 1' },
+        title: { type: 'string', minLength: 1, description: '力扣题名，例如 两数之和' },
+        question_id: { type: 'string', minLength: 1, description: 'read 专用：读取指定题目的参考，不传时用当前会话的当前题' },
+        keyword: { type: 'string', minLength: 1, description: 'search 专用：匹配 slug、题名或题号' },
+        category: { type: 'string', enum: LEETCODE_CATEGORIES, description: 'search / topics 专用：题型' },
+        difficulty: { type: 'string', enum: LEETCODE_DIFFICULTY_IDS, description: 'search 专用：难度' },
+        limit: { type: 'integer', minimum: 1, maximum: 100, description: 'search 最多返回多少道题' },
+      },
+      required: ['operation'],
+      additionalProperties: false,
+    },
+    execute(application, args, sessionId) {
+      switch (args.operation) {
+        case 'read': return application.readAtomicReference(sessionId, {
+          slug: args.slug, number: args.number, title: args.title, questionId: args.question_id,
+        })
+        case 'search': return application.searchAtomicReferences({
+          keyword: args.keyword, category: args.category, difficulty: args.difficulty, limit: args.limit,
+        })
+        case 'topics': return application.readAtomicTopicNotes(args.category)
+        case 'topic_list': return application.listAtomicTopics()
+        default: throw new TypeError(`不支持的题解库操作：${String(args.operation)}`)
+      }
     },
   }),
   ]

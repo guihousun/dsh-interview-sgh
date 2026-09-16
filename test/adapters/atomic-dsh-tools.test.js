@@ -19,6 +19,7 @@ test('原子业务工具按资源分组且结果不携带 UI 产物', async () =
     'interview_explanation',
     'interview_leetcode',
     'interview_materials',
+    'interview_notes',
     'interview_practice',
     'interview_question',
     'interview_session',

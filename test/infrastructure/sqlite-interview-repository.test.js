@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { createPractice, askQuestion, submitAnswer, evaluateAnswer, revealHint, saveExplanation, saveMaterials } from '../../src/domain/practice.js'
+import { normalizeReferenceRecord, normalizeTopicNotes } from '../../src/domain/leetcode-reference.js'
 import { createSessionBinding, focusSessionQuestion, transferSessionBinding } from '../../src/domain/session.js'
 import { SqliteInterviewRepository } from '../../src/infrastructure/sqlite-interview-repository.js'
 
@@ -181,4 +182,64 @@ test('旧数据库缺少题目材料列时就地补齐且保留历史数据', ()
     assert.equal(rows[0].hint_level, 0)
     repository.close()
   } finally { rmSync(directory, { recursive: true, force: true }) }
+})
+
+test('SQLite 题解库保存官方题面、笔记与专题前置知识', async () => {
+  const context = fixture()
+  try {
+    const result = await context.repository.saveReferenceLibrary({
+      references: [
+        normalizeReferenceRecord({
+          slug: 'two-sum', number: '1', title: '两数之和', difficulty: 'easy', category: '哈希',
+          tags: ['数组', '哈希表'], url: 'https://leetcode.cn/problems/two-sum/',
+          statement: '官方题意：返回和为目标值的两个下标。',
+          examples: [{ input: 'nums = [2,7,11,15], target = 9', output: '[0,1]', note: '' }],
+          constraints: ['2 <= nums.length <= 10^4'],
+          idea: '边遍历边查补数。', mnemonic: '边走边查配对数', diagram: 'need = target - num',
+          code: 'def solve(): pass', complexity: 'O(n)',
+          variants: [{ kind: '更优版', idea: '一次遍历', code: 'def solve(): pass', mnemonic: '', diagram: '', complexity: '' }],
+          hardcode: { mnemonic: '字典存数字到下标', pseudocode: '创建字典', code: 'def solve(): pass', complexity: 'O(n)' },
+          sourceFile: 'Hot100_哈希题解.md', sourceAnchor: '## 1. 两数之和',
+          officialSource: 'live', fetchedAt: 1789563000000,
+        }),
+        normalizeReferenceRecord({ slug: 'move-zeroes', number: '283', title: '移动零', difficulty: 'easy', category: '双指针' }),
+      ],
+      topics: [normalizeTopicNotes({
+        category: '哈希', core: '用空间换时间。',
+        topics: [{ title: '什么时候该想到哈希', detail: '出现找配对时。' }],
+        pitfalls: ['先放后查会自己配自己'], sourceFile: 'Hot100_哈希题解.md',
+      })],
+      now: 1789563000000,
+    })
+    assert.deepEqual(result, { references: 2, topics: 1 })
+
+    const reference = await context.repository.findReference('two-sum')
+    assert.equal(reference.statement, '官方题意：返回和为目标值的两个下标。')
+    assert.deepEqual(reference.constraints, ['2 <= nums.length <= 10^4'])
+    assert.equal(reference.mnemonic, '边走边查配对数')
+    assert.equal(reference.variants[0].kind, '更优版')
+    assert.equal(reference.hardcode.code, 'def solve(): pass')
+    assert.equal(reference.officialSource, 'live')
+    assert.equal(reference.fetchedAt, 1789563000000)
+    assert.equal(reference.sourceAnchor, '## 1. 两数之和')
+
+    const filtered = await context.repository.listReferences({ category: '哈希' })
+    assert.deepEqual(filtered.map((item) => item.slug), ['two-sum'])
+    assert.deepEqual((await context.repository.listReferences({ keyword: '283' })).map((item) => item.slug), ['move-zeroes'])
+    assert.deepEqual((await context.repository.listReferences({ difficulty: 'easy' })).map((item) => item.slug), ['two-sum', 'move-zeroes'])
+
+    const topic = await context.repository.findTopicNotes('哈希')
+    assert.equal(topic.topics[0].title, '什么时候该想到哈希')
+    assert.equal(topic.pitfalls[0], '先放后查会自己配自己')
+    assert.equal((await context.repository.listTopicNotes()).length, 1)
+    assert.deepEqual(await context.repository.referenceStats(), { total: 2, withNotes: 1, topics: 1 })
+
+    // 重复导入按 slug 覆盖，不产生重复行
+    await context.repository.saveReferenceLibrary({
+      references: [normalizeReferenceRecord({ slug: 'two-sum', number: '1', title: '两数之和（更新）' })],
+      now: 1789563001000,
+    })
+    assert.equal((await context.repository.findReference('two-sum')).title, '两数之和（更新）')
+    assert.equal((await context.repository.referenceStats()).total, 2)
+  } finally { context.cleanup() }
 })

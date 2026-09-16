@@ -79,6 +79,22 @@ export function leetcodeProblemQueryLabel(selection = {}) {
 // 把用户或模型给出的题号、题名、slug 解析成一道明确的力扣题。
 // 命中固定热题 100 时使用官方元数据；未命中且给出了题名或 slug 时视为自定义题目。
 export function resolveLeetcodeProblem(selection = {}) {
+  // 已经解析过的自定义题目原样通过：应用层可能已经用题解库补齐了题号、难度和题型。
+  if (selection.custom === true && text(selection.title)) {
+    const customTitle = text(selection.title)
+    const customSlug = text(selection.slug)
+    return {
+      id: text(selection.id) || text(selection.number),
+      title: customTitle,
+      slug: customSlug,
+      difficulty: text(selection.difficulty),
+      category: text(selection.category) || LEETCODE_CUSTOM_CATEGORY,
+      url: text(selection.url) || (customSlug
+        ? `https://leetcode.cn/problems/${customSlug}/`
+        : `https://leetcode.cn/problemset/?search=${encodeURIComponent(customTitle)}`),
+      custom: true,
+    }
+  }
   const slug = text(selection.slug)
   const number = text(selection.number)
   const title = text(selection.title)

@@ -9,6 +9,36 @@ export class InMemoryInterviewRepository {
     this.practices = new Map()
     this.bindings = new Map()
     this.leetcodeProgress = new Map()
+    this.references = new Map()
+    this.topicNotes = new Map()
+  }
+
+  async findReference(slug) { return clone(this.references.get(slug) || null) }
+
+  async listReferences({ category, difficulty, keyword, limit = 20 } = {}) {
+    return [...this.references.values()]
+      .filter((item) => !category || item.category === category)
+      .filter((item) => !difficulty || item.difficulty === difficulty)
+      .filter((item) => !keyword || item.slug.includes(keyword) || item.title.includes(keyword) || item.number === keyword
+        || (item.category || '').includes(keyword) || (item.tags || []).some((tag) => tag.includes(keyword)))
+      .sort((left, right) => Number(left.number) - Number(right.number))
+      .slice(0, limit)
+      .map(clone)
+  }
+
+  async findTopicNotes(category) { return clone(this.topicNotes.get(category) || null) }
+
+  async listTopicNotes() { return [...this.topicNotes.values()].map(clone) }
+
+  async saveReferenceLibrary({ references = [], topics = [] } = {}) {
+    for (const reference of references) this.references.set(reference.slug, clone(reference))
+    for (const topic of topics) this.topicNotes.set(topic.category, clone(topic))
+    return { references: references.length, topics: topics.length }
+  }
+
+  async referenceStats() {
+    const withNotes = [...this.references.values()].filter((item) => item.idea || item.mnemonic).length
+    return { total: this.references.size, withNotes, topics: this.topicNotes.size }
   }
 
   async getPractice(id) { return clone(this.practices.get(id) || null) }

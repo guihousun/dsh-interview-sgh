@@ -85,6 +85,18 @@ function normalizeRelated(value) {
   })
 }
 
+function normalizeSource(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return {
+    // 材料正文始终由模型撰写；official 只表示示例与数据范围取自官方题面。
+    kind: 'model',
+    official: value.official === true,
+    file: optionalText(value.file, 200),
+    anchor: optionalText(value.anchor, 200),
+    url: optionalText(value.url, 300),
+  }
+}
+
 export function normalizeLeetcodeMaterials(input) {
   assertDomain(input && typeof input === 'object' && !Array.isArray(input), 'MATERIALS_REQUIRED', '必须提供题目材料')
   return {
@@ -101,6 +113,7 @@ export function normalizeLeetcodeMaterials(input) {
       code: 'INVALID_MATERIALS_PITFALLS', message: '常见误区必须是字符串', maximum: MATERIALS_LIMITS.pitfalls, itemMaximum: MATERIALS_LIMITS.pitfall,
     }),
     related: normalizeRelated(input.related),
+    source: normalizeSource(input.source),
   }
 }
 
