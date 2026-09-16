@@ -51,11 +51,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/codingayice/dsh-interview.git"
+    "url": "git+https://github.com/guihousun/dsh-interview-sgh.git"
   },
-  "homepage": "https://github.com/codingayice/dsh-interview",
+  "homepage": "https://github.com/guihousun/dsh-interview-sgh",
   "bugs": {
-    "url": "https://github.com/codingayice/dsh-interview/issues"
+    "url": "https://github.com/guihousun/dsh-interview-sgh/issues"
   },
   "keywords": [
     "deepseek",

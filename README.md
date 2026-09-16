@@ -1,9 +1,11 @@
 # dsh-interview：AI 面试练习助手
 
+> 本仓库是 [codingayice/dsh-interview](https://github.com/codingayice/dsh-interview) 的 fork，在 0.5.1 基础上增加了「刷力扣」的自由选题、题目材料 GenUI 卡片、引导强度与暗色模式适配，详见 [CHANGELOG](./CHANGELOG.md) 的 0.6.0。本分支未发布 npm，npm 上的 `dsh-interview` 是上游包。
+
 [![npm](https://img.shields.io/npm/v/dsh-interview)](https://www.npmjs.com/package/dsh-interview)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.5-339933?logo=node.js&logoColor=white)](./package.json)
-[![license](https://img.shields.io/github/license/codingayice/dsh-interview)](./LICENSE)
+[![license](https://img.shields.io/github/license/guihousun/dsh-interview-sgh)](./LICENSE)
 
 一个运行在 DeepSeek Harness Web 中的 AI 面试练习助手。
 
@@ -235,7 +237,8 @@ npm install
 npm run verify
 ```
 
-- [GitHub Issues](https://github.com/codingayice/dsh-interview/issues)
+- [GitHub Issues](https://github.com/guihousun/dsh-interview-sgh/issues)
+- [上游仓库](https://github.com/codingayice/dsh-interview)
 - [版本变更记录](./CHANGELOG.md)
 
 ## License
