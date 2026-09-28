@@ -1,8 +1,8 @@
 import React from 'react'
 import { interviewApi } from '../shared/api.js'
 import { useCommand, useInterviewQuery } from '../shared/hooks.js'
-import { SolutionDisclosure } from '../shared/solution-disclosure.js'
-import { Button, ErrorNotice, h, Loading, Markdown } from '../shared/ui.js'
+import { SolutionContent, SolutionDisclosure } from '../shared/solution-disclosure.js'
+import { Button, ErrorNotice, h, Loading } from '../shared/ui.js'
 
 export function QuestionSolutionPanel({ sessionId, practiceId, question, canGenerate = true }) {
   const [opened, setOpened] = React.useState(false)
@@ -38,8 +38,8 @@ export function QuestionSolutionPanel({ sessionId, practiceId, question, canGene
     !solution && query.loading ? h(Loading, { label: '正在读取参考答案…' }) : null,
     solution?.available ? h(React.Fragment, null,
       h('div', { className: 'di-meta di-solution-source' }, solution.source),
-      h(Markdown, null, solution.detail),
-      solution.memorizationPoints ? h('section', { className: 'di-attempt' }, h('div', { className: 'di-section-label' }, question.leetcode ? '解题要点' : '参考要点'), h(Markdown, null, solution.memorizationPoints)) : null,
+      h(SolutionContent, { detail: solution.detail, memorizationPoints: solution.memorizationPoints,
+        pointsLabel: question.leetcode ? '解题要点' : '参考要点' }),
       solution.reused ? h('p', { className: 'di-meta', role: 'status' }, '这份讲解直接从题库读取，未请求 AI。') : null,
       solution.canGenerate && canGenerate ? h(Button, { disabled: !sessionId || generating || Boolean(command.busy),
         title: '重新请求 AI，生成适用于以后练习的通用讲解并更新题库缓存', onClick: () => generate(true) },

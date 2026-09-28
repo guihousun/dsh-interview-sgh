@@ -284,7 +284,7 @@ export class InterviewApplication {
   }
 
   // 卡片消耗与代码作答一次提交；失败不会丢掉卡片，重复请求不会产生两条作答。
-  async submitAtomicCodeAnswer(sessionId, input) {
+  async submitAtomicCodeAnswer(sessionId, input, { markCompleted = false } = {}) {
     const previous = this.codeSubmissions.get(sessionId) || Promise.resolve()
     const task = previous.catch(() => {}).then(async () => {
       const answer = formatCodeAnswer(input)
@@ -298,7 +298,8 @@ export class InterviewApplication {
         questionId: input.questionId, attemptId: this.ids.next('attempt'), answer, now,
       })
       const nextBinding = consumeSessionBinding(binding, now)
-      await this.repository.commit({ practice: added.practice, binding: nextBinding })
+      await this.repository.commit({ practice: added.practice, binding: nextBinding,
+        leetcodeProgress: markCompleted ? leetcodeCompletionProgress(added.practice, { at: now, questionId: input.questionId }) : [] })
       return this.#result('attempt-detail', { questionId: input.questionId, ...added.attempt }, nextBinding, {
         references: { attemptId: added.attempt.id },
       })

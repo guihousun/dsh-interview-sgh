@@ -7,7 +7,7 @@ import { LeetcodeProblemCard } from './leetcode.js'
 import { isCardActive } from '../shared/card-activity.js'
 import { useCardTransition } from '../shared/card-transition.js'
 import { CodeAnswerEditor } from './code-answer.js'
-import { SolutionDisclosure } from '../shared/solution-disclosure.js'
+import { SolutionContent, SolutionDisclosure } from '../shared/solution-disclosure.js'
 import { QuestionLearningPanel } from './question-learning.js'
 import { QuestionSolutionPanel } from './question-solution.js'
 
@@ -73,13 +73,8 @@ export function ReviewResultCard({ sessionId, question, attempt, artifact, actio
               h('span', { key: name }, name, h('span', { className: 'di-dimension-score' }, `${score}/10`))))
           : null) : null,
       h(SolutionDisclosure, { key: `${question.id}:${explanation.createdAt}` },
-      h('section', { className: 'di-review-section' },
-        h('h3', null, '讲解'),
-        h('div', { className: 'di-explanation-copy' }, h(Markdown, null, explanation.detail))),
-      h('section', { className: 'di-memorize-box' },
-        h('div', { className: 'di-memorize-copy' },
-          h('div', { className: 'di-memorize-label' }, isLeetcode ? '解题要点' : '直接背'),
-          h(Markdown, null, explanation.memorizationPoints)))),
+        h(SolutionContent, { detail: explanation.detail, memorizationPoints: explanation.memorizationPoints,
+          pointsLabel: isLeetcode ? '解题要点' : '直接背' })),
       h(ErrorNotice, null, command.error),
       h('div', { className: 'di-review-actions' },
         isLeetcode

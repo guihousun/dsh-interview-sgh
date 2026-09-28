@@ -1319,9 +1319,13 @@ function draftStorage() {
     return null;
   }
 }
+function sameCode(left, right) {
+  return Boolean(left && right && left.language === right.language && left.code.replace(/\r\n?/g, "\n") === right.code.replace(/\r\n?/g, "\n") && (left.notes || "").trim() === (right.notes || "").trim());
+}
 function CodeAnswerEditor({ sessionId, question, artifact, language = "", disabled = false }) {
   const key = codeDraftKey(sessionId, artifact.practiceId, question.id);
-  const latest = parseCodeAnswer(question.attempts?.at(-1)?.answer);
+  const previous = [...question.attempts || []].reverse().map((attempt) => ({ attempt, code: parseCodeAnswer(attempt.answer) })).find((item) => item.code);
+  const latest = previous?.code;
   const [draft, setDraft] = import_react7.default.useState(() => {
     const saved2 = !disabled && readCodeDraft(draftStorage(), key);
     return { code: "", notes: "", language: language || "python", ...latest || {}, ...saved2 || {}, ...language ? { language } : {} };
@@ -1329,28 +1333,72 @@ function CodeAnswerEditor({ sessionId, question, artifact, language = "", disabl
   const draftRef = import_react7.default.useRef(draft);
   const codeRef = import_react7.default.useRef(null);
   const [saved, setSaved] = import_react7.default.useState(null);
-  const [submission, setSubmission] = import_react7.default.useState(null);
+  const [submission, setSubmission] = import_react7.default.useState(() => previous ? { attemptId: previous.attempt.id, code: previous.code, queued: null } : null);
+  const submissionRef = import_react7.default.useRef(submission);
+  const artifactRef = import_react7.default.useRef(artifact);
+  const inFlight = import_react7.default.useRef(false);
+  const [needsReconnect, setNeedsReconnect] = import_react7.default.useState(false);
+  const [notice, setNotice] = import_react7.default.useState("");
   const command = useCommand(sessionId);
-  const locked = disabled || Boolean(submission) || Boolean(command.busy);
+  const locked = disabled || Boolean(command.busy);
+  const submitted = sameCode(draft, submission?.code);
+  const evaluated = submitted && question.attempts?.some((attempt) => attempt.id === submission.attemptId && attempt.evaluation);
+  const rememberSubmission = (value) => {
+    submissionRef.current = value;
+    setSubmission(value);
+  };
   const update = (patch) => {
     const next = { ...draftRef.current, ...patch };
     draftRef.current = next;
     setDraft(next);
     setSaved(saveCodeDraft(draftStorage(), key, next));
+    setNotice("");
   };
-  const submit = async () => {
-    if (locked || !draftRef.current.code.trim()) return;
+  const submit = async (analyze = false) => {
+    if (locked || inFlight.current || !draftRef.current.code.trim()) return;
+    const existing = submissionRef.current;
+    const unchanged = sameCode(draftRef.current, existing?.code);
+    if (unchanged && (!analyze || existing.queued || question.attempts?.some((attempt) => attempt.id === existing.attemptId && attempt.evaluation))) return;
+    inFlight.current = true;
+    const snapshot = { ...draftRef.current };
     try {
-      const result = await command.run("question.code-review", { ...artifact, ...draftRef.current });
-      setSubmission({ attemptId: result.references.attemptId, queued: result.analysisQueued });
-    } catch {
+      const result = await command.run(
+        analyze && unchanged ? "question.code-review.retry" : analyze ? "question.code-review" : "question.code-submit",
+        { ...artifactRef.current, ...snapshot, ...analyze && unchanged ? { attemptId: existing.attemptId } : {} }
+      );
+      if (!result) return;
+      if (!unchanged) artifactRef.current = {
+        ...artifactRef.current,
+        sessionRevision: result.revision,
+        presentationId: `code-saved:${result.references.attemptId}:${result.revision}`
+      };
+      const code = parseCodeAnswer(result.resource?.data?.answer) || snapshot;
+      rememberSubmission({
+        attemptId: unchanged ? existing.attemptId : result.references.attemptId,
+        code,
+        queued: analyze ? Boolean(result.analysisQueued) : null
+      });
+      setNeedsReconnect(false);
+      setNotice("");
+    } catch (error) {
+      if (error?.code === "STALE_PRESENTATION") setNeedsReconnect(true);
+    } finally {
+      inFlight.current = false;
     }
   };
-  const retry = async () => {
+  const reconnect = async () => {
+    if (inFlight.current || disabled) return;
+    inFlight.current = true;
     try {
-      const result = await command.run("question.code-review.retry", { ...artifact, attemptId: submission.attemptId });
-      setSubmission((current) => ({ ...current, queued: result.analysisQueued }));
+      const result = await command.run("question.code-open", { practiceId: artifact.practiceId, questionId: question.id });
+      const current = result?.resource?.data;
+      if (current?.practice?.id !== artifact.practiceId || current.currentQuestionId !== question.id) return;
+      artifactRef.current = { ...artifactRef.current, sessionRevision: current.revision, presentationId: `code-reconnect:${current.revision}:${Date.now()}` };
+      setNeedsReconnect(false);
+      setNotice("\u7F16\u8F91\u5668\u5DF2\u91CD\u65B0\u8FDE\u63A5\uFF0C\u4EE3\u7801\u5DF2\u4FDD\u7559\uFF0C\u53EF\u4EE5\u518D\u6B21\u63D0\u4EA4\u3002");
     } catch {
+    } finally {
+      inFlight.current = false;
     }
   };
   const keyDown = (event) => {
@@ -1358,7 +1406,7 @@ function CodeAnswerEditor({ sessionId, question, artifact, language = "", disabl
     if (event.isComposing || event.nativeEvent?.isComposing || locked) return;
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
-      void submit();
+      void submit(event.shiftKey);
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey || !["Tab", "Enter"].includes(event.key)) return;
@@ -1382,7 +1430,7 @@ function CodeAnswerEditor({ sessionId, question, artifact, language = "", disabl
         "div",
         null,
         h("div", { className: "di-code-title" }, h(Icon, { name: "code" }), "\u4EE3\u7801\u4F5C\u7B54"),
-        h("div", { className: "di-meta" }, "AI \u68C0\u67E5\u6B63\u786E\u6027\u3001\u8FB9\u754C\u6761\u4EF6\u548C\u590D\u6742\u5EA6\uFF0C\u4E0D\u6267\u884C\u4EE3\u7801")
+        h("div", { className: "di-meta" }, "\u63D0\u4EA4\u4FDD\u5B58\u4F5C\u7B54\uFF1BAI \u53EF\u68C0\u67E5\u6B63\u786E\u6027\u3001\u8FB9\u754C\u4E0E\u590D\u6742\u5EA6\uFF0C\u4E0D\u6267\u884C\u4EE3\u7801")
       ),
       h(
         "label",
@@ -1433,12 +1481,27 @@ function CodeAnswerEditor({ sessionId, question, artifact, language = "", disabl
     h(
       "div",
       { className: "di-code-footer" },
-      h("div", { className: "di-meta", role: "status" }, submission ? submission.queued ? "\u4EE3\u7801\u5DF2\u4FDD\u5B58\uFF0CAI \u5206\u6790\u4F1A\u663E\u793A\u5728\u5BF9\u8BDD\u4E2D\u3002" : "\u4EE3\u7801\u5DF2\u4FDD\u5B58\uFF0CAI \u5206\u6790\u6682\u672A\u542F\u52A8\uFF0C\u8BF7\u91CD\u8BD5\u3002" : saved === false ? "\u6D4F\u89C8\u5668\u65E0\u6CD5\u4FDD\u5B58\u8349\u7A3F\uFF0C\u8BF7\u4FDD\u6301\u9875\u9762\u6253\u5F00\u3002" : disabled ? "\u5DF2\u4FDD\u5B58\u7684\u4EE3\u7801\u4F5C\u7B54" : "\u8349\u7A3F\u4FDD\u5B58\u5728\u672C\u6D4F\u89C8\u5668 \xB7 Tab \u7F29\u8FDB \xB7 Ctrl/\u2318+Enter \u5206\u6790"),
-      submission && !submission.queued ? h(Button, { tone: "primary", busy: Boolean(command.busy), onClick: retry }, "\u91CD\u8BD5 AI \u5206\u6790") : h(
-        Button,
-        { tone: "primary", disabled: locked || !draft.code.trim(), busy: command.busy === "question.code-review", onClick: submit },
-        h(Icon, { name: "code" }),
-        submission ? "\u5DF2\u63D0\u4EA4\u5206\u6790" : "AI \u5206\u6790\u4EE3\u7801"
+      h("div", { className: "di-meta", role: "status" }, notice || (disabled ? "\u5DF2\u4FDD\u5B58\u7684\u4EE3\u7801\u4F5C\u7B54" : submitted ? submission.queued === null ? "\u4EE3\u7801\u5DF2\u63D0\u4EA4\u5230\u7EC3\u4E60\u6863\u6848\uFF0C\u4E0B\u6B21\u6253\u5F00\u53EF\u67E5\u770B\u3002" : submission.queued ? "\u4EE3\u7801\u5DF2\u4FDD\u5B58\uFF0CAI \u5206\u6790\u4F1A\u663E\u793A\u5728\u5BF9\u8BDD\u4E2D\u3002" : "\u4EE3\u7801\u5DF2\u4FDD\u5B58\uFF0CAI \u5206\u6790\u6682\u672A\u542F\u52A8\uFF0C\u53EF\u91CD\u8BD5\u3002" : saved === false ? "\u6D4F\u89C8\u5668\u65E0\u6CD5\u4FDD\u5B58\u8349\u7A3F\uFF0C\u8BF7\u4FDD\u6301\u9875\u9762\u6253\u5F00\u3002" : "\u8349\u7A3F\u4FDD\u5B58\u5728\u672C\u6D4F\u89C8\u5668 \xB7 Ctrl/\u2318+Enter \u63D0\u4EA4 \xB7 Ctrl/\u2318+Shift+Enter \u5206\u6790")),
+      h(
+        "div",
+        { className: "di-actions di-code-submit-actions" },
+        needsReconnect && !disabled ? h(Button, { busy: command.busy === "question.code-open", disabled: Boolean(command.busy), onClick: reconnect }, "\u91CD\u65B0\u8FDE\u63A5\u7F16\u8F91\u5668") : null,
+        h(Button, {
+          tone: "primary",
+          disabled: locked || needsReconnect || !draft.code.trim() || submitted,
+          busy: command.busy === "question.code-submit",
+          onClick: () => submit(false)
+        }, submitted ? "\u5DF2\u63D0\u4EA4" : "\u63D0\u4EA4\u4EE3\u7801"),
+        h(
+          Button,
+          {
+            disabled: locked || needsReconnect || !draft.code.trim() || Boolean(evaluated) || submitted && submission.queued === true,
+            busy: ["question.code-review", "question.code-review.retry"].includes(command.busy),
+            onClick: () => submit(true)
+          },
+          h(Icon, { name: "code" }),
+          evaluated ? "\u5DF2\u5B8C\u6210\u5206\u6790" : submitted && submission.queued === true ? "\u5206\u6790\u5DF2\u63D0\u4EA4" : submitted && submission.queued === false ? "\u91CD\u8BD5 AI \u5206\u6790" : "AI \u5206\u6790\u4EE3\u7801"
+        )
       )
     ),
     h(ErrorNotice, null, command.error)
@@ -1592,6 +1655,97 @@ var import_react10 = __toESM(require("react"), 1);
 
 // src/client/shared/solution-disclosure.js
 var import_react9 = __toESM(require("react"), 1);
+
+// src/client/shared/solution-content.js
+var ANSWER_LANGUAGES = /* @__PURE__ */ new Set([
+  ...CODE_LANGUAGES.map((item) => item.fence),
+  "py",
+  "python3",
+  "c++",
+  "cxx",
+  "golang",
+  "js",
+  "ts",
+  "jsx",
+  "tsx",
+  "cs",
+  "c#",
+  "kotlin",
+  "swift",
+  "php",
+  "ruby",
+  "scala",
+  "bash",
+  "shell",
+  "pseudocode"
+]);
+function splitSolutionContent(detail) {
+  const text2 = String(detail || "").replace(/\r\n?/g, "\n");
+  const lines = text2.split("\n");
+  const answers = [], analysis = [];
+  let start = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(lines[index]);
+    if (!opening || opening[1][0] === "`" && opening[2].includes("`")) continue;
+    const fence = opening[1];
+    const closing = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
+    let end = index + 1;
+    while (end < lines.length && !closing.test(lines[end])) end += 1;
+    const language = opening[2].trim().split(/\s+/)[0].toLowerCase();
+    if (!language || ANSWER_LANGUAGES.has(language)) {
+      analysis.push(lines.slice(start, index).join("\n"));
+      answers.push(lines.slice(index, Math.min(end + 1, lines.length)).join("\n"));
+      start = end + 1;
+    }
+    index = end;
+  }
+  if (!answers.length) return { answer: text2.trim(), analysis: "" };
+  analysis.push(lines.slice(start).join("\n"));
+  return { answer: answers.join("\n\n"), analysis: analysis.filter((part) => part.trim()).map((part) => part.replace(/^\n+|\n+$/g, "")).join("\n\n").trim() };
+}
+
+// src/client/shared/solution-disclosure.js
+function SolutionContent({ detail, memorizationPoints, pointsLabel = "\u89E3\u9898\u8981\u70B9" }) {
+  const [analysisOpen, setAnalysisOpen] = import_react9.default.useState(false);
+  const content = splitSolutionContent(detail);
+  const hasAnalysis = Boolean(content.analysis || memorizationPoints);
+  return h(
+    "div",
+    { className: "di-solution-content" },
+    content.answer ? h(
+      "section",
+      { className: "di-solution-answer", "aria-label": "\u7B54\u6848" },
+      h("h4", null, "\u7B54\u6848"),
+      h(Markdown, null, content.answer)
+    ) : null,
+    hasAnalysis ? h(
+      "section",
+      { className: "di-solution-analysis", "aria-label": "\u89E3\u6790" },
+      h(
+        "div",
+        { className: "di-solution-analysis-head" },
+        h("h4", null, "\u89E3\u6790"),
+        h(
+          Button,
+          { type: "button", "aria-expanded": analysisOpen, onClick: () => setAnalysisOpen((value) => !value) },
+          h(Icon, { name: "chevronDown" }),
+          analysisOpen ? "\u6536\u8D77\u89E3\u6790" : "\u5C55\u5F00\u89E3\u6790"
+        )
+      ),
+      analysisOpen ? h(
+        "div",
+        { className: "di-solution-analysis-body" },
+        content.analysis ? h(Markdown, null, content.analysis) : null,
+        memorizationPoints ? h(
+          "section",
+          { className: "di-attempt" },
+          h("div", { className: "di-section-label" }, pointsLabel),
+          h(Markdown, null, memorizationPoints)
+        ) : null
+      ) : null
+    ) : null
+  );
+}
 function SolutionDisclosure({ children, onToggle }) {
   const [open, setOpen] = import_react9.default.useState(false);
   return h(
@@ -1665,8 +1819,11 @@ function QuestionSolutionPanel({ sessionId, practiceId, question, canGenerate = 
       import_react10.default.Fragment,
       null,
       h("div", { className: "di-meta di-solution-source" }, solution.source),
-      h(Markdown, null, solution.detail),
-      solution.memorizationPoints ? h("section", { className: "di-attempt" }, h("div", { className: "di-section-label" }, question.leetcode ? "\u89E3\u9898\u8981\u70B9" : "\u53C2\u8003\u8981\u70B9"), h(Markdown, null, solution.memorizationPoints)) : null,
+      h(SolutionContent, {
+        detail: solution.detail,
+        memorizationPoints: solution.memorizationPoints,
+        pointsLabel: question.leetcode ? "\u89E3\u9898\u8981\u70B9" : "\u53C2\u8003\u8981\u70B9"
+      }),
       solution.reused ? h("p", { className: "di-meta", role: "status" }, "\u8FD9\u4EFD\u8BB2\u89E3\u76F4\u63A5\u4ECE\u9898\u5E93\u8BFB\u53D6\uFF0C\u672A\u8BF7\u6C42 AI\u3002") : null,
       solution.canGenerate && canGenerate ? h(
         Button,
@@ -1981,7 +2138,7 @@ function LeetcodeCatalog({ sessionId }) {
       { className: "di-lc-toolbar-note" },
       h("span", { className: "di-meta" }, filtering ? `\u7B5B\u9009\u51FA ${filtered.length} \u9053\u9898` : "\u70B9\u300C\u505A\u8FD9\u9898\u300D\u76F4\u63A5\u5F00\u59CB\uFF1B\u5DF2\u6709\u8FDB\u884C\u4E2D\u7684\u529B\u6263\u7EC3\u4E60\u65F6\u4F1A\u81EA\u52A8\u7ED3\u675F\u5B83\u5E76\u5207\u5230\u65B0\u9898\u3002")
     ),
-    h("div", { className: "di-meta di-lc-toolbar-note" }, "\u4F5C\u7B54\u7ECF AI \u70B9\u8BC4\uFF0C\u6216\u7ED3\u675F\u5DF2\u6709\u4F5C\u7B54\u7684\u7EC3\u4E60\u540E\u81EA\u52A8\u6253\u52FE\uFF1B\u52FE\u9009\u8868\u793A\u7EC3\u4E60\u8FC7\uFF0C\u53EF\u624B\u52A8\u8C03\u6574\u3002"),
+    h("div", { className: "di-meta di-lc-toolbar-note" }, "\u63D0\u4EA4\u4EE3\u7801\u3001\u6536\u5230 AI \u70B9\u8BC4\uFF0C\u6216\u7ED3\u675F\u5DF2\u6709\u4F5C\u7B54\u7684\u7EC3\u4E60\u540E\u81EA\u52A8\u6253\u52FE\uFF1B\u52FE\u9009\u8868\u793A\u7EC3\u4E60\u8FC7\uFF0C\u53EF\u624B\u52A8\u8C03\u6574\u3002"),
     h(ErrorNotice, null, command.error),
     !visibleGroups.length ? h(Empty, { title: "\u6CA1\u6709\u5339\u914D\u7684\u9898\u76EE", detail: "\u6362\u4E2A\u5173\u952E\u5B57\uFF0C\u6216\u8005\u7528\u300C\u81EA\u5B9A\u4E49\u9898\u76EE\u300D\u70B9\u540D\u4E00\u9053\u70ED\u9898 100 \u4E4B\u5916\u7684\u9898\u3002" }) : h("div", { className: "di-lc-groups" }, visibleGroups.map((group) => h(CatalogGroup, {
       key: group.category,
@@ -2384,22 +2541,11 @@ function ReviewResultCard({ sessionId, question, attempt, artifact, actionsDisab
       h(
         SolutionDisclosure,
         { key: `${question.id}:${explanation.createdAt}` },
-        h(
-          "section",
-          { className: "di-review-section" },
-          h("h3", null, "\u8BB2\u89E3"),
-          h("div", { className: "di-explanation-copy" }, h(Markdown, null, explanation.detail))
-        ),
-        h(
-          "section",
-          { className: "di-memorize-box" },
-          h(
-            "div",
-            { className: "di-memorize-copy" },
-            h("div", { className: "di-memorize-label" }, isLeetcode ? "\u89E3\u9898\u8981\u70B9" : "\u76F4\u63A5\u80CC"),
-            h(Markdown, null, explanation.memorizationPoints)
-          )
-        )
+        h(SolutionContent, {
+          detail: explanation.detail,
+          memorizationPoints: explanation.memorizationPoints,
+          pointsLabel: isLeetcode ? "\u89E3\u9898\u8981\u70B9" : "\u76F4\u63A5\u80CC"
+        })
       ),
       h(ErrorNotice, null, command.error),
       h(
@@ -3003,7 +3149,7 @@ function TimelineAnswerEntry({ sessionId, session, practice, question }) {
         h(Icon, { name: "code" }),
         artifact ? "\u91CD\u65B0\u5199\u4EE3\u7801" : question.attempts.length ? "\u518D\u6B21\u4F5C\u7B54" : "\u5199\u4EE3\u7801\u4F5C\u7B54"
       ) : null,
-      !artifact || practice.mode !== "leetcode" ? h("p", { className: "di-meta" }, "\u5728\u8FD9\u91CC\u5199\u4EE3\u7801\u5E76\u63D0\u4EA4 AI \u5206\u6790\uFF1B\u6587\u5B57\u56DE\u7B54\u4E5F\u53EF\u76F4\u63A5\u53D1\u9001\u5230\u5BF9\u8BDD\u3002") : null
+      !artifact || practice.mode !== "leetcode" ? h("p", { className: "di-meta" }, "\u5728\u8FD9\u91CC\u5199\u4EE3\u7801\u5E76\u63D0\u4EA4\u4FDD\u5B58\uFF0C\u4E5F\u53EF\u9009\u62E9 AI \u5206\u6790\uFF1B\u6587\u5B57\u56DE\u7B54\u53EF\u76F4\u63A5\u53D1\u9001\u5230\u5BF9\u8BDD\u3002") : null
     ) : h("p", { className: "di-meta" }, "\u7EC3\u4E60\u5DF2\u7ED3\u675F\uFF0C\u91CD\u65B0\u6253\u5F00\u540E\u53EF\u4EE5\u7EE7\u7EED\u4F5C\u7B54\u3002"),
     artifact && practice.status === "active" ? h(CodeAnswerEditor, {
       key: artifact.presentationId,
@@ -3320,14 +3466,15 @@ body[data-ds-dark-theme]{--di-ink:var(--dsw-alias-label-primary,#f2f3f5);--di-in
 /* \u4EE3\u7801\u4F5C\u7B54\u4E0E\u6B63\u786E\u7B54\u6848\u906E\u853D */
 .di-question-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.di-question-card>.di-code-answer{grid-column:1/-1}
 .di-code-answer{margin-top:18px;border:1px solid var(--di-line-3);border-radius:12px;overflow:hidden;background:var(--di-surface)}
-.di-code-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;background:var(--di-surface-2);border-bottom:1px solid var(--di-line-2)}
+.di-code-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:14px 16px;background:var(--di-surface-2);border-bottom:1px solid var(--di-line-2)}
 .di-code-title{display:flex;align-items:center;gap:7px;margin-bottom:5px;font-size:14px;font-weight:var(--di-weight-title)}.di-code-language{display:flex;align-items:center;gap:8px;color:var(--di-muted);font-size:12px;flex-shrink:0}.di-code-language select{width:125px;padding:7px 9px;min-height:32px}
 .di-code-field{position:relative;background:var(--di-field)}.di-code-lines,.di-code-input{font:14px/24px Consolas,"Cascadia Code","SFMono-Regular",monospace;tab-size:4}
 .di-code-lines{position:absolute;top:0;bottom:0;left:0;z-index:1;width:55px;overflow:hidden;margin:0;padding:14px 10px;background:var(--di-surface-3);color:var(--di-faint);border-right:1px solid var(--di-line-2);text-align:right;pointer-events:none;user-select:none}
 .di-code-input{display:block;width:100%;min-height:288px;max-height:70vh;resize:vertical;border:0;outline:0;border-radius:0;margin:0;padding:14px 16px 14px 70px;background:transparent;color:var(--di-ink);white-space:pre;overflow:auto}.di-code-input:focus{box-shadow:inset 0 0 0 2px var(--di-focus)}.di-code-input::placeholder{color:var(--di-faint)}
 .di-code-notes{display:grid;gap:7px;padding:13px 16px;color:var(--di-muted);font-size:12px;border-top:1px solid var(--di-line-2)}.di-code-notes textarea{resize:vertical;line-height:1.6;min-height:60px}
-.di-code-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-top:1px solid var(--di-line-2);background:var(--di-surface-2)}.di-code-answer>.di-error{margin:12px 16px}.di-code-footer .di-button{flex-shrink:0;min-height:36px}
+.di-code-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--di-line-2);background:var(--di-surface-2)}.di-code-footer>.di-meta{flex:1 1 240px;min-width:0}.di-code-answer>.di-error{margin:12px 16px}.di-code-footer .di-button{flex-shrink:0;min-height:36px}.di-code-submit-actions{margin-top:0;min-width:0;justify-content:flex-end;flex-wrap:wrap}
 .di-solution-disclosure{margin-top:16px;border:1px dashed var(--di-line-4);border-radius:10px;overflow:hidden;background:var(--di-surface-2)}.di-solution-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px}.di-solution-toggle .di-button{flex-shrink:0}.di-solution-body{padding:16px;background:var(--di-surface);border-top:1px solid var(--di-line-2)}.di-solution-body>.di-section:first-child,.di-solution-body>.di-review-section:first-child{margin-top:0}
+.di-solution-content{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}.di-solution-content h4{margin:0;color:var(--di-ink);font-size:14px;font-weight:var(--di-weight-title)}.di-solution-answer>h4{margin-bottom:12px}.di-solution-analysis{padding-top:14px;border-top:1px solid var(--di-line-2)}.di-solution-analysis-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.di-solution-analysis-head .di-button{flex-shrink:0}.di-solution-analysis-body{margin-top:14px}.di-solution-analysis-head .di-button[aria-expanded=true] .di-icon{transform:rotate(180deg)}
 @media(max-width:760px){.di-question-actions{justify-content:flex-start}.di-code-toolbar{align-items:flex-start;flex-wrap:wrap}.di-code-language{width:100%;justify-content:space-between}.di-code-language select{width:150px}.di-code-input{font-size:13px;min-height:240px;padding-left:60px}.di-code-lines{width:45px;font-size:13px}.di-code-footer{align-items:stretch;flex-direction:column;gap:10px}.di-code-footer .di-button{width:100%}.di-solution-toggle{align-items:flex-start;flex-wrap:wrap}}
 /* \u5B8C\u6574\u9898\u9762\u3001\u5206\u7EA7\u5F15\u5BFC\u4E0E\u53C2\u8003\u7B54\u6848 */
 .di-learning-panel{display:grid;gap:16px;margin-top:16px;padding:16px;border:1px solid var(--di-line-2);border-radius:12px;background:var(--di-surface)}.di-question-card>.di-learning-panel,.di-question-card>.di-solution-disclosure{grid-column:1/-1}
@@ -3335,8 +3482,8 @@ body[data-ds-dark-theme]{--di-ink:var(--dsw-alias-label-primary,#f2f3f5);--di-in
 .di-guided-panel{display:grid;gap:14px;padding:16px;border:1px solid var(--di-line-2);border-radius:10px;background:var(--di-accent-tint)}.di-guided-stages{display:flex;gap:7px;flex-wrap:wrap}.di-guided-stages span{padding:4px 8px;border-radius:6px;background:var(--di-surface);color:var(--di-faint);font-size:11px}.di-guided-stages .is-current{color:var(--di-accent-ink);background:var(--di-accent-soft)}.di-guided-intro p{margin:10px 0 0;color:var(--di-muted);font-size:12px;line-height:1.7}.di-guided-knowledge{display:grid;gap:8px}.di-lc-knowledge-title{color:var(--di-ink-2);font-size:12px}.di-guided-panel .di-markdown{font-size:12px;line-height:1.75}.di-guided-hint{padding:12px;border:1px solid var(--di-line-2);border-radius:8px;background:var(--di-surface)}.di-guided-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.di-guided-actions .di-button{flex-shrink:0}.di-solution-source{margin-bottom:12px}.di-solution-missing p{font-size:13px;line-height:1.7}
 @media(max-width:760px){.di-learning-panel,.di-guided-panel{padding:12px}.di-learning-heading{flex-wrap:wrap}.di-guided-actions{align-items:stretch;flex-direction:column}.di-problem-body .di-lc-example>div{flex-wrap:wrap}.di-problem-body .di-lc-example code{overflow-wrap:anywhere}}
 /* \u7B80\u5386\u4E0E\u53C2\u8003\u8D44\u6599\u5BFC\u5165 */
-.di-time-answer-entry{display:grid;gap:10px;margin-bottom:16px}.di-time-answer-entry>.di-meta{margin:0}.di-time-flyout .di-code-input{min-height:220px}
-.di-time-flyout{display:flex;flex-direction:column;width:min(680px,calc(100vw - 112px))}.di-time-flyout-body{min-height:0}.di-time-title{flex:1;min-width:0;margin:0;padding:14px 16px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}.di-time-unified{display:grid;gap:20px}.di-time-unified>section>h4{margin:0 0 12px;font-size:14px}.di-time-unified .di-time-records{margin-top:18px;padding-top:16px;border-top:1px solid var(--di-line)}
+.di-time-answer-entry{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-bottom:16px}.di-time-answer-entry>.di-meta{margin:0}.di-time-flyout .di-code-input{min-height:220px}
+.di-time-flyout{display:flex;flex-direction:column;width:min(680px,calc(100vw - 112px))}.di-time-flyout-body{min-height:0}.di-time-title{flex:1;min-width:0;margin:0;padding:14px 16px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}.di-time-unified{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}.di-time-unified>section{min-width:0}.di-time-unified>section>h4{margin:0 0 12px;font-size:14px}.di-time-unified .di-time-records{grid-template-columns:minmax(0,1fr);margin-top:18px;padding-top:16px;border-top:1px solid var(--di-line)}.di-time-unified .di-time-record{min-width:0}.di-time-flyout .di-markdown{max-width:100%;overflow-x:auto;overflow-wrap:anywhere}
 @media(max-width:760px){.di-timeline{display:block;top:96px;right:6px;width:52px}.di-time-node{width:48px;padding:0 5px}.di-time-flyout{top:96px;right:62px;width:calc(100vw - 76px);max-height:calc(100vh - 120px)}.di-time-flyout-body{max-height:calc(100vh - 180px);padding:12px}.di-time-title{font-size:13px}}
 .di-document-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.di-document-head .di-button{flex-shrink:0}.di-resume-document .di-textarea{min-height:160px}.di-document-file{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--di-ink-2);font-size:12px;line-height:1.6}.di-document-file>span{min-width:0;overflow-wrap:anywhere}.di-reference-documents{display:grid;gap:9px;padding:16px;border:1px dashed var(--di-line-3);border-radius:10px;background:var(--di-surface-2)}.di-reference-file{padding:10px 12px;border:1px solid var(--di-line-2);border-radius:8px;background:var(--di-surface)}.di-reference-file summary{padding:7px 0;color:var(--di-muted);font-size:12px;line-height:1.6;cursor:pointer;overflow-wrap:anywhere}.di-reference-file .di-textarea{width:100%;margin-top:7px;min-height:140px;max-height:360px;resize:vertical}.di-reference-documents>.di-error{white-space:pre-wrap}.di-practice-sources{display:grid;gap:9px;margin:14px 0}.di-document-text{margin:8px 0 0;color:var(--di-ink-2);font:12px/1.7 "Segoe UI","Microsoft YaHei",sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}
 @media(max-width:760px){.di-document-head,.di-document-file{flex-wrap:wrap}.di-reference-documents{padding:12px}}

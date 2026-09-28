@@ -66,7 +66,7 @@ export const UI_COMMANDS = Object.freeze([
   'session.start', 'session.continue', 'session.select', 'session.reopen', 'session.finish',
   'practice.update', 'question.open', 'question.focus', 'question.update', 'question.delete', 'question.next',
   'question.retry', 'question.reveal', 'question.hint', 'question.materials',
-  'question.code-open', 'question.code-review', 'question.code-review.retry', 'question.learning-hint', 'question.guidance-generate', 'question.solution-generate',
+  'question.code-open', 'question.code-submit', 'question.code-review', 'question.code-review.retry', 'question.learning-hint', 'question.guidance-generate', 'question.solution-generate',
   'leetcode.select', 'leetcode.set-completion', 'library.delete', 'library.export',
   'leetcode.train', 'leetcode.practice-next',
 ])
@@ -200,6 +200,11 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       refreshAgentTools(eventBridge, sessionId)
       return application.readAtomicSession(sessionId)
     }
+    case 'question.code-submit': {
+      const result = await application.submitAtomicCodeAnswer(sessionId, payload, { markCompleted: true })
+      refreshAgentTools(eventBridge, sessionId)
+      return { ...result, savedOnly: true, analysisQueued: false }
+    }
     case 'question.code-review': {
       const current = await selected(application, sessionId)
       const result = await application.submitAtomicCodeAnswer(sessionId, payload)
@@ -219,9 +224,9 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         throw new TypeError('当前题目已经改变，请回到这道题再分析')
       }
       const question = current.data.practice.questions.find((item) => item.id === payload.questionId)
-      const attempt = question?.attempts.at(-1)
-      if (!attempt || attempt.id !== payload.attemptId) throw new TypeError('只能分析本题最近一次提交的代码')
       const { parseCodeAnswer } = await import('../../domain/code-answer.js')
+      const attempt = [...(question?.attempts || [])].reverse().find((item) => parseCodeAnswer(item.answer))
+      if (!attempt || attempt.id !== payload.attemptId) throw new TypeError('只能分析本题最近一次提交的代码')
       const codeAnswer = parseCodeAnswer(attempt.answer)
       if (!codeAnswer) throw new TypeError('找不到代码作答')
       const reference = await application.prepareCodeReviewReference(current.practiceId, payload.questionId)

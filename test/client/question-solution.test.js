@@ -24,7 +24,7 @@ test('没有已保存讲解也显示答案入口，折叠时不读取参考答�
     react,
     '../shared/api.js': { interviewApi: { async questionSolution() { reads += 1; return { resource: { data: { available: true, detail: '答案' } } } } } },
     '../shared/hooks.js': { useCommand: () => ({}), useInterviewQuery(_key, load) { loader = load; return { data: null, loading: true, reload() {} } } },
-    '../shared/solution-disclosure.js': { SolutionDisclosure: 'answer-disclosure' },
+    '../shared/solution-disclosure.js': { SolutionDisclosure: 'answer-disclosure', SolutionContent: 'solution-content' },
     '../shared/ui.js': { h: (type, props, ...children) => ({ type, props, children }), Loading: 'loading', ErrorNotice: 'error' },
   }
   vm.runInNewContext(compiled, { module, exports: module.exports, require: (name) => modules[name] })
@@ -59,7 +59,7 @@ test('缓存讲解展开收起只读取数据，只有显式重新生成按钮�
     '../shared/api.js': { interviewApi: { async questionSolution() { reads++; return { resource: { data: solution } } } } },
     '../shared/hooks.js': { useCommand: () => ({ run: async (command, payload) => { calls.push({ command, payload }); return { cacheHit: true } } }),
       useInterviewQuery(_key, load) { loader = load; return { data: { resource: { data: solution } }, reload: async () => {} } } },
-    '../shared/solution-disclosure.js': { SolutionDisclosure: 'answer-disclosure' },
+    '../shared/solution-disclosure.js': { SolutionDisclosure: 'answer-disclosure', SolutionContent: 'solution-content' },
     '../shared/ui.js': { h: (type, props, ...children) => ({ type, props: props || {}, children }), Button: 'button', Markdown: 'markdown', ErrorNotice: 'error' },
   }
   vm.runInNewContext(compiled, { module, exports: module.exports, require: (name) => modules[name] })
@@ -71,6 +71,7 @@ test('缓存讲解展开收起只读取数据，只有显式重新生成按钮�
   panel.props.onToggle(true); panel = render(); await loader()
   assert.equal(reads, 2)
   assert.equal(calls.length, 0)
+  assert.equal(nodes(panel).find((node) => node.type === 'solution-content').props.detail, solution.detail)
   assert.equal(nodes(panel).some((node) => node.children.includes('这份讲解直接从题库读取，未请求 AI。')), true)
   await nodes(panel).find((node) => node.type === 'button' && node.children.includes('重新生成 AI 讲解')).props.onClick()
   assert.equal(calls.length, 1)

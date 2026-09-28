@@ -27,7 +27,7 @@ export function TimelineAnswerEntry({ sessionId, session, practice, question }) 
     practice.status === 'active' ? h(React.Fragment, null,
       !artifact || question.attempts.length ? h(Button, { tone: 'primary', disabled: !sessionId || Boolean(command.busy), busy: command.busy === 'question.code-open', onClick: openCode },
         h(Icon, { name: 'code' }), artifact ? '重新写代码' : question.attempts.length ? '再次作答' : '写代码作答') : null,
-      !artifact || practice.mode !== 'leetcode' ? h('p', { className: 'di-meta' }, '在这里写代码并提交 AI 分析；文字回答也可直接发送到对话。') : null)
+      !artifact || practice.mode !== 'leetcode' ? h('p', { className: 'di-meta' }, '在这里写代码并提交保存，也可选择 AI 分析；文字回答可直接发送到对话。') : null)
       : h('p', { className: 'di-meta' }, '练习已结束，重新打开后可以继续作答。'),
     artifact && practice.status === 'active' ? h(CodeAnswerEditor, {
       key: artifact.presentationId, sessionId, question, artifact,

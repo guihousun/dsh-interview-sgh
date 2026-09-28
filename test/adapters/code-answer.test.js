@@ -88,3 +88,64 @@ test('工作台写代码只聚焦真实题目，不自动启动 AI 出题或泄�
   assert.equal(events.length, 0)
   await assert.rejects(dispatchCommand({ application }, 'editor-session', 'question.code-open', { ...payload, questionId: 'missing' }), /找不到题目/)
 })
+
+test('单独提交只保存原始代码、思路与完成标记，不请求 AI、不生成评价或讲解', async () => {
+  const { application, repository, payload } = await setup()
+  const events = []
+  const result = await dispatchCommand({ application, eventBridge: { dispatch(_id, event) { events.push(event); return true } } },
+    's1', 'question.code-submit', payload)
+  assert.equal(result.savedOnly, true)
+  assert.equal(result.analysisQueued, false)
+  assert.deepEqual(events, [])
+  const question = (await repository.getPractice(payload.practiceId)).questions[0]
+  assert.deepEqual(parseCodeAnswer(question.attempts[0].answer), { code: payload.code, language: payload.language, notes: payload.notes })
+  assert.equal(question.attempts[0].evaluation, null)
+  assert.equal(question.explanation, null)
+  assert.equal((await repository.listLeetcodeProgress())[0].completed, true)
+  assert.equal((await repository.getSessionBinding('s1')).revision, result.revision)
+})
+
+test('先单独提交再分析复用已有作答，修改后提交保留两个版本且不重复计算完成进度', async () => {
+  const { application, repository, payload } = await setup()
+  const events = [], runtime = { application, eventBridge: { dispatch(_id, event) { events.push(event); return true } } }
+  const first = await dispatchCommand(runtime, 's1', 'question.code-submit', payload)
+  await dispatchCommand(runtime, 's1', 'question.code-review.retry', { ...payload, attemptId: first.references.attemptId })
+  assert.equal((await repository.getPractice(payload.practiceId)).questions[0].attempts.length, 1)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].attemptId, first.references.attemptId)
+  const next = { ...payload, sessionRevision: first.revision, presentationId: 'code-version-2', code: payload.code + '\n# 第二版思路' }
+  await dispatchCommand(runtime, 's1', 'question.code-submit', next)
+  const attempts = (await repository.getPractice(payload.practiceId)).questions[0].attempts
+  assert.equal(attempts.length, 2)
+  assert.equal(parseCodeAnswer(attempts[0].answer).code, payload.code)
+  assert.equal(parseCodeAnswer(attempts[1].answer).code, next.code)
+  assert.equal((await application.getLeetcodeCatalog()).resource.data.completedCount, 1)
+  assert.equal(events.length, 1)
+})
+
+test('单独提交的并发重试与过期卡片不会重复保存，存储失败保留代码并可重试', async () => {
+  const { application, repository, payload } = await setup()
+  const runtime = { application }
+  const results = await Promise.allSettled([dispatchCommand(runtime, 's1', 'question.code-submit', payload), dispatchCommand(runtime, 's1', 'question.code-submit', payload)])
+  assert.equal(results.filter((item) => item.status === 'fulfilled').length, 1)
+  assert.equal(results.find((item) => item.status === 'rejected').reason.code, 'STALE_PRESENTATION')
+  assert.equal((await repository.getPractice(payload.practiceId)).questions[0].attempts.length, 1)
+  const other = await setup(), commit = other.repository.commit.bind(other.repository)
+  other.repository.commit = async () => { throw new Error('storage unavailable') }
+  await assert.rejects(dispatchCommand({ application: other.application }, 's1', 'question.code-submit', other.payload), /storage unavailable/)
+  assert.equal((await other.repository.getPractice(other.payload.practiceId)).questions[0].attempts.length, 0)
+  assert.deepEqual(await other.repository.listLeetcodeProgress(), [])
+  other.repository.commit = commit
+  await dispatchCommand({ application: other.application }, 's1', 'question.code-submit', other.payload)
+  assert.equal((await other.repository.getPractice(other.payload.practiceId)).questions[0].attempts.length, 1)
+})
+
+test('后续文字回答不遮掉最近的代码作答，分析仍严格指定最近的代码版本', async () => {
+  const { application, payload } = await setup()
+  const first = await dispatchCommand({ application }, 's1', 'question.code-submit', payload)
+  await application.createAtomicAttempt('s1', { questionId: payload.questionId, answer: '我再补充一下思路' })
+  const events = []
+  await dispatchCommand({ application, eventBridge: { dispatch(_id, event) { events.push(event); return true } } },
+    's1', 'question.code-review.retry', { ...payload, attemptId: first.references.attemptId })
+  assert.equal(events[0].attemptId, first.references.attemptId)
+})
