@@ -23,6 +23,7 @@ function loadPlugin() {
     setTimeout,
     clearTimeout,
     document: {
+      documentElement: { style: {} },
       getElementById: () => null,
       createElement: () => ({}),
       head: { appendChild: (node) => appended.push(node) },

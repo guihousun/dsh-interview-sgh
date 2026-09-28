@@ -10,6 +10,7 @@ const CODE = 'class Solution:\n    def solve(self, nums):\n        return nums'
 const nodes = (tree) => tree && typeof tree === 'object' ? [tree, ...tree.children.flat(Infinity).flatMap(nodes)] : []
 const button = (tree, label) => nodes(tree).find((node) => node.type === 'button' && node.children.includes(label))
 const field = (tree, name = '编写代码') => nodes(tree).find((node) => node.props['aria-label'] === name)
+const changeCode = (tree, value) => field(tree).props.onChange(field(tree).type === 'python-editor' ? value : { target: { value } })
 
 function fixture({ attempts = [], storage = new Map(), run = null } = {}) {
   const module = { exports: {} }, states = [], refs = [], calls = []
@@ -27,6 +28,7 @@ function fixture({ attempts = [], storage = new Map(), run = null } = {}) {
   }
   const modules = { react, '../../domain/code-answer.js': codeAnswers, '../shared/code-editing.js': editing,
     '../shared/hooks.js': { useCommand: () => ({ run: dispatch }) },
+    '../shared/python-editor.js': { PythonEditor: 'python-editor' },
     '../shared/ui.js': { h: (type, props, ...children) => ({ type, props: props || {}, children }), Button: 'button', Icon: 'icon', ErrorNotice: 'error' } }
   const source = transformSync(readFileSync(new URL('../../src/client/features/code-answer.js', import.meta.url), 'utf8'), { format: 'cjs' }).code
   vm.runInNewContext(source, { module, exports: module.exports, require: (name) => modules[name],
@@ -40,7 +42,7 @@ function fixture({ attempts = [], storage = new Map(), run = null } = {}) {
 test('独立提交不请求 AI，保存后仍可编辑；分析复用提交，修改后用新凭证保存下一版本', async () => {
   const f = fixture()
   let tree = f.render()
-  field(tree).props.onChange({ target: { value: CODE } }); tree = f.render()
+  changeCode(tree, CODE); tree = f.render()
   await button(tree, '提交代码').props.onClick(); tree = f.render()
   assert.deepEqual(f.calls.map((call) => call.command), ['question.code-submit'])
   assert.equal(field(tree).props.value, CODE)
@@ -51,7 +53,7 @@ test('独立提交不请求 AI，保存后仍可编辑；分析复用提交，�
   assert.equal(f.calls[1].command, 'question.code-review.retry')
   assert.equal(f.calls[1].payload.attemptId, 'a1')
   const changed = CODE + '\n# 新的思路'
-  field(tree).props.onChange({ target: { value: changed } }); tree = f.render()
+  changeCode(tree, changed); tree = f.render()
   await button(tree, '提交代码').props.onClick()
   assert.equal(f.calls[2].command, 'question.code-submit')
   assert.equal(f.calls[2].payload.sessionRevision, 4)
@@ -60,7 +62,7 @@ test('独立提交不请求 AI，保存后仍可编辑；分析复用提交，�
 
 test('关闭再打开恢复浏览器草稿，无草稿时恢复最近代码，后续文字回答不覆盖代码', () => {
   const f = fixture()
-  field(f.render()).props.onChange({ target: { value: CODE } })
+  changeCode(f.render(), CODE)
   const reopened = fixture({ storage: f.storage })
   assert.equal(field(reopened.render()).props.value, CODE)
   const saved = fixture({ attempts: [{ id: 'a1', answer: codeAnswers.formatCodeAnswer({ code: CODE, language: 'python', notes: '原始思路' }) },
@@ -78,7 +80,7 @@ test('过期凭证不清空代码，显式重新连接后可用新凭证提交�
     if (!failed) { failed = true; throw Object.assign(new Error('卡片已经完成'), { code: 'STALE_PRESENTATION' }) }
     return { references: { attemptId: 'a1' }, revision: 10, resource: { data: { answer: codeAnswers.formatCodeAnswer(payload) } } }
   } })
-  let tree = f.render(); field(tree).props.onChange({ target: { value: CODE } }); tree = f.render()
+  let tree = f.render(); changeCode(tree, CODE); tree = f.render()
   await button(tree, '提交代码').props.onClick(); tree = f.render()
   assert.equal(field(tree).props.value, CODE)
   assert.equal(button(tree, '提交代码').props.disabled, true)
@@ -89,21 +91,34 @@ test('过期凭证不清空代码，显式重新连接后可用新凭证提交�
   assert.deepEqual(f.calls.map((call) => call.command), ['question.code-submit', 'question.code-open', 'question.code-submit'])
 })
 
-test('重复点击提交只发送一次，Ctrl+Enter 保存、Ctrl+Shift+Enter 分析，失败不丢草稿', async () => {
+test('重复点击提交只发送一次，Python 编辑器的提交/分析入口保存并复用代码', async () => {
   let release
   const f = fixture({ run: () => new Promise((resolve) => { release = resolve }) })
-  let tree = f.render(); field(tree).props.onChange({ target: { value: CODE } }); tree = f.render()
+  let tree = f.render(); changeCode(tree, CODE); tree = f.render()
   const one = button(tree, '提交代码').props.onClick(), two = button(tree, '提交代码').props.onClick()
   assert.equal(f.calls.length, 1)
   release({ references: { attemptId: 'a1' }, revision: 4 })
   await Promise.all([one, two])
   const keys = fixture()
-  let keyboard = keys.render(); field(keyboard).props.onChange({ target: { value: CODE } }); keyboard = keys.render()
-  const event = { key: 'Enter', ctrlKey: true, shiftKey: false, stopPropagation() {}, preventDefault() {} }
-  field(keyboard).props.onKeyDown(event)
+  let keyboard = keys.render(); changeCode(keyboard, CODE); keyboard = keys.render()
+  field(keyboard).props.onSubmit(false)
   await new Promise(setImmediate)
   keyboard = keys.render()
-  field(keyboard).props.onKeyDown({ ...event, shiftKey: true })
+  field(keyboard).props.onSubmit(true)
   await new Promise(setImmediate)
   assert.deepEqual(keys.calls.map((call) => call.command), ['question.code-submit', 'question.code-review.retry'])
+})
+
+test('Python 使用富文本编辑器，切换其他语言和切回 Python 都保留草稿代码', () => {
+  const f = fixture()
+  let tree = f.render({ language: '' })
+  assert.equal(field(tree).type, 'python-editor')
+  changeCode(tree, CODE); tree = f.render({ language: '' })
+  field(tree, '代码语言').props.onChange({ target: { value: 'java' } }); tree = f.render({ language: '' })
+  assert.equal(field(tree).type, 'textarea')
+  assert.equal(field(tree).props.value, CODE)
+  field(tree, '代码语言').props.onChange({ target: { value: 'python' } }); tree = f.render({ language: '' })
+  assert.equal(field(tree).type, 'python-editor')
+  assert.equal(field(tree).props.value, CODE)
+  assert.equal(field(f.render({ disabled: true })).props.readOnly, true)
 })

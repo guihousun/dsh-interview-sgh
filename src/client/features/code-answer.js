@@ -3,6 +3,7 @@ import { CODE_LANGUAGES, parseCodeAnswer } from '../../domain/code-answer.js'
 import { codeDraftKey, editCodeSelection, readCodeDraft, saveCodeDraft } from '../shared/code-editing.js'
 import { useCommand } from '../shared/hooks.js'
 import { Button, ErrorNotice, h, Icon } from '../shared/ui.js'
+import { PythonEditor } from '../shared/python-editor.js'
 
 function draftStorage() {
   try { return window.localStorage } catch { return null }
@@ -111,7 +112,8 @@ export function CodeAnswerEditor({ sessionId, question, artifact, language = '',
       h('label', { className: 'di-code-language' }, '语言',
         h('select', { className: 'di-input', value: draft.language, disabled: locked || Boolean(language), 'aria-label': '代码语言', onChange: (event) => update({ language: event.target.value }) },
           CODE_LANGUAGES.map((item) => h('option', { key: item.id, value: item.id }, item.label))))),
-    h('div', { className: 'di-code-field' },
+    draft.language === 'python' ? h(PythonEditor, { value: draft.code, readOnly: locked, 'aria-label': '编写代码',
+      onChange: (code) => update({ code }), onSubmit: submit }) : h('div', { className: 'di-code-field' },
       h('pre', { className: 'di-code-lines', 'aria-hidden': 'true', ref: (node) => { if (node) node.scrollTop = codeRef.current?.scrollTop || 0 } },
         Array.from({ length: draft.code.split('\n').length }, (_, index) => index + 1).join('\n')),
       h('textarea', {
