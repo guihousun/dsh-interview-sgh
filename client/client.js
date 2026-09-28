@@ -37,10 +37,43 @@ __export(index_exports, {
   resolveToolView: () => resolveToolView
 });
 module.exports = __toCommonJS(index_exports);
-var import_react10 = __toESM(require("react"), 1);
+var import_react17 = __toESM(require("react"), 1);
 
 // src/client/features/live-interview.js
-var import_react6 = __toESM(require("react"), 1);
+var import_react12 = __toESM(require("react"), 1);
+
+// src/domain/errors.js
+var DomainError = class extends Error {
+  constructor(code, message, details = void 0) {
+    super(message);
+    this.name = "DomainError";
+    this.code = code;
+    this.details = details;
+  }
+};
+function assertDomain(condition, code, message, details = void 0) {
+  if (!condition) throw new DomainError(code, message, details);
+}
+
+// src/domain/practice-attachments.js
+var DOCUMENT_LIMITS = Object.freeze({ fileBytes: 10 * 1024 * 1024, pages: 100, text: 6e4, references: 8, referenceText: 18e4 });
+var DOCUMENT_ACCEPT = ".pdf,.docx,.txt,.md,.markdown";
+var DOCUMENT_TYPES = Object.freeze(["pdf", "docx", "txt", "md", "markdown"]);
+
+// src/client/shared/document-upload.js
+function readDocumentUpload(file) {
+  const type = file.name.split(".").at(-1).toLowerCase();
+  if (!DOCUMENT_TYPES.includes(type)) return Promise.reject(new Error("\u652F\u6301 PDF\u3001DOCX\u3001TXT \u548C Markdown \u6587\u4EF6"));
+  if (file.size > DOCUMENT_LIMITS.fileBytes) return Promise.reject(new Error("\u5355\u4EFD\u8D44\u6599\u4E0D\u80FD\u8D85\u8FC7 10 MB"));
+  if (!file.size) return Promise.reject(new Error("\u6587\u4EF6\u4E3A\u7A7A\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9"));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("\u65E0\u6CD5\u8BFB\u53D6\u6587\u4EF6\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9"));
+    reader.onabort = () => reject(new Error("\u6587\u4EF6\u8BFB\u53D6\u5DF2\u53D6\u6D88"));
+    reader.onload = () => resolve({ name: file.name, data: String(reader.result).split(",")[1] });
+    reader.readAsDataURL(file);
+  });
+}
 
 // src/client/shared/api.js
 var cache = /* @__PURE__ */ new Map();
@@ -82,6 +115,10 @@ function queryString(values) {
   return params.toString();
 }
 var interviewApi = {
+  async extractDocument(file) {
+    const payload = await readDocumentUpload(file);
+    return jsonRequest("/interview/api/materials/extract", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+  },
   session(sessionId) {
     return jsonRequest(`/interview/api/session?${queryString({ session: sessionId })}`);
   },
@@ -93,6 +130,12 @@ var interviewApi = {
   },
   insights() {
     return jsonRequest("/interview/api/insights");
+  },
+  questionLearning(practiceId, questionId) {
+    return jsonRequest(`/interview/api/question-learning?${queryString({ practice: practiceId, question: questionId })}`);
+  },
+  questionSolution(practiceId, questionId) {
+    return jsonRequest(`/interview/api/question-solution?${queryString({ practice: practiceId, question: questionId })}`);
   },
   leetcodeCatalog() {
     return jsonRequest("/interview/api/leetcode");
@@ -120,8 +163,8 @@ var interviewApi = {
     notificationListeners.add(listener);
     return () => notificationListeners.delete(listener);
   },
-  navigateWorkspace(tab) {
-    for (const listener of workspaceNavigationListeners) listener(tab);
+  navigateWorkspace(tab, context = null) {
+    for (const listener of workspaceNavigationListeners) listener(tab, context);
   },
   subscribeWorkspaceNavigation(listener) {
     workspaceNavigationListeners.add(listener);
@@ -219,9 +262,13 @@ var INTERACTION_PROTOCOL = "dsh-interview/interaction-v2";
 // src/client/shared/ui.js
 var h = import_react2.default.createElement;
 var MarkdownText2 = primitives.MarkdownText;
+var MARKDOWN_LABELS = Object.freeze({
+  code: Object.freeze({ copyLabel: "\u590D\u5236\u4EE3\u7801", copiedLabel: "\u5DF2\u590D\u5236" }),
+  footnotes: "\u6CE8\u91CA"
+});
 function Markdown({ children }) {
-  const text = String(children || "");
-  return MarkdownText2 ? h(MarkdownText2, { text, content: text, className: "di-markdown" }) : h("div", { className: "di-preline di-markdown" }, text);
+  const text2 = String(children || "");
+  return MarkdownText2 ? h(MarkdownText2, { text: text2, content: text2, labels: MARKDOWN_LABELS, className: "di-markdown" }) : h("div", { className: "di-preline di-markdown" }, text2);
 }
 var ICON_PATHS = {
   check: [h("path", { key: "p", d: "m5 12 4 4L19 6" })],
@@ -230,6 +277,7 @@ var ICON_PATHS = {
   swap: [h("path", { key: "a", d: "M7 7h11l-3-3m3 3-3 3" }), h("path", { key: "b", d: "M17 17H6l3 3m-3-3 3-3" })],
   trash: [h("path", { key: "a", d: "M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" })],
   download: [h("path", { key: "a", d: "M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" })],
+  upload: [h("path", { key: "a", d: "M12 16V4m0 0-4 4m4-4 4 4M4 16v4h16v-4" })],
   play: [h("path", { key: "a", d: "M8 5.5v13l10-6.5L8 5.5Z" })],
   clock: [h("circle", { key: "a", cx: 12, cy: 12, r: 8 }), h("path", { key: "b", d: "M12 8v4l3 2" })],
   archive: [h("path", { key: "a", d: "M4 7h16v13H4V7Zm-1-3h18v3H3V4Zm6 7h6" })],
@@ -282,8 +330,8 @@ function toolCallState(block) {
   return block.isError ? "error" : "success";
 }
 function toolErrorMessage(block) {
-  const text = resultText(block).trim();
-  return text || block?.error?.message || block?.error?.code || "\u5DE5\u5177\u6267\u884C\u5931\u8D25";
+  const text2 = resultText(block).trim();
+  return text2 || block?.error?.message || block?.error?.code || "\u5DE5\u5177\u6267\u884C\u5931\u8D25";
 }
 function toolErrorAudience(block) {
   const code = block?.error?.code || block?.error?.info?.code;
@@ -549,7 +597,7 @@ var LEETCODE_TOP_100 = Object.freeze(LEETCODE_TOP_100_GROUPS.flatMap((group) => 
 var PROBLEM_BY_SLUG = new Map(LEETCODE_TOP_100.map((problem) => [problem.slug, problem]));
 
 // src/client/features/leetcode.js
-var import_react5 = __toESM(require("react"), 1);
+var import_react11 = __toESM(require("react"), 1);
 
 // src/domain/leetcode-languages.js
 var DEFINITIONS = [
@@ -627,7 +675,252 @@ function useCardTransition(runCommand, artifact, disabled = false) {
 }
 
 // src/client/features/practice-config.js
+var import_react6 = __toESM(require("react"), 1);
+
+// src/client/features/practice-documents.js
 var import_react4 = __toESM(require("react"), 1);
+function documentInfoText(file) {
+  return [file.name, file.pages ? `${file.pages} \u9875` : "", `${Math.round(file.size / 1024) || 1} KB`].filter(Boolean).join(" \xB7 ");
+}
+function ResumeDocumentField({ value, file, disabled, onChange, onFileChange, onPendingChange }) {
+  const inputRef = import_react4.default.useRef(null);
+  const busyRef = import_react4.default.useRef(false);
+  const [progress, setProgress] = import_react4.default.useState("");
+  const [error, setError] = import_react4.default.useState("");
+  const [warnings, setWarnings] = import_react4.default.useState([]);
+  const upload = async (event) => {
+    const selected = event.target.files?.[0];
+    event.target.value = "";
+    if (!selected || disabled || busyRef.current) return;
+    busyRef.current = true;
+    setError("");
+    setWarnings([]);
+    setProgress(`\u6B63\u5728\u89E3\u6790 ${selected.name}\u2026`);
+    onPendingChange(1);
+    try {
+      const { material } = await interviewApi.extractDocument(selected);
+      onChange(material.text);
+      const { text: _text, warnings: notices, id: _id, ...info } = material;
+      onFileChange(info);
+      setWarnings(notices || []);
+    } catch (failure) {
+      setError(failure.message || "\u7B80\u5386\u89E3\u6790\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u6587\u4EF6");
+    } finally {
+      busyRef.current = false;
+      setProgress("");
+      onPendingChange(-1);
+    }
+  };
+  return h(
+    "section",
+    { className: "di-field di-field-wide di-resume-document", "aria-label": "\u7B80\u5386\u5BFC\u5165" },
+    h(
+      "div",
+      { className: "di-document-head" },
+      h("span", null, "\u7B80\u5386"),
+      h(Button, { disabled, busy: Boolean(progress), onClick: () => inputRef.current?.click() }, h(Icon, { name: "upload" }), file ? "\u66F4\u6362\u7B80\u5386\u6587\u4EF6" : "\u4E0A\u4F20\u7B80\u5386")
+    ),
+    h("input", { ref: inputRef, type: "file", accept: DOCUMENT_ACCEPT, hidden: true, disabled, "aria-label": "\u9009\u62E9\u7B80\u5386\u6587\u4EF6", onChange: upload }),
+    h("div", { className: "di-meta" }, "\u652F\u6301 PDF\u3001DOCX\u3001TXT\u3001Markdown\uFF0C\u6BCF\u4EFD\u6700\u591A 10 MB\uFF1B\u5BFC\u5165\u540E\u53EF\u4FEE\u6539\u4E0B\u65B9\u6587\u5B57\u3002"),
+    file ? h(
+      "div",
+      { className: "di-document-file", role: "status" },
+      h("span", null, documentInfoText(file)),
+      h(Button, { disabled, onClick: () => {
+        onFileChange(null);
+        setWarnings([]);
+      } }, "\u79FB\u9664\u6587\u4EF6\u6807\u8BB0")
+    ) : null,
+    progress ? h("div", { className: "di-meta", role: "status", "aria-live": "polite" }, progress) : null,
+    warnings.map((warning) => h("div", { className: "di-notice", key: warning }, warning)),
+    h("textarea", { className: "di-input di-textarea", "aria-label": "\u7B80\u5386", maxLength: DOCUMENT_LIMITS.text, disabled, value, placeholder: "\u4E0A\u4F20\u7B80\u5386\u6587\u4EF6\uFF0C\u6216\u76F4\u63A5\u7C98\u8D34\u7B80\u5386\u6587\u5B57", onChange: (event) => onChange(event.target.value) }),
+    h(ErrorNotice, null, error)
+  );
+}
+function ReferenceDocumentsField({ materials, disabled, onChange, onPendingChange }) {
+  const inputRef = import_react4.default.useRef(null);
+  const busyRef = import_react4.default.useRef(false);
+  const [progress, setProgress] = import_react4.default.useState("");
+  const [error, setError] = import_react4.default.useState("");
+  const upload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length || disabled || busyRef.current) return;
+    if (materials.length + files.length > DOCUMENT_LIMITS.references) {
+      setError("\u6700\u591A\u6DFB\u52A0 8 \u4EFD\u53C2\u8003\u8D44\u6599\uFF0C\u8BF7\u5148\u79FB\u9664\u4E0D\u9700\u8981\u7684\u8D44\u6599");
+      return;
+    }
+    busyRef.current = true;
+    setError("");
+    onPendingChange(1);
+    const next = [...materials];
+    const notices = [];
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        setProgress(`\u6B63\u5728\u89E3\u6790 ${file.name}\uFF08${index + 1}/${files.length}\uFF09\u2026`);
+        try {
+          const { material } = await interviewApi.extractDocument(file);
+          if (next.some((item) => item.id === material.id)) {
+            notices.push(`\u201C${file.name}\u201D\u5DF2\u6DFB\u52A0\uFF0C\u65E0\u9700\u91CD\u590D\u4E0A\u4F20\u3002`);
+            continue;
+          }
+          if (next.reduce((sum, item) => sum + item.text.length, 0) + material.text.length > DOCUMENT_LIMITS.referenceText) {
+            notices.push(`\u201C${file.name}\u201D\u672A\u6DFB\u52A0\uFF1A\u53C2\u8003\u8D44\u6599\u5408\u8BA1\u4E0D\u80FD\u8D85\u8FC7 180000 \u5B57\u7B26\u3002`);
+            continue;
+          }
+          next.push(material);
+          onChange([...next]);
+          notices.push(...(material.warnings || []).map((message) => `${file.name}\uFF1A${message}`));
+        } catch (failure) {
+          notices.push(`${file.name}\uFF1A${failure.message || "\u89E3\u6790\u5931\u8D25"}`);
+        }
+      }
+    } finally {
+      busyRef.current = false;
+      setProgress("");
+      onPendingChange(-1);
+      setError(notices.join("\n"));
+    }
+  };
+  return h(
+    "section",
+    { className: "di-field-wide di-reference-documents", "aria-label": "\u53C2\u8003\u8D44\u6599" },
+    h(
+      "div",
+      { className: "di-document-head" },
+      h("span", null, `\u53C2\u8003\u8D44\u6599\uFF08\u53EF\u9009\uFF09${materials.length ? ` \xB7 ${materials.length}/${DOCUMENT_LIMITS.references}` : ""}`),
+      h(Button, { disabled: disabled || materials.length >= DOCUMENT_LIMITS.references, busy: Boolean(progress), onClick: () => inputRef.current?.click() }, h(Icon, { name: "upload" }), "\u4E0A\u4F20\u53C2\u8003\u8D44\u6599")
+    ),
+    h("input", { ref: inputRef, type: "file", multiple: true, accept: DOCUMENT_ACCEPT, hidden: true, disabled, "aria-label": "\u9009\u62E9\u53C2\u8003\u8D44\u6599\u6587\u4EF6", onChange: upload }),
+    h("div", { className: "di-meta" }, "\u53EF\u4E0A\u4F20\u5C97\u4F4D\u8BF4\u660E\u3001\u9879\u76EE\u4ECB\u7ECD\u6216\u9762\u8BD5\u7B14\u8BB0\u3002\u652F\u6301 PDF\u3001DOCX\u3001TXT\u3001Markdown\uFF0C\u6700\u591A 8 \u4EFD\uFF0C\u6BCF\u4EFD\u6700\u591A 10 MB\u3002"),
+    h("div", { className: "di-meta" }, "\u7EC3\u4E60\u4FDD\u5B58\u63D0\u53D6\u7684\u6587\u5B57\u548C\u6587\u4EF6\u4FE1\u606F\uFF0CAI \u4F1A\u7ED3\u5408\u8FD9\u4E9B\u8D44\u6599\u63D0\u95EE\u3002"),
+    progress ? h("div", { className: "di-meta", role: "status", "aria-live": "polite" }, progress) : null,
+    materials.map((material) => h(
+      "div",
+      { className: "di-reference-file", key: material.id },
+      h(
+        "div",
+        { className: "di-document-file" },
+        h("span", null, documentInfoText(material)),
+        h(Button, { disabled, "aria-label": `\u79FB\u9664\u53C2\u8003\u8D44\u6599\uFF1A${material.name}`, onClick: () => onChange(materials.filter((item) => item.id !== material.id)) }, "\u79FB\u9664")
+      ),
+      h(
+        "details",
+        null,
+        h("summary", null, `\u67E5\u770B\u548C\u7F16\u8F91\u5185\u5BB9 \xB7 ${material.text.length} \u5B57\u7B26`),
+        h("textarea", { className: "di-input di-textarea", value: material.text, disabled, maxLength: DOCUMENT_LIMITS.text, "aria-label": `\u53C2\u8003\u8D44\u6599\u5185\u5BB9\uFF1A${material.name}`, onChange: (event) => onChange(materials.map((item) => item.id === material.id ? { ...item, text: event.target.value } : item)) })
+      ),
+      !material.text.trim() ? h(ErrorNotice, null, "\u8D44\u6599\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A\uFF0C\u53EF\u8865\u5145\u6587\u5B57\u6216\u79FB\u9664\u8FD9\u4EFD\u8D44\u6599\u3002") : null
+    )),
+    h(ErrorNotice, null, error)
+  );
+}
+function PracticeDocumentSources({ config }) {
+  if (!config?.resumeFile && !config?.referenceMaterials?.length) return null;
+  return h(
+    "section",
+    { className: "di-practice-sources" },
+    config.resumeFile ? h("div", { className: "di-meta" }, `\u7B80\u5386\u6587\u4EF6\uFF1A${documentInfoText(config.resumeFile)}`) : null,
+    config.referenceMaterials?.length ? h(
+      "div",
+      null,
+      h("div", { className: "di-section-label" }, `\u53C2\u8003\u8D44\u6599 \xB7 ${config.referenceMaterials.length} \u4EFD`),
+      config.referenceMaterials.map((material) => h(
+        "details",
+        { key: material.id, className: "di-reference-file" },
+        h("summary", null, documentInfoText(material)),
+        h("pre", { className: "di-document-text" }, material.text)
+      ))
+    ) : null
+  );
+}
+
+// src/domain/leetcode-problems.js
+var LEETCODE_DIFFICULTY_IDS = Object.freeze(["easy", "medium", "hard"]);
+var LEETCODE_CATEGORIES = Object.freeze(LEETCODE_TOP_100_GROUPS.map((group) => group.category));
+var DIFFICULTY_BY_LABEL = Object.freeze({
+  \u7B80\u5355: "easy",
+  \u4E2D\u7B49: "medium",
+  \u56F0\u96BE: "hard",
+  easy: "easy",
+  medium: "medium",
+  hard: "hard"
+});
+function text(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function searchText(problem) {
+  return `${problem.id} ${problem.title} ${problem.slug} ${problem.category}`.toLowerCase();
+}
+function leetcodeDifficultyFromLabel(value) {
+  const key = text(value);
+  return DIFFICULTY_BY_LABEL[key] || DIFFICULTY_BY_LABEL[key.toLowerCase()] || "";
+}
+function normalizeLeetcodeDifficulties(value) {
+  if (value === void 0 || value === null) return [];
+  assertDomain(Array.isArray(value), "INVALID_LEETCODE_DIFFICULTIES", "\u96BE\u5EA6\u6807\u7B7E\u5FC5\u987B\u662F\u5217\u8868\uFF0C\u53EF\u9009\u62E9 easy\u3001medium\u3001hard");
+  const normalized = value.map(leetcodeDifficultyFromLabel);
+  assertDomain(normalized.every(Boolean), "INVALID_LEETCODE_DIFFICULTIES", "\u96BE\u5EA6\u6807\u7B7E\u53EA\u80FD\u9009\u62E9 easy\u3001medium\u3001hard");
+  return LEETCODE_DIFFICULTY_IDS.filter((id) => normalized.includes(id));
+}
+function leetcodeDifficultyTagsLabel(value) {
+  return normalizeLeetcodeDifficulties(value).join(" + ") || "\u5168\u90E8\u96BE\u5EA6";
+}
+function matchesKeyword(problem, keyword) {
+  const haystack = searchText(problem);
+  return keyword.split(/\s+/).filter(Boolean).every((part) => haystack.includes(part));
+}
+function relevance(problem, keyword) {
+  if (problem.id === keyword) return 0;
+  if (problem.slug === keyword) return 1;
+  if (problem.title === keyword) return 2;
+  if (problem.title.toLowerCase().includes(keyword)) return 3;
+  return 4;
+}
+function listLeetcodeProblems({ keyword, category, difficulty, difficulties, limit = 20 } = {}) {
+  const normalizedKeyword = text(keyword).toLowerCase();
+  const normalizedCategory = text(category);
+  const normalizedDifficulty = leetcodeDifficultyFromLabel(difficulty) || text(difficulty);
+  const selectedDifficulties = difficulties === void 0 ? normalizedDifficulty ? [normalizedDifficulty] : [] : normalizeLeetcodeDifficulties(difficulties);
+  const matched = LEETCODE_TOP_100.filter((problem) => !normalizedCategory || problem.category === normalizedCategory).filter((problem) => !selectedDifficulties.length || selectedDifficulties.includes(problem.difficulty)).filter((problem) => !normalizedKeyword || matchesKeyword(problem, normalizedKeyword));
+  if (normalizedKeyword) matched.sort((left, right) => relevance(left, normalizedKeyword) - relevance(right, normalizedKeyword) || Number(left.id) - Number(right.id));
+  const normalizedLimit = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.min(Number(limit), LEETCODE_TOP_100.length) : 20;
+  return matched.slice(0, normalizedLimit).map((problem) => ({ ...problem }));
+}
+
+// src/client/shared/difficulty-tags.js
+var import_react5 = __toESM(require("react"), 1);
+function DifficultyBadge({ difficulty, custom = false }) {
+  if (!LEETCODE_DIFFICULTY_IDS.includes(difficulty)) return custom ? h("span", { className: "di-lc-difficulty is-custom" }, "\u81EA\u5B9A\u4E49") : null;
+  return h("span", { className: `di-lc-difficulty is-${difficulty}`, title: leetcodeDifficultyLabel(difficulty) }, difficulty);
+}
+function DifficultyTags({ value = [], onChange, counts = {}, disabled = false, label = "\u9009\u62E9\u8BAD\u7EC3\u96BE\u5EA6\u6807\u7B7E" }) {
+  const selected = normalizeLeetcodeDifficulties(value);
+  const toggle = (id) => onChange(selected.includes(id) ? selected.filter((tag) => tag !== id) : LEETCODE_DIFFICULTY_IDS.filter((tag) => tag === id || selected.includes(tag)));
+  return h(
+    "div",
+    { className: "di-difficulty-tags", role: "group", "aria-label": label },
+    h("button", { type: "button", className: `di-difficulty-tag${selected.length ? "" : " is-selected"}`, disabled, "aria-pressed": !selected.length, onClick: () => onChange([]) }, "\u5168\u90E8\u96BE\u5EA6"),
+    LEETCODE_DIFFICULTY_IDS.map((id) => h(
+      "button",
+      {
+        type: "button",
+        key: id,
+        className: `di-difficulty-tag is-${id}${selected.includes(id) ? " is-selected" : ""}`,
+        title: leetcodeDifficultyLabel(id),
+        disabled,
+        "aria-label": `${id}\uFF08${leetcodeDifficultyLabel(id)}\uFF09`,
+        "aria-pressed": selected.includes(id),
+        onClick: () => toggle(id)
+      },
+      h("span", null, id),
+      Number.isFinite(counts[id]) ? h("span", { className: "di-difficulty-count" }, counts[id]) : null
+    ))
+  );
+}
+
+// src/client/features/practice-config.js
 var PRACTICE_MODE_OPTIONS = Object.freeze([
   { value: "bagu", label: "\u80CC\u516B\u80A1" },
   { value: "mock", label: "\u6A21\u62DF\u9762\u8BD5" },
@@ -664,7 +957,7 @@ function completedConfigText(payload) {
     return `${modeLabel(payload.mode)} \xB7 ${payload.config.targetRole} \xB7 ${difficulty}\u96BE\u5EA6 \xB7 ${jd}`;
   }
   if (payload.mode === "leetcode") {
-    return `${modeLabel(payload.mode)} \xB7 ${leetcodeLanguageLabel(payload.config.language)} \xB7 ${leetcodeGuidanceLabel(payload.config.guidance)}`;
+    return `${modeLabel(payload.mode)} \xB7 ${leetcodeLanguageLabel(payload.config.language)} \xB7 ${leetcodeGuidanceLabel(payload.config.guidance)} \xB7 ${payload.config.category || "\u5168\u90E8\u4E13\u9898"} \xB7 ${leetcodeDifficultyTagsLabel(payload.config.difficulties)}`;
   }
   return `${modeLabel(payload.mode)} \xB7 ${payload.config.topic}`;
 }
@@ -676,28 +969,37 @@ function PracticeConfigForm({
   onCancel = null,
   submitLabel = ""
 }) {
-  const [mode, setMode] = import_react4.default.useState(initial?.mode || "");
-  const [step, setStep] = import_react4.default.useState(initial ? "config" : "mode");
-  const [topic, setTopic] = import_react4.default.useState(initial?.config?.topic || "");
-  const [resume, setResume] = import_react4.default.useState(initial?.config?.resume || "");
-  const [targetRole, setTargetRole] = import_react4.default.useState(initial?.config?.targetRole || "");
-  const [jobDescriptionProvided, setJobDescriptionProvided] = import_react4.default.useState(typeof initial?.config?.jobDescriptionProvided === "boolean" ? String(initial.config.jobDescriptionProvided) : "");
-  const [jobDescription, setJobDescription] = import_react4.default.useState(initial?.config?.jobDescription || "");
-  const [focus, setFocus] = import_react4.default.useState(initial?.config?.focus || "");
-  const [interviewerStyle, setInterviewerStyle] = import_react4.default.useState(initial?.config?.interviewerStyle || "");
-  const [coding, setCoding] = import_react4.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
-  const [difficulty, setDifficulty] = import_react4.default.useState(initial?.config?.difficulty || "");
-  const [language, setLanguage] = import_react4.default.useState(initial?.config?.language || "");
-  const [guidance, setGuidance] = import_react4.default.useState(initial?.config?.guidance || "");
+  const [mode, setMode] = import_react6.default.useState(initial?.mode || "");
+  const [step, setStep] = import_react6.default.useState(initial ? "config" : "mode");
+  const [topic, setTopic] = import_react6.default.useState(initial?.config?.topic || "");
+  const [resume, setResume] = import_react6.default.useState(initial?.config?.resume || "");
+  const [resumeFile, setResumeFile] = import_react6.default.useState(initial?.config?.resumeFile || null);
+  const [referenceMaterials, setReferenceMaterials] = import_react6.default.useState(initial?.config?.referenceMaterials || []);
+  const [uploadsPending, setUploadsPending] = import_react6.default.useState(0);
+  const [targetRole, setTargetRole] = import_react6.default.useState(initial?.config?.targetRole || "");
+  const [jobDescriptionProvided, setJobDescriptionProvided] = import_react6.default.useState(typeof initial?.config?.jobDescriptionProvided === "boolean" ? String(initial.config.jobDescriptionProvided) : "");
+  const [jobDescription, setJobDescription] = import_react6.default.useState(initial?.config?.jobDescription || "");
+  const [focus, setFocus] = import_react6.default.useState(initial?.config?.focus || "");
+  const [interviewerStyle, setInterviewerStyle] = import_react6.default.useState(initial?.config?.interviewerStyle || "");
+  const [coding, setCoding] = import_react6.default.useState(typeof initial?.config?.coding === "boolean" ? String(initial.config.coding) : "");
+  const [difficulty, setDifficulty] = import_react6.default.useState(initial?.config?.difficulty || "");
+  const [language, setLanguage] = import_react6.default.useState(initial?.config?.language || "");
+  const [guidance, setGuidance] = import_react6.default.useState(initial?.config?.guidance || "");
+  const [leetcodeCategory, setLeetcodeCategory] = import_react6.default.useState(initial?.config?.category || "");
+  const [leetcodeDifficulties, setLeetcodeDifficulties] = import_react6.default.useState(initial?.config?.difficulties || []);
   const topicMode = mode === "bagu" || mode === "scenario";
-  const valid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language && guidance) : mode === "mock" && Boolean(
+  const trainingCount = mode === "leetcode" ? listLeetcodeProblems({ category: leetcodeCategory, difficulties: leetcodeDifficulties, limit: 100 }).length : 0;
+  const configurationValid = topicMode ? Boolean(topic.trim()) : mode === "leetcode" ? Boolean(language && guidance) : mode === "mock" && Boolean(
     resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && interviewerStyle.trim() && coding !== "" && difficulty
   ) || mode === "resume_drill" && Boolean(
     resume.trim() && targetRole.trim() && jobDescriptionProvided !== "" && (jobDescriptionProvided !== "true" || jobDescription.trim()) && focus.trim() && difficulty
   );
+  const valid = configurationValid && (mode !== "leetcode" || trainingCount > 0) && referenceMaterials.every((item) => item.text.trim()) && referenceMaterials.reduce((sum, item) => sum + item.text.length, 0) <= DOCUMENT_LIMITS.referenceText;
+  const formDisabled = disabled || busy || uploadsPending > 0;
+  const pendingChanged = (delta) => setUploadsPending((count) => Math.max(0, count + delta));
   const submit = () => {
-    if (step !== "config" || !valid || disabled) return;
-    onSubmit(mode === "mock" ? {
+    if (step !== "config" || !valid || formDisabled) return;
+    const payload = mode === "mock" ? {
       mode,
       config: {
         resume: resume.trim(),
@@ -718,7 +1020,17 @@ function PracticeConfigForm({
         focus: focus.trim(),
         difficulty
       }
-    } : mode === "leetcode" ? { mode, config: { language, guidance } } : { mode, config: { topic: topic.trim() } });
+    } : mode === "leetcode" ? { mode, config: {
+      language,
+      guidance,
+      ...leetcodeCategory ? { category: leetcodeCategory } : {},
+      ...leetcodeDifficulties.length ? { difficulties: leetcodeDifficulties } : {}
+    } } : { mode, config: { topic: topic.trim() } };
+    onSubmit({ ...payload, config: {
+      ...payload.config,
+      ...(mode === "mock" || mode === "resume_drill") && resumeFile ? { resumeFile } : {},
+      ...referenceMaterials.length ? { referenceMaterials } : {}
+    } });
   };
   const chooseMode = (value) => {
     if (disabled) return;
@@ -755,7 +1067,7 @@ function PracticeConfigForm({
         h("input", { className: "di-input", disabled, value: topic, onChange: (event) => setTopic(event.target.value) })
       ) : null,
       mode === "leetcode" ? h(
-        import_react4.default.Fragment,
+        import_react6.default.Fragment,
         null,
         h(
           "label",
@@ -775,17 +1087,26 @@ function PracticeConfigForm({
             "aria-label": "\u9009\u62E9\u5F15\u5BFC\u5F3A\u5EA6"
           })
         ),
-        guidance ? h("div", { className: "di-guidance-hint di-field-wide" }, LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance)?.detail || "") : null
-      ) : null,
-      mode === "mock" ? h(
-        import_react4.default.Fragment,
-        null,
+        guidance ? h("div", { className: "di-guidance-hint di-field-wide" }, LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance)?.detail || "") : null,
         h(
           "label",
           { className: "di-field di-field-wide" },
-          h("span", null, "\u7B80\u5386"),
-          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
+          h("span", null, "\u8BAD\u7EC3\u4E13\u9898"),
+          h(Select, { value: leetcodeCategory, options: [{ value: "", label: "\u5168\u90E8\u4E13\u9898" }, ...LEETCODE_CATEGORIES.map((name2) => ({ value: name2, label: name2 }))], disabled: formDisabled, onChange: setLeetcodeCategory, "aria-label": "\u9009\u62E9\u8BAD\u7EC3\u4E13\u9898" })
         ),
+        h(
+          "div",
+          { className: "di-field di-field-wide" },
+          h("span", null, "\u8BAD\u7EC3\u96BE\u5EA6\u6807\u7B7E"),
+          h(DifficultyTags, { value: leetcodeDifficulties, onChange: setLeetcodeDifficulties, disabled: formDisabled }),
+          h("div", { className: "di-meta", role: "status" }, `\u53EF\u4EE5\u591A\u9009\u3002\u6240\u9009\u8303\u56F4\u6709 ${trainingCount} \u9053\u9898\uFF0C\u540E\u7EED\u6309\u4E13\u9898\u987A\u5E8F\u6216\u968F\u673A\u51FA\u9898\u90FD\u4F1A\u6CBF\u7528\u3002`),
+          !trainingCount ? h("div", { className: "di-notice" }, "\u6240\u9009\u4E13\u9898\u548C\u96BE\u5EA6\u6CA1\u6709\u9898\u76EE\uFF0C\u8BF7\u8C03\u6574\u8BAD\u7EC3\u8303\u56F4\u3002") : null
+        )
+      ) : null,
+      mode === "mock" ? h(
+        import_react6.default.Fragment,
+        null,
+        h(ResumeDocumentField, { value: resume, file: resumeFile, disabled: formDisabled, onChange: setResume, onFileChange: setResumeFile, onPendingChange: pendingChanged }),
         h(
           "label",
           { className: "di-field" },
@@ -824,14 +1145,9 @@ function PracticeConfigForm({
         )
       ) : null,
       mode === "resume_drill" ? h(
-        import_react4.default.Fragment,
+        import_react6.default.Fragment,
         null,
-        h(
-          "label",
-          { className: "di-field di-field-wide" },
-          h("span", null, "\u7B80\u5386"),
-          h("textarea", { className: "di-input di-textarea", disabled, value: resume, onChange: (event) => setResume(event.target.value) })
-        ),
+        h(ResumeDocumentField, { value: resume, file: resumeFile, disabled: formDisabled, onChange: setResume, onFileChange: setResumeFile, onPendingChange: pendingChanged }),
         h(
           "label",
           { className: "di-field" },
@@ -862,21 +1178,22 @@ function PracticeConfigForm({
           h("span", null, "\u9762\u8BD5\u96BE\u5EA6"),
           h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, "aria-label": "\u9009\u62E9\u9762\u8BD5\u96BE\u5EA6" })
         )
-      ) : null
+      ) : null,
+      h(ReferenceDocumentsField, { materials: referenceMaterials, disabled: formDisabled, onChange: setReferenceMaterials, onPendingChange: pendingChanged })
     ),
     h(
       "div",
       { className: "di-actions di-field-wide" },
-      onCancel ? h(Button, { disabled, onClick: onCancel }, "\u53D6\u6D88") : null,
-      step === "config" ? h(Button, { disabled, onClick: () => setStep("mode") }, "\u4E0A\u4E00\u6B65") : null,
-      step === "config" ? h(Button, { tone: "primary", disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60")) : null
+      onCancel ? h(Button, { disabled: formDisabled, onClick: onCancel }, "\u53D6\u6D88") : null,
+      step === "config" ? h(Button, { disabled: formDisabled, onClick: () => setStep("mode") }, "\u4E0A\u4E00\u6B65") : null,
+      step === "config" ? h(Button, { tone: "primary", disabled: formDisabled || !valid, busy, onClick: submit }, submitLabel || (initial ? "\u4FDD\u5B58\u914D\u7F6E" : "\u5F00\u59CB\u7EC3\u4E60")) : null
     )
   );
 }
 function PracticeSetupCard({ sessionId }) {
   const command = useCommand(sessionId);
   const lifecycle = useCardLifecycle(false);
-  const [completedConfig, setCompletedConfig] = import_react4.default.useState(null);
+  const [completedConfig, setCompletedConfig] = import_react6.default.useState(null);
   const start = (payload) => lifecycle.enter("session.start", () => {
     setCompletedConfig(payload);
     return command.run("session.start", payload);
@@ -924,37 +1241,410 @@ function materialsSourceLine(source) {
   return parts.join("\uFF1B");
 }
 
+// src/client/features/code-answer.js
+var import_react7 = __toESM(require("react"), 1);
+
+// src/domain/code-answer.js
+var CODE_LANGUAGES = Object.freeze([
+  ...LEETCODE_LANGUAGES.map(({ id, label, fence }) => ({ id, label, fence })),
+  { id: "javascript", label: "JavaScript", fence: "javascript" },
+  { id: "typescript", label: "TypeScript", fence: "typescript" },
+  { id: "rust", label: "Rust", fence: "rust" },
+  { id: "csharp", label: "C#", fence: "csharp" },
+  { id: "sql", label: "SQL", fence: "sql" }
+].map(Object.freeze));
+function parseCodeAnswer(answer) {
+  if (typeof answer !== "string") return null;
+  const match = /^代码作答（([^）]+)）\n\n(`{3,})([a-z]+)\n([\s\S]*?)\n\2(?:\n\n思路说明：\n([\s\S]*))?$/.exec(answer);
+  if (!match) return null;
+  const language = CODE_LANGUAGES.find((item) => item.fence === match[3] && item.label === match[1]);
+  return language ? { language: language.id, code: match[4], notes: match[5] || "" } : null;
+}
+
+// src/client/shared/code-editing.js
+function editCodeSelection(code, start, end, key, { shift = false, language = "python" } = {}) {
+  if (key === "Enter") {
+    const prefix = code.slice(code.lastIndexOf("\n", start - 1) + 1, start);
+    const indentation = prefix.match(/^[ \t]*/)?.[0] || "";
+    const extra = /[{[(]\s*$/.test(prefix) || language === "python" && /:\s*$/.test(prefix) ? "    " : "";
+    const insert = `
+${indentation}${extra}`;
+    return { code: code.slice(0, start) + insert + code.slice(end), start: start + insert.length, end: start + insert.length };
+  }
+  if (key !== "Tab") return null;
+  if (!shift && start === end) {
+    return { code: code.slice(0, start) + "    " + code.slice(end), start: start + 4, end: start + 4 };
+  }
+  const lineStart = code.lastIndexOf("\n", start - 1) + 1;
+  const lastSelected = end > start && code[end - 1] === "\n" ? end - 1 : end;
+  const nextBreak = code.indexOf("\n", lastSelected);
+  const lineEnd = nextBreak === -1 ? code.length : nextBreak;
+  const lines = code.slice(lineStart, lineEnd).split("\n");
+  const removed = lines.map((line) => shift ? /^\t/.test(line) ? 1 : line.match(/^ {0,4}/)[0].length : 0);
+  const changed = lines.map((line, index) => shift ? line.slice(removed[index]) : "    " + line).join("\n");
+  const delta = changed.length - (lineEnd - lineStart);
+  const firstDelta = shift ? -Math.min(removed[0], start - lineStart) : 4;
+  return {
+    code: code.slice(0, lineStart) + changed + code.slice(lineEnd),
+    start: start + firstDelta,
+    end: start === end ? start + firstDelta : end + delta
+  };
+}
+function codeDraftKey(sessionId, practiceId, questionId) {
+  return `dsh-interview:code-draft:v1:${JSON.stringify([sessionId, practiceId, questionId])}`;
+}
+function readCodeDraft(storage, key) {
+  try {
+    const value = JSON.parse(storage?.getItem(key) || "null");
+    return value && typeof value.code === "string" && typeof value.language === "string" ? { code: value.code, language: value.language, notes: typeof value.notes === "string" ? value.notes : "" } : null;
+  } catch {
+    return null;
+  }
+}
+function saveCodeDraft(storage, key, draft) {
+  try {
+    if (!storage) return false;
+    storage.setItem(key, JSON.stringify(draft));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// src/client/features/code-answer.js
+function draftStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+function CodeAnswerEditor({ sessionId, question, artifact, language = "", disabled = false }) {
+  const key = codeDraftKey(sessionId, artifact.practiceId, question.id);
+  const latest = parseCodeAnswer(question.attempts?.at(-1)?.answer);
+  const [draft, setDraft] = import_react7.default.useState(() => {
+    const saved2 = !disabled && readCodeDraft(draftStorage(), key);
+    return { code: "", notes: "", language: language || "python", ...latest || {}, ...saved2 || {}, ...language ? { language } : {} };
+  });
+  const draftRef = import_react7.default.useRef(draft);
+  const codeRef = import_react7.default.useRef(null);
+  const [saved, setSaved] = import_react7.default.useState(null);
+  const [submission, setSubmission] = import_react7.default.useState(null);
+  const command = useCommand(sessionId);
+  const locked = disabled || Boolean(submission) || Boolean(command.busy);
+  const update = (patch) => {
+    const next = { ...draftRef.current, ...patch };
+    draftRef.current = next;
+    setDraft(next);
+    setSaved(saveCodeDraft(draftStorage(), key, next));
+  };
+  const submit = async () => {
+    if (locked || !draftRef.current.code.trim()) return;
+    try {
+      const result = await command.run("question.code-review", { ...artifact, ...draftRef.current });
+      setSubmission({ attemptId: result.references.attemptId, queued: result.analysisQueued });
+    } catch {
+    }
+  };
+  const retry = async () => {
+    try {
+      const result = await command.run("question.code-review.retry", { ...artifact, attemptId: submission.attemptId });
+      setSubmission((current) => ({ ...current, queued: result.analysisQueued }));
+    } catch {
+    }
+  };
+  const keyDown = (event) => {
+    event.stopPropagation();
+    if (event.isComposing || event.nativeEvent?.isComposing || locked) return;
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      void submit();
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey || !["Tab", "Enter"].includes(event.key)) return;
+    const field = event.currentTarget;
+    const edit = editCodeSelection(field.value, field.selectionStart, field.selectionEnd, event.key, {
+      shift: event.shiftKey,
+      language: draft.language
+    });
+    if (!edit) return;
+    event.preventDefault();
+    update({ code: edit.code });
+    requestAnimationFrame(() => codeRef.current?.setSelectionRange(edit.start, edit.end));
+  };
+  return h(
+    "section",
+    { className: "di-code-answer", "aria-label": "\u4EE3\u7801\u4F5C\u7B54\u533A" },
+    h(
+      "header",
+      { className: "di-code-toolbar" },
+      h(
+        "div",
+        null,
+        h("div", { className: "di-code-title" }, h(Icon, { name: "code" }), "\u4EE3\u7801\u4F5C\u7B54"),
+        h("div", { className: "di-meta" }, "AI \u68C0\u67E5\u6B63\u786E\u6027\u3001\u8FB9\u754C\u6761\u4EF6\u548C\u590D\u6742\u5EA6\uFF0C\u4E0D\u6267\u884C\u4EE3\u7801")
+      ),
+      h(
+        "label",
+        { className: "di-code-language" },
+        "\u8BED\u8A00",
+        h(
+          "select",
+          { className: "di-input", value: draft.language, disabled: locked || Boolean(language), "aria-label": "\u4EE3\u7801\u8BED\u8A00", onChange: (event) => update({ language: event.target.value }) },
+          CODE_LANGUAGES.map((item) => h("option", { key: item.id, value: item.id }, item.label))
+        )
+      )
+    ),
+    h(
+      "div",
+      { className: "di-code-field" },
+      h(
+        "pre",
+        { className: "di-code-lines", "aria-hidden": "true", ref: (node) => {
+          if (node) node.scrollTop = codeRef.current?.scrollTop || 0;
+        } },
+        Array.from({ length: draft.code.split("\n").length }, (_, index) => index + 1).join("\n")
+      ),
+      h("textarea", {
+        ref: codeRef,
+        className: "di-code-input",
+        value: draft.code,
+        readOnly: locked,
+        "aria-label": "\u7F16\u5199\u4EE3\u7801",
+        placeholder: "\u5728\u8FD9\u91CC\u5199\u4E0B\u4F60\u7684\u89E3\u6CD5\u2026",
+        spellCheck: false,
+        autoCorrect: "off",
+        autoCapitalize: "off",
+        wrap: "off",
+        onChange: (event) => update({ code: event.target.value }),
+        onKeyDown: keyDown,
+        onScroll: (event) => {
+          const gutter = event.currentTarget.previousElementSibling;
+          if (gutter) gutter.scrollTop = event.currentTarget.scrollTop;
+        }
+      })
+    ),
+    h(
+      "label",
+      { className: "di-code-notes" },
+      "\u601D\u8DEF\u8BF4\u660E\uFF08\u53EF\u9009\uFF09",
+      h("textarea", { className: "di-input", value: draft.notes, readOnly: locked, rows: 2, "aria-label": "\u4EE3\u7801\u601D\u8DEF\u8BF4\u660E", placeholder: "\u63CF\u8FF0\u4F60\u7684\u601D\u8DEF\uFF0C\u6216\u544A\u8BC9 AI \u60F3\u91CD\u70B9\u68C0\u67E5\u54EA\u91CC", onChange: (event) => update({ notes: event.target.value }), onKeyDown: (event) => event.stopPropagation() })
+    ),
+    h(
+      "div",
+      { className: "di-code-footer" },
+      h("div", { className: "di-meta", role: "status" }, submission ? submission.queued ? "\u4EE3\u7801\u5DF2\u4FDD\u5B58\uFF0CAI \u5206\u6790\u4F1A\u663E\u793A\u5728\u5BF9\u8BDD\u4E2D\u3002" : "\u4EE3\u7801\u5DF2\u4FDD\u5B58\uFF0CAI \u5206\u6790\u6682\u672A\u542F\u52A8\uFF0C\u8BF7\u91CD\u8BD5\u3002" : saved === false ? "\u6D4F\u89C8\u5668\u65E0\u6CD5\u4FDD\u5B58\u8349\u7A3F\uFF0C\u8BF7\u4FDD\u6301\u9875\u9762\u6253\u5F00\u3002" : disabled ? "\u5DF2\u4FDD\u5B58\u7684\u4EE3\u7801\u4F5C\u7B54" : "\u8349\u7A3F\u4FDD\u5B58\u5728\u672C\u6D4F\u89C8\u5668 \xB7 Tab \u7F29\u8FDB \xB7 Ctrl/\u2318+Enter \u5206\u6790"),
+      submission && !submission.queued ? h(Button, { tone: "primary", busy: Boolean(command.busy), onClick: retry }, "\u91CD\u8BD5 AI \u5206\u6790") : h(
+        Button,
+        { tone: "primary", disabled: locked || !draft.code.trim(), busy: command.busy === "question.code-review", onClick: submit },
+        h(Icon, { name: "code" }),
+        submission ? "\u5DF2\u63D0\u4EA4\u5206\u6790" : "AI \u5206\u6790\u4EE3\u7801"
+      )
+    ),
+    h(ErrorNotice, null, command.error)
+  );
+}
+
+// src/client/features/question-learning.js
+var import_react8 = __toESM(require("react"), 1);
+function QuestionLearningPanel({ sessionId, practiceId, question }) {
+  const query = useInterviewQuery(`learning:${practiceId}:${question.id}`, () => interviewApi.questionLearning(practiceId, question.id), [practiceId, question.id], { cache: false });
+  const command = useCommand(sessionId);
+  const [bodyOpen, setBodyOpen] = import_react8.default.useState(true);
+  const [guideOpen, setGuideOpen] = import_react8.default.useState(true);
+  const context = query.data?.resource?.data;
+  const reveal = async () => {
+    try {
+      await command.run("question.learning-hint", { practiceId, questionId: question.id });
+      await query.reload();
+    } catch {
+    }
+  };
+  if (query.loading && !context) return h("section", { className: "di-learning-panel" }, h(Loading, { label: "\u6B63\u5728\u8F7D\u5165\u5B8C\u6574\u9898\u76EE\u2026" }));
+  if (!context) return h(ErrorNotice, null, query.error || "\u5B8C\u6574\u9898\u76EE\u6682\u672A\u8F7D\u5165\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+  const { problem, guidance } = context;
+  return h(
+    "section",
+    { className: "di-learning-panel", "aria-label": "\u9898\u76EE\u4E0E\u5F15\u5BFC" },
+    h(
+      "div",
+      { className: "di-learning-heading" },
+      h("h4", null, "\u5B8C\u6574\u9898\u76EE"),
+      h(Button, { "aria-expanded": bodyOpen, onClick: () => setBodyOpen((value) => !value) }, bodyOpen ? "\u6536\u8D77\u9898\u76EE" : "\u5C55\u5F00\u5B8C\u6574\u9898\u76EE")
+    ),
+    bodyOpen ? h(
+      "div",
+      { className: "di-problem-body" },
+      problem.statement ? h("section", { "aria-label": "\u9898\u610F" }, h(Markdown, null, problem.statement)) : h("div", { className: "di-notice" }, "\u672C\u9898\u5C1A\u672A\u4FDD\u5B58\u5B8C\u6574\u9898\u9762\uFF0C\u53EF\u5148\u67E5\u770B\u5B98\u65B9\u9898\u76EE\u3002"),
+      problem.examples.length ? h(
+        "section",
+        { "aria-label": "\u9898\u76EE\u793A\u4F8B" },
+        h("h5", null, "\u793A\u4F8B"),
+        problem.examples.map((example, index) => h(
+          "div",
+          { className: "di-lc-example", key: index },
+          h("div", { className: "di-learning-example-title" }, `\u793A\u4F8B ${index + 1}`),
+          h("div", null, h("span", null, "\u8F93\u5165"), h("code", null, example.input)),
+          h("div", null, h("span", null, "\u8F93\u51FA"), h("code", null, example.output)),
+          example.note ? h("div", null, h("span", null, "\u8BF4\u660E"), h("span", null, example.note)) : null
+        ))
+      ) : null,
+      problem.constraints.length ? h(
+        "section",
+        { "aria-label": "\u9898\u76EE\u7EA6\u675F" },
+        h("h5", null, "\u7EA6\u675F\u6761\u4EF6"),
+        h("ul", { className: "di-learning-constraints" }, problem.constraints.map((constraint, index) => h("li", { key: index }, h("code", null, constraint))))
+      ) : null,
+      problem.advanced ? h("section", null, h("h5", null, "\u8FDB\u9636"), h(Markdown, null, problem.advanced)) : null,
+      problem.source || problem.url ? h(
+        "div",
+        { className: "di-meta di-learning-source" },
+        problem.source,
+        problem.url ? h("a", { className: "di-link", href: problem.url, target: "_blank", rel: "noreferrer" }, "\u67E5\u770B\u5B98\u65B9\u9898\u76EE \u2197") : null
+      ) : null
+    ) : null,
+    guidance.enabled || guidance.hintTotal ? h(
+      "section",
+      { className: "di-guided-panel", "aria-label": guidance.enabled ? "\u5F15\u5BFC\u6A21\u5F0F" : "\u89E3\u9898\u63D0\u793A" },
+      h(
+        "div",
+        { className: "di-learning-heading" },
+        h("h4", null, guidance.enabled ? "\u5F15\u5BFC\u6A21\u5F0F\uFF1A\u4E00\u6B65\u4E00\u6B65\u6765" : "\u89E3\u9898\u63D0\u793A"),
+        h(Button, { "aria-expanded": guideOpen, onClick: () => setGuideOpen((value) => !value) }, guideOpen ? "\u6536\u8D77\u5F15\u5BFC" : "\u5C55\u5F00\u5F15\u5BFC")
+      ),
+      guideOpen ? h(
+        import_react8.default.Fragment,
+        null,
+        guidance.enabled ? h(
+          "div",
+          { className: "di-guided-intro" },
+          h("div", { className: "di-guided-stages" }, ["\u8BFB\u61C2\u9898\u610F", "\u624B\u63A8\u793A\u4F8B", "\u63A8\u5BFC\u601D\u8DEF", "\u81EA\u5DF1\u7F16\u7801"].map((label, index) => h("span", { key: label, className: index === Math.min(guidance.hintLevel, 3) ? "is-current" : "" }, `${index + 1}. ${label}`))),
+          h("p", null, guidance.introduction)
+        ) : null,
+        guidance.knowledge.length ? h(
+          "div",
+          { className: "di-guided-knowledge" },
+          h("h5", null, "\u5148\u8865\u524D\u7F6E\u77E5\u8BC6"),
+          guidance.knowledge.map((knowledge) => h("div", { key: knowledge.title }, h("div", { className: "di-lc-knowledge-title" }, knowledge.title), h(Markdown, null, knowledge.detail)))
+        ) : null,
+        guidance.revealedHints.map((hint, index) => h("div", { className: "di-guided-hint", key: index }, h("h5", null, `\u7B2C ${index + 1} \u7EA7\u5F15\u5BFC`), h(Markdown, null, hint))),
+        h(
+          "div",
+          { className: "di-guided-actions" },
+          h("span", { className: "di-meta", role: "status" }, `\u5DF2\u89E3\u9501 ${guidance.hintLevel}/${guidance.hintTotal}\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u5C55\u793A\u540E\u7EED\u63D0\u793A\u6216\u7B54\u6848`),
+          h(
+            Button,
+            { tone: "primary", disabled: !sessionId || !guidance.canReveal, busy: command.busy === "question.learning-hint", onClick: reveal },
+            guidance.hintLevel >= guidance.hintTotal ? "\u5F15\u5BFC\u5DF2\u5168\u90E8\u89E3\u9501" : guidance.enabled ? "\u89E3\u9501\u4E0B\u4E00\u6B65\u5F15\u5BFC" : "\u7ED9\u6211\u4E00\u4E2A\u63D0\u793A"
+          )
+        ),
+        h(ErrorNotice, null, command.error)
+      ) : null
+    ) : null,
+    h(ErrorNotice, null, query.error)
+  );
+}
+
+// src/client/features/question-solution.js
+var import_react10 = __toESM(require("react"), 1);
+
+// src/client/shared/solution-disclosure.js
+var import_react9 = __toESM(require("react"), 1);
+function SolutionDisclosure({ children, onToggle }) {
+  const [open, setOpen] = import_react9.default.useState(false);
+  return h(
+    "section",
+    { className: `di-solution-disclosure${open ? " is-open" : ""}`, "aria-label": "\u6B63\u786E\u7B54\u6848" },
+    h(
+      "div",
+      { className: "di-solution-toggle" },
+      h("span", { className: "di-meta" }, open ? "\u6B63\u786E\u7B54\u6848" : "\u6B63\u786E\u7B54\u6848\u5DF2\u906E\u853D\uFF0C\u5148\u72EC\u7ACB\u601D\u8003"),
+      h(
+        Button,
+        { onClick: () => {
+          const next = !open;
+          setOpen(next);
+          onToggle?.(next);
+        }, "aria-expanded": open },
+        h(Icon, { name: "eye" }),
+        open ? "\u6536\u8D77\u6B63\u786E\u7B54\u6848" : "\u5C55\u5F00\u6B63\u786E\u7B54\u6848"
+      )
+    ),
+    open ? h("div", { className: "di-solution-body" }, children) : null
+  );
+}
+
+// src/client/features/question-solution.js
+function QuestionSolutionPanel({ sessionId, practiceId, question, canGenerate = true }) {
+  const [opened, setOpened] = import_react10.default.useState(false);
+  const [pending, setPending] = import_react10.default.useState(false);
+  const [pollCount, setPollCount] = import_react10.default.useState(0);
+  const [notice, setNotice] = import_react10.default.useState("");
+  const command = useCommand(sessionId);
+  const query = useInterviewQuery(`solution:${practiceId}:${question.id}:${opened}`, () => opened ? interviewApi.questionSolution(practiceId, question.id) : Promise.resolve(null), [practiceId, question.id, opened], { cache: false });
+  const solution = query.data?.resource?.data || (question.explanation ? { available: true, allowed: true, source: "AI \u8BB2\u89E3", ...question.explanation } : null);
+  const reloadRef = import_react10.default.useRef(query.reload);
+  reloadRef.current = query.reload;
+  import_react10.default.useEffect(() => {
+    if (pending && solution?.available) {
+      setPending(false);
+      setNotice("");
+    }
+  }, [pending, solution?.available]);
+  import_react10.default.useEffect(() => {
+    if (!opened || !pending || pollCount >= 20) return void 0;
+    const timer = setTimeout(() => {
+      void reloadRef.current();
+      setPollCount((value) => value + 1);
+    }, 2e3);
+    return () => clearTimeout(timer);
+  }, [opened, pending, pollCount]);
+  const generate = async () => {
+    try {
+      const result = await command.run("question.solution-generate", { practiceId, questionId: question.id });
+      if (result.analysisQueued) {
+        setPending(true);
+        setPollCount(0);
+        setNotice("");
+      } else setNotice("\u7B54\u6848\u751F\u6210\u8BF7\u6C42\u6682\u672A\u542F\u52A8\uFF0C\u8BF7\u786E\u8BA4\u5F53\u524D\u5BF9\u8BDD\u53EF\u7528\u540E\u91CD\u8BD5\u3002");
+    } catch {
+    }
+  };
+  return h(
+    SolutionDisclosure,
+    { onToggle: setOpened },
+    !solution && query.loading ? h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u53C2\u8003\u7B54\u6848\u2026" }) : null,
+    solution?.available ? h(
+      import_react10.default.Fragment,
+      null,
+      h("div", { className: "di-meta di-solution-source" }, solution.source),
+      h(Markdown, null, solution.detail),
+      solution.memorizationPoints ? h("section", { className: "di-attempt" }, h("div", { className: "di-section-label" }, question.leetcode ? "\u89E3\u9898\u8981\u70B9" : "\u53C2\u8003\u8981\u70B9"), h(Markdown, null, solution.memorizationPoints)) : null
+    ) : solution ? h(
+      "div",
+      { className: "di-solution-missing" },
+      h("p", null, solution.reason || "\u8FD9\u9053\u9898\u8FD8\u6CA1\u6709\u4FDD\u5B58\u53C2\u8003\u7B54\u6848\u3002"),
+      pending ? h("p", { className: "di-meta", role: "status" }, pollCount >= 20 ? "\u7B54\u6848\u4ECD\u5728\u751F\u6210\uFF0C\u53EF\u7A0D\u540E\u91CD\u65B0\u5C55\u5F00\u67E5\u770B\u3002" : "AI \u6B63\u5728\u751F\u6210\u7B54\u6848\uFF0C\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002") : solution.allowed !== false ? h(Button, { tone: "primary", disabled: !sessionId || !canGenerate, busy: Boolean(command.busy), onClick: generate }, "\u751F\u6210\u53C2\u8003\u7B54\u6848") : null,
+      !canGenerate && solution.allowed !== false ? h("div", { className: "di-meta" }, "\u8BF7\u5148\u91CD\u65B0\u6253\u5F00\u7EC3\u4E60\uFF0C\u518D\u751F\u6210\u7B54\u6848\u3002") : null
+    ) : null,
+    h(ErrorNotice, null, notice || command.error || query.error)
+  );
+}
+
 // src/client/features/leetcode.js
-var DIFFICULTY = Object.freeze({
-  easy: { label: "\u7B80\u5355", tone: "easy" },
-  medium: { label: "\u4E2D\u7B49", tone: "medium" },
-  hard: { label: "\u56F0\u96BE", tone: "hard" }
-});
-var DIFFICULTY_OPTIONS2 = Object.freeze([
-  { value: "", label: "\u5168\u90E8\u96BE\u5EA6" },
-  { value: "easy", label: "\u7B80\u5355" },
-  { value: "medium", label: "\u4E2D\u7B49" },
-  { value: "hard", label: "\u56F0\u96BE" }
-]);
 function catalogProblems(catalog) {
   return catalog?.groups?.flatMap((group) => group.problems) || [];
 }
 function catalogProblem(catalog, slug) {
   return catalogProblems(catalog).find((problem) => problem.slug === slug) || null;
 }
-function matchesKeyword(problem, keyword) {
+function matchesKeyword2(problem, keyword) {
   if (!keyword) return true;
   const haystack = `${problem.id} ${problem.title} ${problem.slug} ${problem.category}`.toLowerCase();
   return keyword.toLowerCase().split(/\s+/).filter(Boolean).every((part) => haystack.includes(part));
 }
-function filterProblems(problems, { keyword, difficulty, category }) {
-  return problems.filter((problem) => !difficulty || problem.difficulty === difficulty).filter((problem) => !category || problem.category === category).filter((problem) => matchesKeyword(problem, keyword));
-}
-function DifficultyBadge({ difficulty, custom = false }) {
-  if (custom) return h("span", { className: "di-lc-difficulty is-custom" }, "\u81EA\u5B9A\u4E49");
-  const value = DIFFICULTY[difficulty] || { label: leetcodeDifficultyLabel(difficulty), tone: "unknown" };
-  if (!value.label) return null;
-  return h("span", { className: `di-lc-difficulty is-${value.tone}` }, value.label);
+function filterProblems(problems, { keyword, difficulties = [], category }) {
+  return problems.filter((problem) => !difficulties.length || difficulties.includes(problem.difficulty)).filter((problem) => !category || problem.category === category).filter((problem) => matchesKeyword2(problem, keyword));
 }
 function GuidanceBadge({ guidance }) {
   const definition = LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance);
@@ -981,9 +1671,9 @@ function LeetcodeStartButton({ problem, busy, disabled, onStart }) {
   }, busy ? "\u51C6\u5907\u4E2D\u2026" : "\u505A\u8FD9\u9898");
 }
 function CustomProblemForm({ disabled, busy, onStart }) {
-  const [number, setNumber] = import_react5.default.useState("");
-  const [title, setTitle] = import_react5.default.useState("");
-  const [slug, setSlug] = import_react5.default.useState("");
+  const [number, setNumber] = import_react11.default.useState("");
+  const [title, setTitle] = import_react11.default.useState("");
+  const [slug, setSlug] = import_react11.default.useState("");
   const valid = Boolean(title.trim() || slug.trim());
   const submit = () => {
     if (!valid || disabled) return;
@@ -1058,12 +1748,12 @@ function LeetcodeCatalog({ sessionId }) {
   const query = useInterviewQuery("leetcode-catalog", () => interviewApi.leetcodeCatalog(), [], { cache: false });
   const sessionQuery = useInterviewQuery(`lc-session:${sessionId}`, () => interviewApi.session(sessionId), [sessionId], { cache: false });
   const command = useCommand(sessionId);
-  const [pendingSlug, setPendingSlug] = import_react5.default.useState("");
-  const [pendingProblem, setPendingProblem] = import_react5.default.useState(null);
-  const [keyword, setKeyword] = import_react5.default.useState("");
-  const [difficulty, setDifficulty] = import_react5.default.useState("");
-  const [category, setCategory] = import_react5.default.useState("");
-  const [customOpen, setCustomOpen] = import_react5.default.useState(false);
+  const [pendingSlug, setPendingSlug] = import_react11.default.useState("");
+  const [pendingProblem, setPendingProblem] = import_react11.default.useState(null);
+  const [keyword, setKeyword] = import_react11.default.useState("");
+  const [difficulties, setDifficulties] = import_react11.default.useState([]);
+  const [category, setCategory] = import_react11.default.useState("");
+  const [customOpen, setCustomOpen] = import_react11.default.useState(false);
   if (query.loading && !query.data) return h("div", { className: "di-lc-catalog" }, h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u529B\u6263\u9898\u5E93\u2026" }));
   if (query.error) return h("div", { className: "di-lc-catalog" }, h(ErrorNotice, null, query.error));
   const catalog = query.data?.resource?.data;
@@ -1071,7 +1761,7 @@ function LeetcodeCatalog({ sessionId }) {
   const session = sessionQuery.data?.resource?.data;
   const activePractice = session?.selected && session.practice?.mode === "leetcode" ? session.practice : null;
   const activeLeetcode = Boolean(activePractice && activePractice.status === "active");
-  const hostOutdated = !Array.isArray(catalog.difficulties) || catalog.difficulties.length === 0;
+  const hostOutdated = !Array.isArray(catalog.difficulties) || catalog.difficulties.length === 0 || !catalog.difficultyTags;
   const needsConfig = !activeLeetcode || !activePractice.config?.guidance;
   const toggle = async (problem) => {
     setPendingSlug(problem.slug);
@@ -1083,15 +1773,22 @@ function LeetcodeCatalog({ sessionId }) {
       setPendingSlug("");
     }
   };
-  const start = async (problem) => {
+  const start = async (problem, selectionMode = "random") => {
+    const prepared = { ...problem, category, difficulties, selectionMode };
     if (needsConfig) {
-      setPendingProblem(problem);
+      setPendingProblem(prepared);
       return;
     }
-    setPendingSlug(problem.slug || problem.title);
+    setPendingSlug(problem.slug || problem.title || "training-pool");
     try {
-      await command.run("leetcode.select", { problem });
+      const payload = {
+        problem: prepared,
+        selectionMode,
+        config: { ...activePractice.config, category, difficulties }
+      };
+      const result = await (problem.trainingPool ? command.run("leetcode.train", payload) : command.run("leetcode.select", payload));
       await Promise.all([query.reload(), sessionQuery.reload()]);
+      interviewApi.navigateWorkspace("active", { practiceId: result.resource.data.practice.id });
     } catch {
     } finally {
       setPendingSlug("");
@@ -1100,9 +1797,12 @@ function LeetcodeCatalog({ sessionId }) {
   const startWithConfig = async (payload) => {
     if (!pendingProblem) return;
     try {
-      await command.run("leetcode.select", { problem: pendingProblem, config: payload.config });
+      const problem = { ...pendingProblem, category: payload.config.category || "", difficulties: payload.config.difficulties || [] };
+      const request = { problem, config: payload.config, selectionMode: pendingProblem.selectionMode };
+      const result = await (pendingProblem.trainingPool ? command.run("leetcode.train", request) : command.run("leetcode.select", request));
       setPendingProblem(null);
       await Promise.all([query.reload(), sessionQuery.reload()]);
+      interviewApi.navigateWorkspace("active", { practiceId: result.resource.data.practice.id });
     } catch {
     }
   };
@@ -1116,8 +1816,8 @@ function LeetcodeCatalog({ sessionId }) {
         h(
           "div",
           { className: "di-lc-heading" },
-          h("h2", { className: "di-lc-title" }, "\u5F00\u59CB\u8FD9\u9053\u9898"),
-          h("span", { className: "di-lc-source" }, `${pendingProblem.id ? `${pendingProblem.id}. ` : ""}${pendingProblem.title}`)
+          h("h2", { className: "di-lc-title" }, pendingProblem.trainingPool ? "\u5F00\u59CB\u4E13\u9898\u8BAD\u7EC3" : "\u5F00\u59CB\u8FD9\u9053\u9898"),
+          h("span", { className: "di-lc-source" }, pendingProblem.trainingPool ? `${pendingProblem.category || "\u5168\u90E8\u4E13\u9898"} \xB7 ${leetcodeDifficultyTagsLabel(pendingProblem.difficulties)}` : `${pendingProblem.id ? `${pendingProblem.id}. ` : ""}${pendingProblem.title}`)
         )
       ),
       h(
@@ -1125,8 +1825,8 @@ function LeetcodeCatalog({ sessionId }) {
         { className: "di-lc-catalog-config" },
         activeLeetcode ? h("div", { className: "di-meta di-lc-config-note" }, "\u8FD9\u6761\u529B\u6263\u7EC3\u4E60\u662F\u5347\u7EA7\u524D\u521B\u5EFA\u7684\uFF0C\u53EA\u8BB0\u5F55\u4E86\u7F16\u7A0B\u8BED\u8A00\uFF1B\u8865\u9009\u5F15\u5BFC\u5F3A\u5EA6\u540E\u4F1A\u5F52\u6863\u65E7\u7EC3\u4E60\u5E76\u5F00\u59CB\u8FD9\u9053\u9898\u3002") : null,
         h(PracticeConfigForm, {
-          initial: { mode: "leetcode", config: activePractice ? activePractice.config : {} },
-          busy: command.busy === "leetcode.select",
+          initial: { mode: "leetcode", config: { ...activePractice ? activePractice.config : {}, category: pendingProblem.category, difficulties: pendingProblem.difficulties } },
+          busy: command.busy === "leetcode.select" || command.busy === "leetcode.train",
           onSubmit: startWithConfig,
           onCancel: () => setPendingProblem(null),
           submitLabel: "\u5F00\u59CB\u7EC3\u4E60"
@@ -1136,10 +1836,12 @@ function LeetcodeCatalog({ sessionId }) {
     );
   }
   const problems = catalogProblems(catalog);
-  const filtered = filterProblems(problems, { keyword, difficulty, category });
+  const eligible = filterProblems(problems, { keyword: "", difficulties, category });
+  const counts = Object.fromEntries(["easy", "medium", "hard"].map((id) => [id, problems.filter((problem) => (!category || problem.category === category) && problem.difficulty === id).length]));
+  const filtered = filterProblems(problems, { keyword, difficulties, category });
   const visibleGroups = catalog.groups.map((group) => ({ ...group, problems: group.problems.filter((problem) => filtered.includes(problem)) })).filter((group) => group.problems.length > 0);
   const progress = catalog.total ? Math.round(catalog.completedCount / catalog.total * 100) : 0;
-  const filtering = Boolean(keyword.trim() || difficulty || category);
+  const filtering = Boolean(keyword.trim() || difficulties.length || category);
   return h(
     "section",
     { className: "di-lc-catalog", "aria-label": "\u529B\u6263\u9898\u5E93" },
@@ -1181,15 +1883,8 @@ function LeetcodeCatalog({ sessionId }) {
       }),
       h(Select, {
         className: "di-lc-filter-select",
-        value: difficulty,
-        options: DIFFICULTY_OPTIONS2,
-        onChange: setDifficulty,
-        "aria-label": "\u6309\u96BE\u5EA6\u7B5B\u9009"
-      }),
-      h(Select, {
-        className: "di-lc-filter-select",
         value: category,
-        options: [{ value: "", label: "\u5168\u90E8\u9898\u578B" }, ...(catalog.categories || []).map((item) => ({ value: item, label: item }))],
+        options: [{ value: "", label: "\u5168\u90E8\u4E13\u9898" }, ...(catalog.categories || []).map((item) => ({ value: item, label: item }))],
         onChange: setCategory,
         "aria-label": "\u6309\u9898\u578B\u7B5B\u9009"
       }),
@@ -1197,6 +1892,14 @@ function LeetcodeCatalog({ sessionId }) {
     ),
     hostOutdated ? h("div", { className: "di-notice" }, "\u68C0\u6D4B\u5230\u63D2\u4EF6\u540E\u7AEF\u4ECD\u662F\u65E7\u7248\u672C\uFF1A\u641C\u7D22\u9009\u9898\u3001\u63D0\u793A\u9636\u68AF\u548C\u6750\u6599\u5361\u9700\u8981\u91CD\u542F dsh web \u540E\u751F\u6548\u3002") : null,
     customOpen ? h(CustomProblemForm, { disabled: command.busy === "leetcode.select", busy: false, onStart: start }) : null,
+    h(DifficultyTags, { value: difficulties, onChange: setDifficulties, counts, label: "\u6309\u96BE\u5EA6\u7B5B\u9009", disabled: hostOutdated || Boolean(command.busy) }),
+    h(
+      "div",
+      { className: "di-training-catalog-actions" },
+      h("span", { className: "di-meta", role: "status" }, `${category || "\u5168\u90E8\u4E13\u9898"} \xB7 ${leetcodeDifficultyTagsLabel(difficulties)} \xB7 ${eligible.length} \u9053\u9898`),
+      h(Button, { tone: "primary", disabled: hostOutdated || !sessionId || !eligible.length || Boolean(command.busy), onClick: () => start({ trainingPool: true }, "ordered") }, "\u6309\u4E13\u9898\u987A\u5E8F\u8BAD\u7EC3"),
+      h(Button, { disabled: hostOutdated || !sessionId || !eligible.length || Boolean(command.busy), onClick: () => start({ trainingPool: true }, "random") }, "\u968F\u673A\u8BAD\u7EC3")
+    ),
     h(
       "div",
       { className: "di-lc-toolbar-note" },
@@ -1283,10 +1986,12 @@ function MaterialsBlock({ question }) {
     materialsSourceLine(materials.source) ? h("div", { className: "di-lc-material-source" }, materialsSourceLine(materials.source)) : null
   );
 }
-function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
-  const [keyword, setKeyword] = import_react5.default.useState("");
-  const [difficulty, setDifficulty] = import_react5.default.useState("");
-  const problems = filterProblems(catalogProblems(catalog), { keyword, difficulty, category: "" });
+function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose, initialCategory = "", initialDifficulties = [] }) {
+  const [keyword, setKeyword] = import_react11.default.useState("");
+  const [category, setCategory] = import_react11.default.useState(initialCategory);
+  const [difficulties, setDifficulties] = import_react11.default.useState(initialDifficulties);
+  const problems = filterProblems(catalogProblems(catalog), { keyword, difficulties, category });
+  const eligible = filterProblems(catalogProblems(catalog), { keyword: "", difficulties, category });
   const visible = problems.slice(0, 8);
   return h(
     "section",
@@ -1301,9 +2006,10 @@ function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
         "aria-label": "\u641C\u7D22\u8981\u505A\u7684\u9898\u76EE",
         onChange: (event) => setKeyword(event.target.value)
       }),
-      h(Select, { className: "di-lc-filter-select", value: difficulty, options: DIFFICULTY_OPTIONS2, onChange: setDifficulty, "aria-label": "\u6309\u96BE\u5EA6\u7B5B\u9009" }),
+      h(Select, { className: "di-lc-filter-select", value: category, options: [{ value: "", label: "\u5168\u90E8\u4E13\u9898" }, ...(catalog?.categories || []).map((name2) => ({ value: name2, label: name2 }))], onChange: setCategory, disabled: busy, "aria-label": "\u9009\u62E9\u4E0B\u4E00\u9898\u4E13\u9898" }),
       h(Button, { disabled: busy, onClick: onClose }, "\u6536\u8D77")
     ),
+    h(DifficultyTags, { value: difficulties, onChange: setDifficulties, disabled: busy, label: "\u9009\u62E9\u4E0B\u4E00\u9898\u96BE\u5EA6\u6807\u7B7E" }),
     visible.length ? h("div", { className: "di-lc-picker-list" }, visible.map((problem) => h(
       "button",
       {
@@ -1311,7 +2017,7 @@ function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
         className: "di-lc-picker-row",
         key: problem.slug,
         disabled: busy,
-        onClick: () => onPick({ slug: problem.slug })
+        onClick: () => onPick({ slug: problem.slug, category, difficulties })
       },
       h("span", { className: "di-lc-problem-id" }, problem.id),
       h("span", { className: "di-lc-picker-title" }, problem.title),
@@ -1321,19 +2027,21 @@ function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
       "div",
       { className: "di-lc-picker-foot" },
       h(Button, {
-        disabled: busy,
-        onClick: () => onPick(difficulty ? { difficulty } : {})
-      }, consumedBy === "question.next" ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : difficulty ? `\u968F\u673A\u4E00\u9053${leetcodeDifficultyLabel(difficulty)}\u9898` : "\u968F\u673A\u62BD\u4E00\u9053"),
+        disabled: busy || !eligible.length,
+        onClick: () => onPick({ category, difficulties, selectionMode: "ordered" })
+      }, consumedBy === "question.next" ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u6309\u4E13\u9898\u987A\u5E8F\u4E0B\u4E00\u9053"),
+      h(Button, { disabled: busy || !eligible.length, onClick: () => onPick({ category, difficulties, selectionMode: "random" }) }, "\u968F\u673A\u4E0B\u4E00\u9053"),
       problems.length > visible.length ? h("span", { className: "di-meta" }, `\u8FD8\u6709 ${problems.length - visible.length} \u9053\u9898\uFF0C\u7EE7\u7EED\u8F93\u5165\u7F29\u5C0F\u8303\u56F4`) : null
     )
   );
 }
 function LeetcodeQuestionCard({
+  sessionId,
+  artifact,
   question,
   catalog,
   language,
   active,
-  expanded,
   command,
   transition,
   onRun,
@@ -1341,7 +2049,8 @@ function LeetcodeQuestionCard({
   onExplain,
   onHint,
   onGenerateMaterials,
-  pendingMaterials
+  pendingMaterials,
+  trainingConfig
 }) {
   const problem = question.leetcode;
   const materials = question.materials;
@@ -1349,8 +2058,8 @@ function LeetcodeQuestionCard({
   const completed = saved?.completed === true;
   const hintTotal = question.hintTotal || 0;
   const hintLevel = question.hintLevel || 0;
-  const [showMaterials, setShowMaterials] = import_react5.default.useState(false);
-  const [pickerOpen, setPickerOpen] = import_react5.default.useState(false);
+  const [showMaterials, setShowMaterials] = import_react11.default.useState(false);
+  const [pickerOpen, setPickerOpen] = import_react11.default.useState(false);
   return h(
     "article",
     { className: `di-card di-lc-problem-card${active ? " is-active" : " is-history"}`, "aria-label": active ? "\u5F53\u524D\u529B\u6263\u9898\u76EE" : "\u5386\u53F2\u529B\u6263\u9898\u76EE" },
@@ -1373,7 +2082,7 @@ function LeetcodeQuestionCard({
       { className: "di-lc-problem-actions" },
       h("a", { className: "di-button is-primary", href: problem.url, target: "_blank", rel: "noreferrer" }, "\u6253\u5F00\u9898\u76EE \u2197"),
       active ? h(
-        import_react5.default.Fragment,
+        import_react11.default.Fragment,
         null,
         materials && hintTotal ? h(Button, {
           disabled: transition.locked || pendingMaterials || hintLevel >= hintTotal,
@@ -1384,11 +2093,11 @@ function LeetcodeQuestionCard({
           busy: command.busy === "question.materials" || pendingMaterials,
           onClick: () => onGenerateMaterials()
         }, pendingMaterials ? "\u6B63\u5728\u751F\u6210\u6750\u6599\u2026" : "\u751F\u6210\u9898\u76EE\u6750\u6599"),
-        h(Button, {
+        !question.explanation ? h(Button, {
           disabled: transition.locked,
           busy: command.busy === "question.reveal",
           onClick: () => onExplain(question)
-        }, question.explanation ? expanded ? "\u6536\u8D77\u8BB2\u89E3" : "\u5C55\u5F00\u8BB2\u89E3" : "\u770B\u7B54\u6848"),
+        }, "\u770B\u7B54\u6848") : null,
         h(Button, { disabled: transition.locked, onClick: () => setPickerOpen((value) => !value) }, pickerOpen ? "\u6536\u8D77\u9009\u9898" : "\u6362\u4E00\u9898"),
         problem.slug ? h(Button, {
           disabled: transition.locked,
@@ -1408,23 +2117,23 @@ function LeetcodeQuestionCard({
       busy: transition.locked || command.busy === "question.next",
       consumedBy: transition.consumedBy,
       onPick: (selection) => onNext(selection),
-      onClose: () => setPickerOpen(false)
+      onClose: () => setPickerOpen(false),
+      initialCategory: trainingConfig?.category || "",
+      initialDifficulties: trainingConfig?.difficulties || []
     }) : null,
     active && pendingMaterials ? h("div", { className: "di-notice" }, "\u6B63\u5728\u751F\u6210\u9898\u76EE\u6750\u6599\u4E0E\u63D0\u793A\u9636\u68AF\uFF0C\u5B8C\u6210\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\u5728\u8FD9\u91CC\u3002") : null,
     active ? h(ErrorNotice, null, command.error) : null,
-    showMaterials && materials ? h("section", { className: "di-section di-lc-material-section", "aria-label": "\u9898\u76EE\u6750\u6599" }, h(MaterialsBlock, { question })) : null,
-    expanded && question.explanation ? h(
-      "section",
-      { className: "di-section", "aria-label": "\u9898\u76EE\u8BB2\u89E3" },
-      h("div", { className: "di-section-label" }, "\u8BB2\u89E3"),
-      h(Markdown, null, question.explanation.detail),
-      question.explanation.memorizationPoints ? h(
-        "div",
-        { className: "di-attempt" },
-        h("div", { className: "di-section-label" }, "\u89E3\u9898\u8981\u70B9"),
-        h(Markdown, null, question.explanation.memorizationPoints)
-      ) : null
-    ) : null
+    h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: artifact.practiceId, question }),
+    h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: artifact.practiceId, question, canGenerate: active }),
+    active || question.attempts?.length ? h(CodeAnswerEditor, {
+      key: question.id,
+      sessionId,
+      question,
+      artifact,
+      language,
+      disabled: transition.locked
+    }) : null,
+    showMaterials && materials ? h("section", { className: "di-section di-lc-material-section", "aria-label": "\u9898\u76EE\u6750\u6599" }, h(MaterialsBlock, { question })) : null
   );
 }
 function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, language = "", resourceRevision = 0, onRefresh = null }) {
@@ -1433,25 +2142,23 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, lang
   const command = useCommand(sessionId);
   const session = sessionQuery.data?.resource?.data;
   const current = initialQuestion;
-  const [showExplanation, setShowExplanation] = import_react5.default.useState(false);
-  const [pendingMaterials, setPendingMaterials] = import_react5.default.useState(false);
-  const [pollTick, setPollTick] = import_react5.default.useState(0);
-  const refreshRef = import_react5.default.useRef(null);
+  const [pendingMaterials, setPendingMaterials] = import_react11.default.useState(false);
+  const [pollTick, setPollTick] = import_react11.default.useState(0);
+  const refreshRef = import_react11.default.useRef(null);
   const artifactActive = isCardActive(session, artifact);
   const transition = useCardTransition(command.run, artifact, !artifactActive);
   refreshRef.current = () => {
     onRefresh?.();
     sessionQuery.reload();
   };
-  import_react5.default.useEffect(() => {
-    setShowExplanation(false);
+  import_react11.default.useEffect(() => {
     setPendingMaterials(false);
     setPollTick(0);
   }, [current?.id]);
-  import_react5.default.useEffect(() => {
+  import_react11.default.useEffect(() => {
     if (pendingMaterials && current?.materials) setPendingMaterials(false);
   }, [pendingMaterials, current?.materials]);
-  import_react5.default.useEffect(() => {
+  import_react11.default.useEffect(() => {
     if (!pendingMaterials || current?.materials || pollTick >= 8) return void 0;
     const timer = setTimeout(() => {
       refreshRef.current?.();
@@ -1471,10 +2178,7 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, lang
     }
   };
   const explain = async () => {
-    if (current.explanation) {
-      setShowExplanation((value) => !value);
-      return;
-    }
+    if (current.explanation) return;
     await transition.run("question.reveal");
   };
   const next = (selection = null) => transition.run("question.next", selection || {});
@@ -1495,11 +2199,12 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, lang
   const catalog = catalogQuery.data?.resource?.data;
   const active = artifactActive;
   return h(LeetcodeQuestionCard, {
+    sessionId,
+    artifact,
     question: { ...current, guidance: session?.practice?.config?.guidance || null },
     catalog,
     language: language || session?.practice?.config?.language,
     active,
-    expanded: showExplanation,
     command,
     transition,
     onRun: run,
@@ -1507,7 +2212,8 @@ function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, lang
     onExplain: explain,
     onHint: hint,
     onGenerateMaterials: generateMaterials,
-    pendingMaterials
+    pendingMaterials,
+    trainingConfig: session?.practice?.config
   });
 }
 
@@ -1529,6 +2235,7 @@ function QuestionResultCard({ sessionId, question, artifact, answerDisabled = fa
   const command = useCommand(sessionId);
   const transition = useCardTransition(command.run, artifact, answerDisabled);
   const allowReveal = question.capabilities?.allowReveal !== false;
+  const [codeOpen, setCodeOpen] = import_react12.default.useState(Boolean(question.hot100));
   return h(
     "article",
     { className: "di-card di-question-card", "aria-label": "\u9762\u8BD5\u9898" },
@@ -1537,18 +2244,26 @@ function QuestionResultCard({ sessionId, question, artifact, answerDisabled = fa
       { className: "di-question-main" },
       h("div", { className: "di-question-text" }, h(Markdown, null, question.prompt))
     ),
-    allowReveal ? h(Button, {
-      className: "di-answer-button",
-      disabled: transition.locked,
-      busy: command.busy === "question.reveal",
-      onClick: () => transition.run("question.reveal"),
-      "aria-label": "\u67E5\u770B\u672C\u9898\u7B54\u6848"
-    }, h(Icon, { name: "eye" }), "\u770B\u7B54\u6848") : h(Button, {
-      className: "di-answer-button",
-      disabled: transition.locked,
-      busy: command.busy === "session.finish",
-      onClick: () => transition.run("session.finish")
-    }, "\u7ED3\u675F\u9762\u8BD5"),
+    h(
+      "div",
+      { className: "di-question-actions" },
+      h(Button, { onClick: () => setCodeOpen((value) => !value) }, h(Icon, { name: "code" }), codeOpen ? "\u6536\u8D77\u4EE3\u7801" : "\u5199\u4EE3\u7801"),
+      allowReveal ? h(Button, {
+        className: "di-answer-button",
+        disabled: transition.locked,
+        busy: command.busy === "question.reveal",
+        onClick: () => transition.run("question.reveal"),
+        "aria-label": "\u67E5\u770B\u672C\u9898\u7B54\u6848"
+      }, h(Icon, { name: "eye" }), "\u770B\u7B54\u6848") : h(Button, {
+        className: "di-answer-button",
+        disabled: transition.locked,
+        busy: command.busy === "session.finish",
+        onClick: () => transition.run("session.finish")
+      }, "\u7ED3\u675F\u9762\u8BD5")
+    ),
+    question.hot100 ? h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: artifact.practiceId, question }) : null,
+    allowReveal ? h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: artifact.practiceId, question, canGenerate: !answerDisabled }) : null,
+    codeOpen ? h(CodeAnswerEditor, { key: question.id, sessionId, question, artifact, disabled: transition.locked }) : null,
     h(ErrorNotice, null, command.error)
   );
 }
@@ -1590,19 +2305,23 @@ function ReviewResultCard({ sessionId, question, attempt, artifact, actionsDisab
         Object.keys(evaluation.dimensions || {}).length ? h("div", { className: "di-dimensions" }, Object.entries(evaluation.dimensions).map(([name2, score]) => h("span", { key: name2 }, name2, h("span", { className: "di-dimension-score" }, `${score}/10`)))) : null
       ) : null,
       h(
-        "section",
-        { className: "di-review-section" },
-        h("h3", null, "\u8BB2\u89E3"),
-        h("div", { className: "di-explanation-copy" }, h(Markdown, null, explanation.detail))
-      ),
-      h(
-        "section",
-        { className: "di-memorize-box" },
+        SolutionDisclosure,
+        { key: `${question.id}:${explanation.createdAt}` },
         h(
-          "div",
-          { className: "di-memorize-copy" },
-          h("div", { className: "di-memorize-label" }, isLeetcode ? "\u89E3\u9898\u8981\u70B9" : "\u76F4\u63A5\u80CC"),
-          h(Markdown, null, explanation.memorizationPoints)
+          "section",
+          { className: "di-review-section" },
+          h("h3", null, "\u8BB2\u89E3"),
+          h("div", { className: "di-explanation-copy" }, h(Markdown, null, explanation.detail))
+        ),
+        h(
+          "section",
+          { className: "di-memorize-box" },
+          h(
+            "div",
+            { className: "di-memorize-copy" },
+            h("div", { className: "di-memorize-label" }, isLeetcode ? "\u89E3\u9898\u8981\u70B9" : "\u76F4\u63A5\u80CC"),
+            h(Markdown, null, explanation.memorizationPoints)
+          )
         )
       ),
       h(ErrorNotice, null, command.error),
@@ -1611,6 +2330,7 @@ function ReviewResultCard({ sessionId, question, attempt, artifact, actionsDisab
         { className: "di-review-actions" },
         isLeetcode ? h(Button, { tone: "primary", disabled: transition.locked, onClick: () => transition.run("question.next") }, transition.consumedBy === "question.next" ? "\u5DF2\u51FA\u4E0B\u4E00\u9898" : "\u968F\u673A\u4E0B\u4E00\u9898") : h(Button, { tone: "primary", disabled: transition.locked, busy: command.busy === "question.next", onClick: () => transition.run("question.next") }, "\u4E0B\u4E00\u9898"),
         !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === "question.retry", onClick: () => transition.run("question.retry") }, h(Icon, { name: "swap" }), "\u91CD\u65B0\u4F5C\u7B54") : null,
+        isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === "question.retry", onClick: () => transition.run("question.retry") }, h(Icon, { name: "code" }), "\u4FEE\u6539\u4EE3\u7801") : null,
         !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === "session.finish", onClick: () => transition.run("session.finish") }, "\u7ED3\u675F\u7EC3\u4E60") : null
       )
     )
@@ -1690,7 +2410,7 @@ function PracticeSummaryCard({ artifact, revision }) {
       "div",
       { className: "di-card-body" },
       leetcode ? h(
-        import_react6.default.Fragment,
+        import_react12.default.Fragment,
         null,
         h("div", { className: "di-meta" }, `\u672C\u6B21\u5171\u8BB0\u5F55 ${summary.questionCount} \u9053\u9898`),
         h("ol", null, summary.problems.map((problem) => h(
@@ -1700,7 +2420,7 @@ function PracticeSummaryCard({ artifact, revision }) {
           ` \xB7 ${problem.category} \xB7 ${leetcodeDifficultyLabel(problem.difficulty)}`
         )))
       ) : h(
-        import_react6.default.Fragment,
+        import_react12.default.Fragment,
         null,
         h(Markdown, null, summary.overall),
         h(
@@ -1722,15 +2442,60 @@ function PracticeSummaryCard({ artifact, revision }) {
 }
 
 // src/client/features/practice-library.js
-var import_react7 = __toESM(require("react"), 1);
-function PracticeDetail({ practice, sessionId, onDeleted }) {
+var import_react14 = __toESM(require("react"), 1);
+
+// src/client/features/leetcode-training.js
+var import_react13 = __toESM(require("react"), 1);
+function LeetcodeTrainingControls({ practice, sessionId, busy, onNext }) {
+  const [category, setCategory] = import_react13.default.useState(practice.config.category || "");
+  const [difficulties, setDifficulties] = import_react13.default.useState(practice.config.difficulties || []);
+  const query = useInterviewQuery("leetcode-training-catalog", () => interviewApi.leetcodeCatalog(), [], { cache: false });
+  const catalog = query.data?.resource?.data;
+  const eligible = (catalog?.groups || []).flatMap((group) => group.problems).filter((problem) => !category || problem.category === category);
+  const count = eligible.filter((problem) => !difficulties.length || difficulties.includes(problem.difficulty)).length;
+  const counts = Object.fromEntries(["easy", "medium", "hard"].map((id) => [id, eligible.filter((problem) => problem.difficulty === id).length]));
+  const disabled = Boolean(busy) || !sessionId || !catalog?.difficultyTags || count === 0;
+  return h(
+    "section",
+    { className: "di-training-controls", "aria-label": "\u4E13\u9898\u4E0E\u96BE\u5EA6\u8BAD\u7EC3" },
+    h(
+      "div",
+      { className: "di-training-heading" },
+      h("span", null, "\u9009\u62E9\u4E0B\u4E00\u9053\u7684\u8BAD\u7EC3\u8303\u56F4"),
+      h(Select, { value: category, options: [{ value: "", label: "\u5168\u90E8\u4E13\u9898" }, ...(catalog?.categories || []).map((name2) => ({ value: name2, label: name2 }))], disabled: Boolean(busy), onChange: setCategory, "aria-label": "\u8BAD\u7EC3\u4E13\u9898" })
+    ),
+    h(DifficultyTags, { value: difficulties, onChange: setDifficulties, counts, disabled: Boolean(busy) }),
+    h("div", { className: "di-meta", role: "status" }, `${category || "\u5168\u90E8\u4E13\u9898"} \xB7 ${leetcodeDifficultyTagsLabel(difficulties)} \xB7 ${count} \u9053\u9898`),
+    catalog && !count ? h("div", { className: "di-notice" }, "\u6240\u9009\u4E13\u9898\u548C\u96BE\u5EA6\u6CA1\u6709\u9898\u76EE\uFF0C\u8BF7\u8C03\u6574\u8BAD\u7EC3\u8303\u56F4\u3002") : null,
+    h(
+      "div",
+      { className: "di-training-actions" },
+      h(Button, { tone: "primary", disabled, busy: busy === "ordered", onClick: () => onNext({ category, difficulties, selectionMode: "ordered" }) }, "\u6309\u4E13\u9898\u987A\u5E8F\u4E0B\u4E00\u9053"),
+      h(Button, { disabled, busy: busy === "random", onClick: () => onNext({ category, difficulties, selectionMode: "random" }) }, "\u968F\u673A\u4E0B\u4E00\u9053")
+    ),
+    h("div", { className: "di-meta" }, "\u987A\u5E8F\u51FA\u9898\u6309\u4E13\u9898\u4E2D\u7684\u9898\u5E93\u987A\u5E8F\uFF0C\u5230\u672B\u5C3E\u540E\u4ECE\u7B2C\u4E00\u9053\u7EE7\u7EED\u3002"),
+    h(ErrorNotice, null, query.error)
+  );
+}
+
+// src/client/features/practice-library.js
+function PracticeDetail({ practice, sessionId, onDeleted, onAdvanced, initialCodeContext = null }) {
   const command = useCommand(sessionId);
-  const [confirming, setConfirming] = import_react7.default.useState(false);
-  const [editing, setEditing] = import_react7.default.useState(false);
-  const [editingQuestionId, setEditingQuestionId] = import_react7.default.useState(null);
-  const [questionDraft, setQuestionDraft] = import_react7.default.useState("");
-  const [deletingQuestionId, setDeletingQuestionId] = import_react7.default.useState(null);
-  const [downloads, setDownloads] = import_react7.default.useState([]);
+  const [confirming, setConfirming] = import_react14.default.useState(false);
+  const [editing, setEditing] = import_react14.default.useState(false);
+  const [editingQuestionId, setEditingQuestionId] = import_react14.default.useState(null);
+  const [questionDraft, setQuestionDraft] = import_react14.default.useState("");
+  const [deletingQuestionId, setDeletingQuestionId] = import_react14.default.useState(null);
+  const [downloads, setDownloads] = import_react14.default.useState([]);
+  const [codeContext, setCodeContext] = import_react14.default.useState(initialCodeContext);
+  const [advancingMode, setAdvancingMode] = import_react14.default.useState("");
+  const detailRef = import_react14.default.useRef(null);
+  import_react14.default.useEffect(() => {
+    if (initialCodeContext?.practiceId === practice?.id) {
+      setCodeContext(initialCodeContext);
+      detailRef.current?.scrollIntoView({ block: "start" });
+    }
+  }, [initialCodeContext, practice?.id]);
   if (!practice) return h(Empty, { title: "\u9009\u62E9\u4E00\u6761\u7EC3\u4E60", detail: "\u53F3\u4FA7\u4F1A\u5C55\u793A\u9898\u76EE\u3001\u5386\u6B21\u4F5C\u7B54\u548C\u8BB2\u89E3\u3002" });
   const run = (name2, payload) => command.run(name2, payload).catch(() => null);
   const activate = async () => {
@@ -1764,9 +2529,31 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
     if (practice.status !== "active") return;
     await run("question.focus", { practiceId: practice.id, questionId });
   };
+  const openCode = async (questionId) => {
+    const result = await run("question.code-open", { practiceId: practice.id, questionId });
+    const session = result?.resource?.data;
+    if (!session) return;
+    setCodeContext({
+      practiceId: practice.id,
+      questionId,
+      presentationId: `workspace-code:${session.revision}:${Date.now()}`,
+      sessionRevision: session.revision
+    });
+  };
+  const nextLeetcode = async (options) => {
+    setAdvancingMode(options.selectionMode);
+    try {
+      const result = await run("leetcode.practice-next", { practiceId: practice.id, ...options });
+      const next = result?.resource?.data;
+      if (!next?.practice || !next.currentQuestionId) return;
+      onAdvanced(next);
+    } finally {
+      setAdvancingMode("");
+    }
+  };
   return h(
     "section",
-    { className: "di-detail" },
+    { className: "di-detail", ref: detailRef },
     h(
       "div",
       { className: "di-detail-heading" },
@@ -1802,8 +2589,16 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
         )
       )
     ) : null,
-    editing ? h(PracticeConfigForm, { initial: practice, busy: command.busy === "practice.update", onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
+    editing ? h(PracticeConfigForm, { key: practice.id, initial: practice, busy: command.busy === "practice.update", onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
+    !editing ? h(PracticeDocumentSources, { config: practice.config }) : null,
     h(ErrorNotice, null, command.error),
+    practice.mode === "leetcode" && practice.status === "active" ? h(LeetcodeTrainingControls, {
+      key: `${practice.id}:${practice.config.category || ""}:${(practice.config.difficulties || []).join(",")}`,
+      practice,
+      sessionId,
+      busy: advancingMode,
+      onNext: nextLeetcode
+    }) : null,
     practice.summary?.kind === "leetcode" ? h(
       "section",
       { className: "di-section" },
@@ -1834,8 +2629,9 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
           { className: "di-detail-question-head" },
           h("span", { className: "di-sequence" }, `Q${String(question.sequence).padStart(2, "0")}`),
           h("div", { className: "di-detail-question-text" }, editingQuestionId === question.id ? h("input", { className: "di-input", value: questionDraft, onChange: (event) => setQuestionDraft(event.target.value) }) : h(Markdown, null, question.prompt)),
-          fixedProblem ? h("a", { className: "di-link", href: fixedProblem.url, target: "_blank", rel: "noreferrer" }, `${fixedProblem.category} \xB7 ${leetcodeDifficultyLabel(fixedProblem.difficulty)}`) : h(ScoreRail, { score: question.latestScore, compact: true })
+          fixedProblem ? h("a", { className: "di-link di-problem-tags", href: fixedProblem.url, target: "_blank", rel: "noreferrer" }, fixedProblem.category, h(DifficultyBadge, { difficulty: fixedProblem.difficulty, custom: fixedProblem.custom })) : h(ScoreRail, { score: question.latestScore, compact: true })
         ),
+        fixedProblem ? h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: practice.id, question }) : null,
         question.attempts.map((attempt) => h(
           "div",
           { className: "di-attempt", key: attempt.id },
@@ -1843,23 +2639,31 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
           h(Markdown, null, attempt.answer),
           attempt.evaluation ? h("div", { className: "di-section" }, h(Markdown, null, attempt.evaluation.feedback)) : null
         )),
-        question.explanation ? h(
-          "div",
-          { className: "di-section" },
-          h("div", { className: "di-section-label" }, question.leetcode ? "\u7B97\u6CD5\u8BB2\u89E3" : "\u53C2\u8003\u8BB2\u89E3"),
-          h(Markdown, null, question.explanation.detail),
-          question.explanation.memorizationPoints ? h(
-            "div",
-            { className: "di-attempt" },
-            h("div", { className: "di-section-label" }, question.leetcode ? "\u89E3\u9898\u8981\u70B9" : "\u76F4\u63A5\u80CC"),
-            h(Markdown, null, question.explanation.memorizationPoints)
-          ) : null
-        ) : null,
+        question.capabilities?.allowReveal !== false ? h(QuestionSolutionPanel, {
+          key: `solution:${question.id}`,
+          sessionId,
+          practiceId: practice.id,
+          question,
+          canGenerate: practice.status === "active"
+        }) : null,
+        codeContext?.practiceId === practice.id && codeContext.questionId === question.id ? h(CodeAnswerEditor, {
+          key: codeContext.presentationId,
+          sessionId,
+          question,
+          artifact: codeContext,
+          language: practice.mode === "leetcode" ? practice.config.language : ""
+        }) : null,
         h(
           "div",
           { className: "di-detail-actions" },
+          practice.status === "active" ? h(
+            Button,
+            { disabled: !sessionId, title: sessionId ? void 0 : "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u4F1A\u8BDD", busy: command.busy === "question.code-open", onClick: () => openCode(question.id) },
+            h(Icon, { name: "code" }),
+            codeContext?.questionId === question.id ? "\u7EE7\u7EED\u5199\u4EE3\u7801" : "\u5199\u4EE3\u7801"
+          ) : null,
           !fixedProblem && editingQuestionId === question.id ? h(
-            import_react7.default.Fragment,
+            import_react14.default.Fragment,
             null,
             h(Button, { tone: "primary", disabled: !questionDraft.trim(), busy: command.busy === "question.update", onClick: () => updateQuestion(question.id) }, "\u4FDD\u5B58\u9898\u76EE"),
             h(Button, { onClick: () => {
@@ -1895,12 +2699,13 @@ function PracticeLibrary({
   title = "\u7EC3\u4E60\u6863\u6848",
   allowCreate = false
 }) {
-  const [queryText, setQueryText] = import_react7.default.useState("");
-  const [mode, setMode] = import_react7.default.useState("");
-  const [selectedId, setSelectedId] = import_react7.default.useState(initialPracticeId);
-  const [confirmingId, setConfirmingId] = import_react7.default.useState(null);
-  const [downloads, setDownloads] = import_react7.default.useState([]);
-  const [creating, setCreating] = import_react7.default.useState(false);
+  const [queryText, setQueryText] = import_react14.default.useState("");
+  const [mode, setMode] = import_react14.default.useState("");
+  const [selectedId, setSelectedId] = import_react14.default.useState(initialPracticeId);
+  const [confirmingId, setConfirmingId] = import_react14.default.useState(null);
+  const [downloads, setDownloads] = import_react14.default.useState([]);
+  const [creating, setCreating] = import_react14.default.useState(false);
+  const [advancedSession, setAdvancedSession] = import_react14.default.useState(null);
   const command = useCommand(sessionId);
   const effectiveStatus = statusScope === "active" ? "active" : "completed";
   const normalizedQuery = queryText.trim();
@@ -1913,14 +2718,21 @@ function PracticeLibrary({
     { cache: false }
   );
   const practices = list.data?.resource?.data || [];
-  const visibleSelectedId = practices.some((practice) => practice.id === selectedId) ? selectedId : null;
+  const advancedPractice = advancedSession?.session?.practice;
+  const advancePending = advancedPractice?.id === selectedId && advancedPractice.status === effectiveStatus && (!modeFilter || advancedPractice.mode === modeFilter);
+  const visibleSelectedId = practices.some((practice) => practice.id === selectedId) || advancePending ? selectedId : null;
   const detail = useInterviewQuery(
     `practice:${visibleSelectedId || "none"}`,
     () => visibleSelectedId ? interviewApi.practice(visibleSelectedId) : Promise.resolve(null),
     [visibleSelectedId],
     { cache: false }
   );
-  const selected = detail.data?.resource?.data || null;
+  const savedDetail = detail.data?.resource?.data;
+  const selected = savedDetail?.id === visibleSelectedId ? savedDetail : advancePending ? advancedPractice : null;
+  const advanced = (session) => {
+    setAdvancedSession({ session, codeContext: { practiceId: session.practice.id, questionId: session.currentQuestionId, sessionRevision: session.revision, presentationId: `workspace-code:${session.revision}:${Date.now()}` } });
+    setSelectedId(session.practice.id);
+  };
   const run = (name2, payload) => command.run(name2, payload).catch(() => null);
   const createPractice = async (payload) => {
     const result = await run("session.start", payload);
@@ -2048,10 +2860,17 @@ function PracticeLibrary({
     visibleSelectedId ? h(
       "div",
       { className: "di-history-detail" },
-      detail.loading ? h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u7EC3\u4E60\u8BE6\u60C5\u2026" }) : h(PracticeDetail, { practice: selected, sessionId, onDeleted: () => {
-        setSelectedId(null);
-        interviewApi.invalidate();
-      } })
+      !selected ? h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u7EC3\u4E60\u8BE6\u60C5\u2026" }) : h(PracticeDetail, {
+        key: selected.id,
+        practice: selected,
+        sessionId,
+        onAdvanced: advanced,
+        initialCodeContext: advancedSession?.codeContext?.practiceId === selected.id ? advancedSession.codeContext : null,
+        onDeleted: () => {
+          setSelectedId(null);
+          interviewApi.invalidate();
+        }
+      })
     ) : null
   );
 }
@@ -2079,7 +2898,7 @@ function InsightsCard() {
 }
 
 // src/client/features/timeline.js
-var import_react8 = __toESM(require("react"), 1);
+var import_react15 = __toESM(require("react"), 1);
 var TIMELINE_VIEWS = [
   { id: "question", label: "\u9898\u76EE" },
   { id: "attempts", label: "\u4F5C\u7B54\u8BB0\u5F55" },
@@ -2088,12 +2907,13 @@ var TIMELINE_VIEWS = [
 function EmptyTimelineContent({ children }) {
   return h("div", { className: "di-time-empty" }, children);
 }
-function TimelineContent({ question, view }) {
+function TimelineContent({ question, view, sessionId, practice }) {
   if (view === "question") return question.leetcode || question.hot100 ? h(
     "div",
     { className: "di-time-lc-question" },
     h("a", { className: "di-link", href: (question.leetcode || question.hot100).url, target: "_blank", rel: "noreferrer" }, question.prompt, " \u2197"),
-    h("div", { className: "di-meta" }, `${(question.leetcode || question.hot100).category} \xB7 ${leetcodeDifficultyLabel((question.leetcode || question.hot100).difficulty)}`)
+    h("div", { className: "di-meta di-problem-tags" }, (question.leetcode || question.hot100).category, h(DifficultyBadge, { difficulty: (question.leetcode || question.hot100).difficulty })),
+    h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: practice.id, question })
   ) : h(Markdown, null, question.prompt);
   if (view === "attempts") {
     if (!question.attempts.length) return h(EmptyTimelineContent, null, "\u5C1A\u672A\u4F5C\u7B54");
@@ -2120,21 +2940,10 @@ function TimelineContent({ question, view }) {
       ) : null
     )));
   }
-  if (!question.explanation) return h(EmptyTimelineContent, null, "\u6682\u65E0\u7B54\u6848");
-  return h(
-    "div",
-    { className: "di-time-answer" },
-    h(Markdown, null, question.explanation.detail),
-    question.explanation.memorizationPoints ? h(
-      "section",
-      { className: "di-time-memorize" },
-      h("div", { className: "di-time-record-label" }, question.leetcode ? "\u89E3\u9898\u8981\u70B9" : "\u76F4\u63A5\u80CC"),
-      h(Markdown, null, question.explanation.memorizationPoints)
-    ) : null
-  );
+  return h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: practice.id, question, canGenerate: practice.status === "active" });
 }
 function TimelinePanel({ sessionId, revisionSignal }) {
-  const [selection, setSelection] = import_react8.default.useState(null);
+  const [selection, setSelection] = import_react15.default.useState(null);
   const sessionQuery = useInterviewQuery(`timeline-session:${sessionId}:${revisionSignal}`, () => interviewApi.session(sessionId), [sessionId, revisionSignal], { cache: false });
   const session = sessionQuery.data?.resource?.data;
   const practiceId = session?.practice?.id || null;
@@ -2142,7 +2951,7 @@ function TimelinePanel({ sessionId, revisionSignal }) {
   const practice = detailQuery.data?.resource?.data;
   if (!session?.selected || !practice?.questions?.length) return null;
   const selectedQuestion = practice.questions.find((question) => question.id === selection?.questionId);
-  const selectedViews = selectedQuestion?.leetcode ? TIMELINE_VIEWS.slice(0, 1) : selectedQuestion?.capabilities?.allowReveal === false ? TIMELINE_VIEWS.slice(0, 2) : TIMELINE_VIEWS;
+  const selectedViews = selectedQuestion?.capabilities?.allowReveal === false ? TIMELINE_VIEWS.slice(0, 2) : TIMELINE_VIEWS;
   const selectedView = selectedViews.some((item) => item.id === selection?.view) ? selection.view : null;
   const selectedLabel = selectedViews.find((item) => item.id === selectedView)?.label;
   return h(
@@ -2191,21 +3000,31 @@ function TimelinePanel({ sessionId, revisionSignal }) {
         ),
         h("button", { type: "button", onClick: () => setSelection(null), "aria-label": "\u5173\u95ED" }, "\xD7")
       ),
-      h("div", { className: "di-time-flyout-body", role: "tabpanel" }, h(TimelineContent, { question: selectedQuestion, view: selectedView }))
+      h("div", { className: "di-time-flyout-body", role: "tabpanel" }, h(TimelineContent, { question: selectedQuestion, view: selectedView, sessionId, practice }))
     ) : null
   );
 }
 
 // src/client/features/workspace-dock.js
-var import_react9 = __toESM(require("react"), 1);
+var import_react16 = __toESM(require("react"), 1);
+
+// src/client/shared/current-session.js
+function currentInterviewSession(state) {
+  if (typeof state?.current === "string" && state.current) return state.current;
+  const selected = Object.values(state?.byId || {}).filter((session) => session?.retainedBy?.mainView > 0);
+  return selected.length === 1 ? selected[0].id : void 0;
+}
+
+// src/client/features/workspace-dock.js
 var WORKSPACE_TABS = Object.freeze([
   { id: "active", label: "\u8FDB\u884C\u4E2D", icon: "clock" },
   { id: "library", label: "\u7EC3\u4E60\u6863\u6848", icon: "archive" },
   { id: "leetcode", label: "\u9898\u5E93", icon: "flame" }
 ]);
-function WorkspaceContent({ tab, sessionId }) {
+function WorkspaceContent({ tab, sessionId, practiceId }) {
   if (tab === "active") return h(PracticeLibrary, {
     sessionId,
+    initialPracticeId: practiceId,
     statusScope: "active",
     title: "\u8FDB\u884C\u4E2D",
     allowCreate: true
@@ -2220,14 +3039,15 @@ function WorkspaceContent({ tab, sessionId }) {
   return null;
 }
 function WorkspaceSidebarEntry({ wide = true, useSessions }) {
-  const sessionId = useSessions((state) => state.current);
+  const sessionId = useSessions(currentInterviewSession);
   return h(WorkspaceDock, { sessionId, wide });
 }
 function WorkspaceDock({ sessionId, wide = true }) {
-  const [open, setOpen] = import_react9.default.useState(false);
-  const [tab, setTab] = import_react9.default.useState("active");
-  const [notice, setNotice] = import_react9.default.useState("");
-  const closeButtonRef = import_react9.default.useRef(null);
+  const [open, setOpen] = import_react16.default.useState(false);
+  const [tab, setTab] = import_react16.default.useState("active");
+  const [notice, setNotice] = import_react16.default.useState("");
+  const [practiceId, setPracticeId] = import_react16.default.useState(null);
+  const closeButtonRef = import_react16.default.useRef(null);
   const activeQuery = useInterviewQuery(
     `workspace-active-count:${open}`,
     () => interviewApi.practices({ status: "active" }),
@@ -2235,7 +3055,7 @@ function WorkspaceDock({ sessionId, wide = true }) {
     { cache: false }
   );
   const activeCount = activeQuery.data?.resource?.data?.length || 0;
-  import_react9.default.useEffect(() => {
+  import_react16.default.useEffect(() => {
     let timer = null;
     const unsubscribe = interviewApi.subscribeNotifications((message) => {
       if (timer) clearTimeout(timer);
@@ -2247,11 +3067,12 @@ function WorkspaceDock({ sessionId, wide = true }) {
       unsubscribe();
     };
   }, []);
-  import_react9.default.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab) => {
+  import_react16.default.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab, context) => {
     if (WORKSPACE_TABS.some((item) => item.id === nextTab)) setTab(nextTab);
+    setPracticeId(context?.practiceId || null);
     setOpen(true);
   }), []);
-  import_react9.default.useEffect(() => {
+  import_react16.default.useEffect(() => {
     if (!open) return void 0;
     closeButtonRef.current?.focus();
     const closeOnEscape = (event) => {
@@ -2261,7 +3082,7 @@ function WorkspaceDock({ sessionId, wide = true }) {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [open]);
   return h(
-    import_react9.default.Fragment,
+    import_react16.default.Fragment,
     null,
     h(
       "button",
@@ -2323,7 +3144,7 @@ function WorkspaceDock({ sessionId, wide = true }) {
             h("span", null, item.label),
             item.id === "active" && activeCount > 0 ? h("span", { className: "di-workspace-count" }, activeCount) : null
           ))),
-          h("main", { className: `di-workspace-content is-${tab}` }, h(WorkspaceContent, { tab, sessionId }))
+          h("main", { className: `di-workspace-content is-${tab}` }, h(WorkspaceContent, { tab, sessionId, practiceId }))
         )
       )
     ) : null,
@@ -2394,6 +3215,29 @@ body[data-ds-dark-theme]{--di-ink:var(--dsw-alias-label-primary,#f2f3f5);--di-in
 .di-lc-material-actions{display:flex;align-items:center;gap:10px;padding-top:14px}.di-lc-material-section{border-top:1px solid var(--di-line);margin-top:14px}.di-lc-materials{display:grid;gap:16px;margin-top:12px}.di-lc-material-block{display:grid;gap:6px}.di-lc-material-label{color:var(--di-faint);font-size:11px;font-weight:var(--di-weight-text)}.di-lc-materials .di-markdown{font-size:13px;line-height:1.75}.di-lc-examples{display:grid;gap:8px}.di-lc-example{display:grid;gap:4px;padding:9px 11px;border:1px solid var(--di-line);border-radius:10px;background:var(--di-veil);font-size:12px;line-height:1.6}.di-lc-example>div{display:flex;gap:8px;align-items:baseline}.di-lc-example>div>span:first-child{flex:0 0 32px;color:var(--di-faint)}.di-lc-example code{word-break:break-all}.di-lc-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}.di-lc-chips li code{padding:2px 7px;border-radius:6px;background:var(--di-sunken);color:var(--di-ink-2);font-size:11px}.di-lc-knowledge+.di-lc-knowledge{margin-top:8px}.di-lc-knowledge{font-size:12px;line-height:1.7}.di-lc-knowledge strong{display:block;color:var(--di-ink)}.di-lc-hints{display:grid;gap:6px;margin:0;padding-left:18px;font-size:12px;line-height:1.7}.di-lc-hints li.is-locked{color:var(--di-faint)}.di-lc-hints li.is-revealed{color:var(--di-ink-2)}.di-lc-related{display:grid;gap:4px;margin:0;padding-left:18px;font-size:12px}
 .di-lc-material-source{padding-top:8px;border-top:1px solid var(--di-line);color:var(--di-muted);font-size:11px;line-height:1.6}.di-lc-picker{margin-top:14px;padding:14px 16px;border:1px solid var(--di-line-3);border-radius:12px;background:var(--di-surface);box-shadow:var(--di-shadow)}.di-lc-picker-list{display:grid;gap:2px;max-height:264px;overflow:auto}.di-lc-picker-row{appearance:none;display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:var(--di-ink-2);font:var(--di-weight-text) 12px/1.4 Inter,"Segoe UI","Microsoft YaHei",sans-serif;text-align:left;cursor:pointer}.di-lc-picker-row:hover:not(:disabled){background:var(--di-surface-3);color:var(--di-ink)}.di-lc-picker-row:disabled{opacity:.55;cursor:wait}.di-lc-picker-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.di-lc-picker-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px}
 @media(max-width:760px){.di-lc-row.is-selectable{grid-template-columns:22px minmax(0,1fr) 44px;row-gap:6px}.di-lc-row.is-selectable .di-lc-start{grid-column:2/-1;justify-self:start}.di-lc-custom-fields{grid-template-columns:1fr}.di-lc-filter-select{width:100%;flex:1 1 100%}.di-lc-material-actions{flex-wrap:wrap}}
+/* \u4EE3\u7801\u4F5C\u7B54\u4E0E\u6B63\u786E\u7B54\u6848\u906E\u853D */
+.di-question-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.di-question-card>.di-code-answer{grid-column:1/-1}
+.di-code-answer{margin-top:18px;border:1px solid var(--di-line-3);border-radius:12px;overflow:hidden;background:var(--di-surface)}
+.di-code-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;background:var(--di-surface-2);border-bottom:1px solid var(--di-line-2)}
+.di-code-title{display:flex;align-items:center;gap:7px;margin-bottom:5px;font-size:14px;font-weight:var(--di-weight-title)}.di-code-language{display:flex;align-items:center;gap:8px;color:var(--di-muted);font-size:12px;flex-shrink:0}.di-code-language select{width:125px;padding:7px 9px;min-height:32px}
+.di-code-field{position:relative;background:var(--di-field)}.di-code-lines,.di-code-input{font:14px/24px Consolas,"Cascadia Code","SFMono-Regular",monospace;tab-size:4}
+.di-code-lines{position:absolute;top:0;bottom:0;left:0;z-index:1;width:55px;overflow:hidden;margin:0;padding:14px 10px;background:var(--di-surface-3);color:var(--di-faint);border-right:1px solid var(--di-line-2);text-align:right;pointer-events:none;user-select:none}
+.di-code-input{display:block;width:100%;min-height:288px;max-height:70vh;resize:vertical;border:0;outline:0;border-radius:0;margin:0;padding:14px 16px 14px 70px;background:transparent;color:var(--di-ink);white-space:pre;overflow:auto}.di-code-input:focus{box-shadow:inset 0 0 0 2px var(--di-focus)}.di-code-input::placeholder{color:var(--di-faint)}
+.di-code-notes{display:grid;gap:7px;padding:13px 16px;color:var(--di-muted);font-size:12px;border-top:1px solid var(--di-line-2)}.di-code-notes textarea{resize:vertical;line-height:1.6;min-height:60px}
+.di-code-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-top:1px solid var(--di-line-2);background:var(--di-surface-2)}.di-code-answer>.di-error{margin:12px 16px}.di-code-footer .di-button{flex-shrink:0;min-height:36px}
+.di-solution-disclosure{margin-top:16px;border:1px dashed var(--di-line-4);border-radius:10px;overflow:hidden;background:var(--di-surface-2)}.di-solution-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px}.di-solution-toggle .di-button{flex-shrink:0}.di-solution-body{padding:16px;background:var(--di-surface);border-top:1px solid var(--di-line-2)}.di-solution-body>.di-section:first-child,.di-solution-body>.di-review-section:first-child{margin-top:0}
+@media(max-width:760px){.di-question-actions{justify-content:flex-start}.di-code-toolbar{align-items:flex-start;flex-wrap:wrap}.di-code-language{width:100%;justify-content:space-between}.di-code-language select{width:150px}.di-code-input{font-size:13px;min-height:240px;padding-left:60px}.di-code-lines{width:45px;font-size:13px}.di-code-footer{align-items:stretch;flex-direction:column;gap:10px}.di-code-footer .di-button{width:100%}.di-solution-toggle{align-items:flex-start;flex-wrap:wrap}}
+/* \u5B8C\u6574\u9898\u9762\u3001\u5206\u7EA7\u5F15\u5BFC\u4E0E\u53C2\u8003\u7B54\u6848 */
+.di-learning-panel{display:grid;gap:16px;margin-top:16px;padding:16px;border:1px solid var(--di-line-2);border-radius:12px;background:var(--di-surface)}.di-question-card>.di-learning-panel,.di-question-card>.di-solution-disclosure{grid-column:1/-1}
+.di-learning-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.di-learning-heading h4{margin:0;color:var(--di-ink);font-size:14px;font-weight:var(--di-weight-title)}.di-learning-heading .di-button{flex-shrink:0}.di-problem-body{display:grid;gap:16px;font-size:13px;line-height:1.75}.di-problem-body h5,.di-guided-panel h5{margin:0 0 8px;color:var(--di-muted);font-size:12px;font-weight:var(--di-weight-text)}.di-problem-body .di-markdown{font-size:13px}.di-problem-body .di-lc-example+.di-lc-example{margin-top:8px}.di-learning-example-title{color:var(--di-muted)}.di-learning-constraints{display:grid;gap:4px;margin:0;padding-left:20px;color:var(--di-ink-2)}.di-learning-constraints code{white-space:pre-wrap;overflow-wrap:anywhere}.di-learning-source{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--di-line)}
+.di-guided-panel{display:grid;gap:14px;padding:16px;border:1px solid var(--di-line-2);border-radius:10px;background:var(--di-accent-tint)}.di-guided-stages{display:flex;gap:7px;flex-wrap:wrap}.di-guided-stages span{padding:4px 8px;border-radius:6px;background:var(--di-surface);color:var(--di-faint);font-size:11px}.di-guided-stages .is-current{color:var(--di-accent-ink);background:var(--di-accent-soft)}.di-guided-intro p{margin:10px 0 0;color:var(--di-muted);font-size:12px;line-height:1.7}.di-guided-knowledge{display:grid;gap:8px}.di-lc-knowledge-title{color:var(--di-ink-2);font-size:12px}.di-guided-panel .di-markdown{font-size:12px;line-height:1.75}.di-guided-hint{padding:12px;border:1px solid var(--di-line-2);border-radius:8px;background:var(--di-surface)}.di-guided-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.di-guided-actions .di-button{flex-shrink:0}.di-solution-source{margin-bottom:12px}.di-solution-missing p{font-size:13px;line-height:1.7}
+@media(max-width:760px){.di-learning-panel,.di-guided-panel{padding:12px}.di-learning-heading{flex-wrap:wrap}.di-guided-actions{align-items:stretch;flex-direction:column}.di-problem-body .di-lc-example>div{flex-wrap:wrap}.di-problem-body .di-lc-example code{overflow-wrap:anywhere}}
+/* \u7B80\u5386\u4E0E\u53C2\u8003\u8D44\u6599\u5BFC\u5165 */
+.di-document-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.di-document-head .di-button{flex-shrink:0}.di-resume-document .di-textarea{min-height:160px}.di-document-file{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--di-ink-2);font-size:12px;line-height:1.6}.di-document-file>span{min-width:0;overflow-wrap:anywhere}.di-reference-documents{display:grid;gap:9px;padding:16px;border:1px dashed var(--di-line-3);border-radius:10px;background:var(--di-surface-2)}.di-reference-file{padding:10px 12px;border:1px solid var(--di-line-2);border-radius:8px;background:var(--di-surface)}.di-reference-file summary{padding:7px 0;color:var(--di-muted);font-size:12px;line-height:1.6;cursor:pointer;overflow-wrap:anywhere}.di-reference-file .di-textarea{width:100%;margin-top:7px;min-height:140px;max-height:360px;resize:vertical}.di-reference-documents>.di-error{white-space:pre-wrap}.di-practice-sources{display:grid;gap:9px;margin:14px 0}.di-document-text{margin:8px 0 0;color:var(--di-ink-2);font:12px/1.7 "Segoe UI","Microsoft YaHei",sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}
+@media(max-width:760px){.di-document-head,.di-document-file{flex-wrap:wrap}.di-reference-documents{padding:12px}}
+/* \u4E13\u9898\u8BAD\u7EC3\u548C\u53EF\u591A\u9009\u7684\u96BE\u5EA6\u6807\u7B7E */
+.di-difficulty-tags{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.di-difficulty-tag{--di-difficulty-color:var(--di-muted);appearance:none;display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:6px 12px;border:1px solid var(--di-line-3);border-radius:8px;background:var(--di-surface);color:var(--di-difficulty-color);font:var(--di-weight-text) 12px/1.4 "Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer}.di-difficulty-tag.is-easy{--di-difficulty-color:var(--di-success-ink)}.di-difficulty-tag.is-medium{--di-difficulty-color:var(--di-warn-ink)}.di-difficulty-tag.is-hard{--di-difficulty-color:var(--di-danger-ink)}.di-difficulty-tag.is-selected{border-color:var(--di-difficulty-color);background:var(--di-accent-tint);box-shadow:inset 0 0 0 1px var(--di-difficulty-color)}.di-difficulty-tag:disabled{opacity:.5;cursor:not-allowed}.di-difficulty-tag:focus-visible{outline:3px solid var(--di-focus);outline-offset:2px}.di-difficulty-count{font-size:10px;opacity:.8}.di-training-controls{display:grid;gap:12px;margin:18px 0;padding:16px;border:1px solid var(--di-line-3);border-radius:10px;background:var(--di-surface-2)}.di-training-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--di-ink-2);font-size:13px}.di-training-heading .di-select{min-width:180px}.di-training-actions,.di-training-catalog-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.di-training-catalog-actions{padding:14px 0}.di-training-catalog-actions>.di-meta{flex:1 1 180px}.di-problem-tags{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap}.di-lc-picker>.di-difficulty-tags{margin-bottom:12px}
+@media(max-width:760px){.di-training-heading{align-items:stretch;flex-direction:column}.di-training-actions .di-button{flex:1 1 160px}.di-training-controls{padding:12px}}
 `;
 function installStyles() {
   if (document.getElementById("dsh-interview-styles")) return;

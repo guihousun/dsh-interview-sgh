@@ -2,26 +2,17 @@ import React from 'react'
 import { interviewApi } from '../shared/api.js'
 import { useCommand, useInterviewQuery } from '../shared/hooks.js'
 import { Button, Empty, ErrorNotice, h, Loading, Markdown, Select } from '../shared/ui.js'
-import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
 import { LEETCODE_GUIDANCE_LEVELS } from '../../domain/leetcode-guidance.js'
 import { isCardActive } from '../shared/card-activity.js'
 import { useCardTransition } from '../shared/card-transition.js'
 import { PracticeConfigForm } from './practice-config.js'
 import { materialsSourceLine } from '../../application/leetcode-materials-fence.js'
-
-const DIFFICULTY = Object.freeze({
-  easy: { label: '简单', tone: 'easy' },
-  medium: { label: '中等', tone: 'medium' },
-  hard: { label: '困难', tone: 'hard' },
-})
-
-const DIFFICULTY_OPTIONS = Object.freeze([
-  { value: '', label: '全部难度' },
-  { value: 'easy', label: '简单' },
-  { value: 'medium', label: '中等' },
-  { value: 'hard', label: '困难' },
-])
+import { CodeAnswerEditor } from './code-answer.js'
+import { QuestionLearningPanel } from './question-learning.js'
+import { QuestionSolutionPanel } from './question-solution.js'
+import { DifficultyBadge, DifficultyTags } from '../shared/difficulty-tags.js'
+import { leetcodeDifficultyTagsLabel } from '../../domain/leetcode-problems.js'
 
 function catalogProblems(catalog) {
   return catalog?.groups?.flatMap((group) => group.problems) || []
@@ -37,18 +28,11 @@ function matchesKeyword(problem, keyword) {
   return keyword.toLowerCase().split(/\s+/).filter(Boolean).every((part) => haystack.includes(part))
 }
 
-function filterProblems(problems, { keyword, difficulty, category }) {
+function filterProblems(problems, { keyword, difficulties = [], category }) {
   return problems
-    .filter((problem) => !difficulty || problem.difficulty === difficulty)
+    .filter((problem) => !difficulties.length || difficulties.includes(problem.difficulty))
     .filter((problem) => !category || problem.category === category)
     .filter((problem) => matchesKeyword(problem, keyword))
-}
-
-function DifficultyBadge({ difficulty, custom = false }) {
-  if (custom) return h('span', { className: 'di-lc-difficulty is-custom' }, '自定义')
-  const value = DIFFICULTY[difficulty] || { label: leetcodeDifficultyLabel(difficulty), tone: 'unknown' }
-  if (!value.label) return null
-  return h('span', { className: `di-lc-difficulty is-${value.tone}` }, value.label)
 }
 
 function GuidanceBadge({ guidance }) {
@@ -139,7 +123,7 @@ export function LeetcodeCatalog({ sessionId }) {
   const [pendingSlug, setPendingSlug] = React.useState('')
   const [pendingProblem, setPendingProblem] = React.useState(null)
   const [keyword, setKeyword] = React.useState('')
-  const [difficulty, setDifficulty] = React.useState('')
+  const [difficulties, setDifficulties] = React.useState([])
   const [category, setCategory] = React.useState('')
   const [customOpen, setCustomOpen] = React.useState(false)
 
@@ -151,7 +135,7 @@ export function LeetcodeCatalog({ sessionId }) {
   const activePractice = session?.selected && session.practice?.mode === 'leetcode' ? session.practice : null
   const activeLeetcode = Boolean(activePractice && activePractice.status === 'active')
   // difficulties/categories 是 0.6.0 后端才有的字段：缺失说明 dsh web 仍是旧进程，新命令会被拒绝。
-  const hostOutdated = !Array.isArray(catalog.difficulties) || catalog.difficulties.length === 0
+  const hostOutdated = !Array.isArray(catalog.difficulties) || catalog.difficulties.length === 0 || !catalog.difficultyTags
   // 0.6.0 之前建的练习只存了 language：换题会用旧配置创建新练习，必须先让用户补选引导强度。
   const needsConfig = !activeLeetcode || !activePractice.config?.guidance
 
@@ -166,15 +150,20 @@ export function LeetcodeCatalog({ sessionId }) {
       setPendingSlug('')
     }
   }
-  const start = async (problem) => {
+  const start = async (problem, selectionMode = 'random') => {
+    const prepared = { ...problem, category, difficulties, selectionMode }
     if (needsConfig) {
-      setPendingProblem(problem)
+      setPendingProblem(prepared)
       return
     }
-    setPendingSlug(problem.slug || problem.title)
+    setPendingSlug(problem.slug || problem.title || 'training-pool')
     try {
-      await command.run('leetcode.select', { problem })
+      const payload = {
+        problem: prepared, selectionMode, config: { ...activePractice.config, category, difficulties },
+      }
+      const result = await (problem.trainingPool ? command.run('leetcode.train', payload) : command.run('leetcode.select', payload))
       await Promise.all([query.reload(), sessionQuery.reload()])
+      interviewApi.navigateWorkspace('active', { practiceId: result.resource.data.practice.id })
     } catch {
       // useCommand 已保存可展示错误。
     } finally {
@@ -184,9 +173,12 @@ export function LeetcodeCatalog({ sessionId }) {
   const startWithConfig = async (payload) => {
     if (!pendingProblem) return
     try {
-      await command.run('leetcode.select', { problem: pendingProblem, config: payload.config })
+      const problem = { ...pendingProblem, category: payload.config.category || '', difficulties: payload.config.difficulties || [] }
+      const request = { problem, config: payload.config, selectionMode: pendingProblem.selectionMode }
+      const result = await (pendingProblem.trainingPool ? command.run('leetcode.train', request) : command.run('leetcode.select', request))
       setPendingProblem(null)
       await Promise.all([query.reload(), sessionQuery.reload()])
+      interviewApi.navigateWorkspace('active', { practiceId: result.resource.data.practice.id })
     } catch {
       // useCommand 已保存可展示错误。
     }
@@ -196,15 +188,15 @@ export function LeetcodeCatalog({ sessionId }) {
     return h('section', { className: 'di-lc-catalog', 'aria-label': '为指定题目创建刷力扣练习' },
       h('header', { className: 'di-lc-catalog-head' },
         h('div', { className: 'di-lc-heading' },
-          h('h2', { className: 'di-lc-title' }, '开始这道题'),
-          h('span', { className: 'di-lc-source' }, `${pendingProblem.id ? `${pendingProblem.id}. ` : ''}${pendingProblem.title}`))),
+          h('h2', { className: 'di-lc-title' }, pendingProblem.trainingPool ? '开始专题训练' : '开始这道题'),
+          h('span', { className: 'di-lc-source' }, pendingProblem.trainingPool ? `${pendingProblem.category || '全部专题'} · ${leetcodeDifficultyTagsLabel(pendingProblem.difficulties)}` : `${pendingProblem.id ? `${pendingProblem.id}. ` : ''}${pendingProblem.title}`))),
       h('div', { className: 'di-lc-catalog-config' },
         activeLeetcode
           ? h('div', { className: 'di-meta di-lc-config-note' }, '这条力扣练习是升级前创建的，只记录了编程语言；补选引导强度后会归档旧练习并开始这道题。')
           : null,
         h(PracticeConfigForm, {
-          initial: { mode: 'leetcode', config: activePractice ? activePractice.config : {} },
-          busy: command.busy === 'leetcode.select',
+          initial: { mode: 'leetcode', config: { ...(activePractice ? activePractice.config : {}), category: pendingProblem.category, difficulties: pendingProblem.difficulties } },
+          busy: command.busy === 'leetcode.select' || command.busy === 'leetcode.train',
           onSubmit: startWithConfig,
           onCancel: () => setPendingProblem(null),
           submitLabel: '开始练习',
@@ -213,12 +205,14 @@ export function LeetcodeCatalog({ sessionId }) {
   }
 
   const problems = catalogProblems(catalog)
-  const filtered = filterProblems(problems, { keyword, difficulty, category })
+  const eligible = filterProblems(problems, { keyword: '', difficulties, category })
+  const counts = Object.fromEntries(['easy', 'medium', 'hard'].map((id) => [id, problems.filter((problem) => (!category || problem.category === category) && problem.difficulty === id).length]))
+  const filtered = filterProblems(problems, { keyword, difficulties, category })
   const visibleGroups = catalog.groups
     .map((group) => ({ ...group, problems: group.problems.filter((problem) => filtered.includes(problem)) }))
     .filter((group) => group.problems.length > 0)
   const progress = catalog.total ? Math.round((catalog.completedCount / catalog.total) * 100) : 0
-  const filtering = Boolean(keyword.trim() || difficulty || category)
+  const filtering = Boolean(keyword.trim() || difficulties.length || category)
 
   return h('section', { className: 'di-lc-catalog', 'aria-label': '力扣题库' },
     h('header', { className: 'di-lc-catalog-head' },
@@ -241,13 +235,9 @@ export function LeetcodeCatalog({ sessionId }) {
         onChange: (event) => setKeyword(event.target.value),
       }),
       h(Select, {
-        className: 'di-lc-filter-select', value: difficulty, options: DIFFICULTY_OPTIONS,
-        onChange: setDifficulty, 'aria-label': '按难度筛选',
-      }),
-      h(Select, {
         className: 'di-lc-filter-select',
         value: category,
-        options: [{ value: '', label: '全部题型' }, ...(catalog.categories || []).map((item) => ({ value: item, label: item }))],
+        options: [{ value: '', label: '全部专题' }, ...(catalog.categories || []).map((item) => ({ value: item, label: item }))],
         onChange: setCategory,
         'aria-label': '按题型筛选',
       }),
@@ -257,6 +247,11 @@ export function LeetcodeCatalog({ sessionId }) {
       : null,    customOpen
       ? h(CustomProblemForm, { disabled: command.busy === 'leetcode.select', busy: false, onStart: start })
       : null,
+    h(DifficultyTags, { value: difficulties, onChange: setDifficulties, counts, label: '按难度筛选', disabled: hostOutdated || Boolean(command.busy) }),
+    h('div', { className: 'di-training-catalog-actions' },
+      h('span', { className: 'di-meta', role: 'status' }, `${category || '全部专题'} · ${leetcodeDifficultyTagsLabel(difficulties)} · ${eligible.length} 道题`),
+      h(Button, { tone: 'primary', disabled: hostOutdated || !sessionId || !eligible.length || Boolean(command.busy), onClick: () => start({ trainingPool: true }, 'ordered') }, '按专题顺序训练'),
+      h(Button, { disabled: hostOutdated || !sessionId || !eligible.length || Boolean(command.busy), onClick: () => start({ trainingPool: true }, 'random') }, '随机训练')),
     h('div', { className: 'di-lc-toolbar-note' },
       h('span', { className: 'di-meta' }, filtering
         ? `筛选出 ${filtered.length} 道题`
@@ -314,10 +309,12 @@ function MaterialsBlock({ question }) {
       : null)
 }
 
-function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
+function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose, initialCategory = '', initialDifficulties = [] }) {
   const [keyword, setKeyword] = React.useState('')
-  const [difficulty, setDifficulty] = React.useState('')
-  const problems = filterProblems(catalogProblems(catalog), { keyword, difficulty, category: '' })
+  const [category, setCategory] = React.useState(initialCategory)
+  const [difficulties, setDifficulties] = React.useState(initialDifficulties)
+  const problems = filterProblems(catalogProblems(catalog), { keyword, difficulties, category })
+  const eligible = filterProblems(catalogProblems(catalog), { keyword: '', difficulties, category })
   const visible = problems.slice(0, 8)
   return h('section', { className: 'di-lc-picker', 'aria-label': '换一道题' },
     h('div', { className: 'di-lc-toolbar' },
@@ -328,15 +325,16 @@ function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
         'aria-label': '搜索要做的题目',
         onChange: (event) => setKeyword(event.target.value),
       }),
-      h(Select, { className: 'di-lc-filter-select', value: difficulty, options: DIFFICULTY_OPTIONS, onChange: setDifficulty, 'aria-label': '按难度筛选' }),
+      h(Select, { className: 'di-lc-filter-select', value: category, options: [{ value: '', label: '全部专题' }, ...(catalog?.categories || []).map((name) => ({ value: name, label: name }))], onChange: setCategory, disabled: busy, 'aria-label': '选择下一题专题' }),
       h(Button, { disabled: busy, onClick: onClose }, '收起')),
+    h(DifficultyTags, { value: difficulties, onChange: setDifficulties, disabled: busy, label: '选择下一题难度标签' }),
     visible.length
       ? h('div', { className: 'di-lc-picker-list' }, visible.map((problem) => h('button', {
         type: 'button',
         className: 'di-lc-picker-row',
         key: problem.slug,
         disabled: busy,
-        onClick: () => onPick({ slug: problem.slug }),
+        onClick: () => onPick({ slug: problem.slug, category, difficulties }),
       },
       h('span', { className: 'di-lc-problem-id' }, problem.id),
       h('span', { className: 'di-lc-picker-title' }, problem.title),
@@ -344,15 +342,16 @@ function ProblemPicker({ catalog, busy, consumedBy, onPick, onClose }) {
       : h('div', { className: 'di-empty' }, h('div', { className: 'di-empty-title' }, '没有匹配的题目')),
     h('div', { className: 'di-lc-picker-foot' },
       h(Button, {
-        disabled: busy,
-        onClick: () => onPick(difficulty ? { difficulty } : {}),
-      }, consumedBy === 'question.next' ? '已出下一题' : (difficulty ? `随机一道${leetcodeDifficultyLabel(difficulty)}题` : '随机抽一道')),
+        disabled: busy || !eligible.length,
+        onClick: () => onPick({ category, difficulties, selectionMode: 'ordered' }),
+      }, consumedBy === 'question.next' ? '已出下一题' : '按专题顺序下一道'),
+      h(Button, { disabled: busy || !eligible.length, onClick: () => onPick({ category, difficulties, selectionMode: 'random' }) }, '随机下一道'),
       problems.length > visible.length ? h('span', { className: 'di-meta' }, `还有 ${problems.length - visible.length} 道题，继续输入缩小范围`) : null))
 }
 
 function LeetcodeQuestionCard({
-  question, catalog, language, active, expanded, command, transition,
-  onRun, onNext, onExplain, onHint, onGenerateMaterials, pendingMaterials,
+  sessionId, artifact, question, catalog, language, active, command, transition,
+  onRun, onNext, onExplain, onHint, onGenerateMaterials, pendingMaterials, trainingConfig,
 }) {
   const problem = question.leetcode
   const materials = question.materials
@@ -385,11 +384,11 @@ function LeetcodeQuestionCard({
             busy: command.busy === 'question.materials' || pendingMaterials,
             onClick: () => onGenerateMaterials(),
           }, pendingMaterials ? '正在生成材料…' : '生成题目材料'),
-        h(Button, {
+        !question.explanation ? h(Button, {
           disabled: transition.locked,
           busy: command.busy === 'question.reveal',
           onClick: () => onExplain(question),
-        }, question.explanation ? (expanded ? '收起讲解' : '展开讲解') : '看答案'),
+        }, '看答案') : null,
         h(Button, { disabled: transition.locked, onClick: () => setPickerOpen((value) => !value) }, pickerOpen ? '收起选题' : '换一题'),
         problem.slug ? h(Button, {
           disabled: transition.locked,
@@ -406,23 +405,19 @@ function LeetcodeQuestionCard({
         consumedBy: transition.consumedBy,
         onPick: (selection) => onNext(selection),
         onClose: () => setPickerOpen(false),
+        initialCategory: trainingConfig?.category || '', initialDifficulties: trainingConfig?.difficulties || [],
       })
       : null,
     active && pendingMaterials
       ? h('div', { className: 'di-notice' }, '正在生成题目材料与提示阶梯，完成后会自动出现在这里。')
       : null,
     active ? h(ErrorNotice, null, command.error) : null,
-    showMaterials && materials ? h('section', { className: 'di-section di-lc-material-section', 'aria-label': '题目材料' }, h(MaterialsBlock, { question })) : null,
-    expanded && question.explanation
-      ? h('section', { className: 'di-section', 'aria-label': '题目讲解' },
-        h('div', { className: 'di-section-label' }, '讲解'),
-        h(Markdown, null, question.explanation.detail),
-        question.explanation.memorizationPoints
-          ? h('div', { className: 'di-attempt' },
-            h('div', { className: 'di-section-label' }, '解题要点'),
-            h(Markdown, null, question.explanation.memorizationPoints))
-          : null)
-      : null)
+    h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: artifact.practiceId, question }),
+    h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: artifact.practiceId, question, canGenerate: active }),
+    active || question.attempts?.length ? h(CodeAnswerEditor, {
+      key: question.id, sessionId, question, artifact, language, disabled: transition.locked,
+    }) : null,
+    showMaterials && materials ? h('section', { className: 'di-section di-lc-material-section', 'aria-label': '题目材料' }, h(MaterialsBlock, { question })) : null)
 }
 
 export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifact, language = '', resourceRevision = 0, onRefresh = null }) {
@@ -431,7 +426,6 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifac
   const command = useCommand(sessionId)
   const session = sessionQuery.data?.resource?.data
   const current = initialQuestion
-  const [showExplanation, setShowExplanation] = React.useState(false)
   const [pendingMaterials, setPendingMaterials] = React.useState(false)
   const [pollTick, setPollTick] = React.useState(0)
   const refreshRef = React.useRef(null)
@@ -443,7 +437,6 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifac
   }
 
   React.useEffect(() => {
-    setShowExplanation(false)
     setPendingMaterials(false)
     setPollTick(0)
   }, [current?.id])
@@ -477,10 +470,7 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifac
   }
 
   const explain = async () => {
-    if (current.explanation) {
-      setShowExplanation((value) => !value)
-      return
-    }
+    if (current.explanation) return
     await transition.run('question.reveal')
   }
 
@@ -505,11 +495,12 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifac
   const catalog = catalogQuery.data?.resource?.data
   const active = artifactActive
   return h(LeetcodeQuestionCard, {
+    sessionId,
+    artifact,
     question: { ...current, guidance: session?.practice?.config?.guidance || null },
     catalog,
     language: language || session?.practice?.config?.language,
     active,
-    expanded: showExplanation,
     command,
     transition,
     onRun: run,
@@ -518,5 +509,6 @@ export function LeetcodeProblemCard({ sessionId, initialQuestion = null, artifac
     onHint: hint,
     onGenerateMaterials: generateMaterials,
     pendingMaterials,
+    trainingConfig: session?.practice?.config,
   })
 }

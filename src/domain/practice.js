@@ -3,9 +3,10 @@ import { LEETCODE_TOP_100_SOURCE, leetcodeTop100Problem } from './leetcode-top-1
 import { LEETCODE_LANGUAGES, leetcodeLanguageDefinition } from './leetcode-languages.js'
 import { leetcodeGuidanceDefinition } from './leetcode-guidance.js'
 import { hintTotalOf, normalizeLeetcodeMaterials } from './leetcode-materials.js'
-import { leetcodeProblemQueryLabel, resolveLeetcodeProblem } from './leetcode-problems.js'
+import { LEETCODE_CATEGORIES, leetcodeProblemQueryLabel, normalizeLeetcodeDifficulties, resolveLeetcodeProblem } from './leetcode-problems.js'
 import { modeDefinition } from './modes.js'
 import { assertModeCapability } from './mode-capabilities.js'
+import { withPracticeAttachments } from './practice-attachments.js'
 
 const DIFFICULTIES = new Set(['junior', 'intermediate', 'senior'])
 
@@ -34,14 +35,18 @@ function normalizeQuestionPrompt(prompt) {
 function normalizeConfiguration(definition, config) {
   assertDomain(config && typeof config === 'object' && !Array.isArray(config), 'CONFIGURATION_REQUIRED', '必须明确提供练习配置')
   if (definition.configuration === 'topic') {
-    return { topic: requiredText(config.topic, 'INVALID_TOPIC', '必须明确提供练习主题') }
+    return withPracticeAttachments(config, { topic: requiredText(config.topic, 'INVALID_TOPIC', '必须明确提供练习主题') })
   }
   if (definition.configuration === 'catalog') {
     const language = requiredText(config.language, 'LEETCODE_LANGUAGE_REQUIRED', '刷力扣必须明确选择编程语言')
     assertDomain(leetcodeLanguageDefinition(language), 'INVALID_LEETCODE_LANGUAGE', `不支持的力扣编程语言：${language}`)
     const guidance = requiredText(config.guidance, 'LEETCODE_GUIDANCE_REQUIRED', '刷力扣必须明确选择引导强度')
     assertDomain(leetcodeGuidanceDefinition(guidance), 'INVALID_LEETCODE_GUIDANCE', `不支持的引导强度：${guidance}`)
-    return { language, guidance }
+    const difficulties = normalizeLeetcodeDifficulties(config.difficulties)
+    assertDomain(config.category === undefined || config.category === null || typeof config.category === 'string', 'INVALID_LEETCODE_CATEGORY', '请选择题库中的专题')
+    const category = typeof config.category === 'string' ? config.category.trim() : ''
+    assertDomain(!category || LEETCODE_CATEGORIES.includes(category), 'INVALID_LEETCODE_CATEGORY', '请选择题库中的专题')
+    return withPracticeAttachments(config, { language, guidance, ...(difficulties.length ? { difficulties } : {}), ...(category ? { category } : {}) })
   }
 
   const resume = requiredText(config.resume, 'RESUME_REQUIRED', `${definition.label}必须明确提供简历内容`)
@@ -54,17 +59,17 @@ function normalizeConfiguration(definition, config) {
   assertDomain(DIFFICULTIES.has(difficulty), 'INVALID_DIFFICULTY', `不支持的难度：${difficulty}`)
   if (definition.configuration === 'resume_drill') {
     const focus = requiredText(config.focus, 'RESUME_DRILL_FOCUS_REQUIRED', '简历押题必须明确押题范围')
-    return {
+    return withPracticeAttachments(config, {
       resume, targetRole, jobDescriptionProvided: config.jobDescriptionProvided, jobDescription,
       focus, difficulty,
-    }
+    })
   }
   const interviewerStyle = requiredText(config.interviewerStyle, 'INTERVIEWER_STYLE_REQUIRED', '模拟面试必须明确选择面试官风格')
   assertDomain(typeof config.coding === 'boolean', 'CODING_REQUIRED', '模拟面试必须明确选择是否手撕代码')
-  return {
+  return withPracticeAttachments(config, {
     resume, targetRole, jobDescriptionProvided: config.jobDescriptionProvided, jobDescription,
     interviewerStyle, coding: config.coding, difficulty,
-  }
+  })
 }
 
 function practiceIdentity(definition, config) {

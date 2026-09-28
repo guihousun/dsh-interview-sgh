@@ -34,7 +34,7 @@ test('自由选题可以指定题目、按难度抽题并搜索题库', async ()
   assert.ok(search.resource.data.categories.includes('动态规划'))
 
   await assert.rejects(
-    fixture.application.drawNextAtomicLeetcode('session-1', { filters: { category: '不存在的题型' } }),
+    fixture.application.drawNextAtomicLeetcode('session-1', { filters: { category: '哈希', difficulty: 'hard' } }),
     /没有符合条件的力扣题目/,
   )
 })

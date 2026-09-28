@@ -4,6 +4,10 @@ import { LEETCODE_GUIDANCE_LEVELS, leetcodeGuidanceLabel } from '../../domain/le
 import { useCommand } from '../shared/hooks.js'
 import { useCardLifecycle } from '../shared/card-transition.js'
 import { Button, ErrorNotice, h, Icon, Select } from '../shared/ui.js'
+import { DOCUMENT_LIMITS } from '../../domain/practice-attachments.js'
+import { ReferenceDocumentsField, ResumeDocumentField } from './practice-documents.js'
+import { LEETCODE_CATEGORIES, leetcodeDifficultyTagsLabel, listLeetcodeProblems } from '../../domain/leetcode-problems.js'
+import { DifficultyTags } from '../shared/difficulty-tags.js'
 
 export const PRACTICE_MODE_OPTIONS = Object.freeze([
   { value: 'bagu', label: '背八股' },
@@ -46,7 +50,7 @@ function completedConfigText(payload) {
     return `${modeLabel(payload.mode)} · ${payload.config.targetRole} · ${difficulty}难度 · ${jd}`
   }
   if (payload.mode === 'leetcode') {
-    return `${modeLabel(payload.mode)} · ${leetcodeLanguageLabel(payload.config.language)} · ${leetcodeGuidanceLabel(payload.config.guidance)}`
+    return `${modeLabel(payload.mode)} · ${leetcodeLanguageLabel(payload.config.language)} · ${leetcodeGuidanceLabel(payload.config.guidance)} · ${payload.config.category || '全部专题'} · ${leetcodeDifficultyTagsLabel(payload.config.difficulties)}`
   }
   return `${modeLabel(payload.mode)} · ${payload.config.topic}`
 }
@@ -63,6 +67,9 @@ export function PracticeConfigForm({
   const [step, setStep] = React.useState(initial ? 'config' : 'mode')
   const [topic, setTopic] = React.useState(initial?.config?.topic || '')
   const [resume, setResume] = React.useState(initial?.config?.resume || '')
+  const [resumeFile, setResumeFile] = React.useState(initial?.config?.resumeFile || null)
+  const [referenceMaterials, setReferenceMaterials] = React.useState(initial?.config?.referenceMaterials || [])
+  const [uploadsPending, setUploadsPending] = React.useState(0)
   const [targetRole, setTargetRole] = React.useState(initial?.config?.targetRole || '')
   const [jobDescriptionProvided, setJobDescriptionProvided] = React.useState(typeof initial?.config?.jobDescriptionProvided === 'boolean' ? String(initial.config.jobDescriptionProvided) : '')
   const [jobDescription, setJobDescription] = React.useState(initial?.config?.jobDescription || '')
@@ -72,8 +79,11 @@ export function PracticeConfigForm({
   const [difficulty, setDifficulty] = React.useState(initial?.config?.difficulty || '')
   const [language, setLanguage] = React.useState(initial?.config?.language || '')
   const [guidance, setGuidance] = React.useState(initial?.config?.guidance || '')
+  const [leetcodeCategory, setLeetcodeCategory] = React.useState(initial?.config?.category || '')
+  const [leetcodeDifficulties, setLeetcodeDifficulties] = React.useState(initial?.config?.difficulties || [])
   const topicMode = mode === 'bagu' || mode === 'scenario'
-  const valid = topicMode
+  const trainingCount = mode === 'leetcode' ? listLeetcodeProblems({ category: leetcodeCategory, difficulties: leetcodeDifficulties, limit: 100 }).length : 0
+  const configurationValid = topicMode
     ? Boolean(topic.trim())
     : mode === 'leetcode'
       ? Boolean(language && guidance)
@@ -87,9 +97,13 @@ export function PracticeConfigForm({
           && (jobDescriptionProvided !== 'true' || jobDescription.trim())
           && focus.trim() && difficulty,
         ))
+  const valid = configurationValid && (mode !== 'leetcode' || trainingCount > 0) && referenceMaterials.every((item) => item.text.trim())
+    && referenceMaterials.reduce((sum, item) => sum + item.text.length, 0) <= DOCUMENT_LIMITS.referenceText
+  const formDisabled = disabled || busy || uploadsPending > 0
+  const pendingChanged = (delta) => setUploadsPending((count) => Math.max(0, count + delta))
   const submit = () => {
-    if (step !== 'config' || !valid || disabled) return
-    onSubmit(mode === 'mock'
+    if (step !== 'config' || !valid || formDisabled) return
+    const payload = mode === 'mock'
       ? {
           mode,
           config: {
@@ -114,7 +128,13 @@ export function PracticeConfigForm({
               difficulty,
             },
           }
-        : mode === 'leetcode' ? { mode, config: { language, guidance } } : { mode, config: { topic: topic.trim() } })
+        : mode === 'leetcode' ? { mode, config: { language, guidance,
+            ...(leetcodeCategory ? { category: leetcodeCategory } : {}), ...(leetcodeDifficulties.length ? { difficulties: leetcodeDifficulties } : {}),
+          } } : { mode, config: { topic: topic.trim() } }
+    onSubmit({ ...payload, config: { ...payload.config,
+      ...((mode === 'mock' || mode === 'resume_drill') && resumeFile ? { resumeFile } : {}),
+      ...(referenceMaterials.length ? { referenceMaterials } : {}),
+    } })
   }
   const chooseMode = (value) => {
     if (disabled) return
@@ -150,10 +170,15 @@ export function PracticeConfigForm({
                 onChange: setGuidance,
                 'aria-label': '选择引导强度',
               })),
-            guidance ? h('div', { className: 'di-guidance-hint di-field-wide' }, LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance)?.detail || '') : null) : null,
+            guidance ? h('div', { className: 'di-guidance-hint di-field-wide' }, LEETCODE_GUIDANCE_LEVELS.find((item) => item.id === guidance)?.detail || '') : null,
+            h('label', { className: 'di-field di-field-wide' }, h('span', null, '训练专题'),
+              h(Select, { value: leetcodeCategory, options: [{ value: '', label: '全部专题' }, ...LEETCODE_CATEGORIES.map((name) => ({ value: name, label: name }))], disabled: formDisabled, onChange: setLeetcodeCategory, 'aria-label': '选择训练专题' })),
+            h('div', { className: 'di-field di-field-wide' }, h('span', null, '训练难度标签'),
+              h(DifficultyTags, { value: leetcodeDifficulties, onChange: setLeetcodeDifficulties, disabled: formDisabled }),
+              h('div', { className: 'di-meta', role: 'status' }, `可以多选。所选范围有 ${trainingCount} 道题，后续按专题顺序或随机出题都会沿用。`),
+              !trainingCount ? h('div', { className: 'di-notice' }, '所选专题和难度没有题目，请调整训练范围。') : null)) : null,
           mode === 'mock' ? h(React.Fragment, null,
-            h('label', { className: 'di-field di-field-wide' }, h('span', null, '简历'),
-              h('textarea', { className: 'di-input di-textarea', disabled, value: resume, onChange: (event) => setResume(event.target.value) })),
+            h(ResumeDocumentField, { value: resume, file: resumeFile, disabled: formDisabled, onChange: setResume, onFileChange: setResumeFile, onPendingChange: pendingChanged }),
             h('label', { className: 'di-field' }, h('span', null, '目标岗位'),
               h('input', { className: 'di-input', disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })),
             h('label', { className: 'di-field' }, h('span', null, '岗位描述'),
@@ -167,8 +192,7 @@ export function PracticeConfigForm({
             h('label', { className: 'di-field' }, h('span', null, '面试难度'),
               h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, 'aria-label': '选择面试难度' }))) : null,
           mode === 'resume_drill' ? h(React.Fragment, null,
-            h('label', { className: 'di-field di-field-wide' }, h('span', null, '简历'),
-              h('textarea', { className: 'di-input di-textarea', disabled, value: resume, onChange: (event) => setResume(event.target.value) })),
+            h(ResumeDocumentField, { value: resume, file: resumeFile, disabled: formDisabled, onChange: setResume, onFileChange: setResumeFile, onPendingChange: pendingChanged }),
             h('label', { className: 'di-field' }, h('span', null, '目标岗位'),
               h('input', { className: 'di-input', disabled, value: targetRole, onChange: (event) => setTargetRole(event.target.value) })),
             h('label', { className: 'di-field' }, h('span', null, '岗位描述'),
@@ -178,11 +202,12 @@ export function PracticeConfigForm({
             h('label', { className: 'di-field di-field-wide' }, h('span', null, '押题范围'),
               h('input', { className: 'di-input', disabled, value: focus, onChange: (event) => setFocus(event.target.value), placeholder: '例如：项目难点、技术选型、并发与稳定性' })),
             h('label', { className: 'di-field' }, h('span', null, '面试难度'),
-              h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, 'aria-label': '选择面试难度' }))) : null),
+              h(Select, { value: difficulty, options: DIFFICULTY_OPTIONS, disabled, onChange: setDifficulty, 'aria-label': '选择面试难度' }))) : null,
+          h(ReferenceDocumentsField, { materials: referenceMaterials, disabled: formDisabled, onChange: setReferenceMaterials, onPendingChange: pendingChanged })),
     h('div', { className: 'di-actions di-field-wide' },
-      onCancel ? h(Button, { disabled, onClick: onCancel }, '取消') : null,
-      step === 'config' ? h(Button, { disabled, onClick: () => setStep('mode') }, '上一步') : null,
-      step === 'config' ? h(Button, { tone: 'primary', disabled: disabled || !valid, busy, onClick: submit }, submitLabel || (initial ? '保存配置' : '开始练习')) : null))
+      onCancel ? h(Button, { disabled: formDisabled, onClick: onCancel }, '取消') : null,
+      step === 'config' ? h(Button, { disabled: formDisabled, onClick: () => setStep('mode') }, '上一步') : null,
+      step === 'config' ? h(Button, { tone: 'primary', disabled: formDisabled || !valid, busy, onClick: submit }, submitLabel || (initial ? '保存配置' : '开始练习')) : null))
 }
 
 export function PracticeSetupCard({ sessionId }) {

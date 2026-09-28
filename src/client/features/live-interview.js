@@ -6,6 +6,10 @@ import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { LeetcodeProblemCard } from './leetcode.js'
 import { isCardActive } from '../shared/card-activity.js'
 import { useCardTransition } from '../shared/card-transition.js'
+import { CodeAnswerEditor } from './code-answer.js'
+import { SolutionDisclosure } from '../shared/solution-disclosure.js'
+import { QuestionLearningPanel } from './question-learning.js'
+import { QuestionSolutionPanel } from './question-solution.js'
 
 export function CompactResultCard({ title, detail }) {
   return h('div', { className: 'di-card' },
@@ -19,9 +23,12 @@ export function QuestionResultCard({ sessionId, question, artifact, answerDisabl
   const command = useCommand(sessionId)
   const transition = useCardTransition(command.run, artifact, answerDisabled)
   const allowReveal = question.capabilities?.allowReveal !== false
+  const [codeOpen, setCodeOpen] = React.useState(Boolean(question.hot100))
   return h('article', { className: 'di-card di-question-card', 'aria-label': '面试题' },
     h('div', { className: 'di-question-main' },
       h('div', { className: 'di-question-text' }, h(Markdown, null, question.prompt))),
+    h('div', { className: 'di-question-actions' },
+    h(Button, { onClick: () => setCodeOpen((value) => !value) }, h(Icon, { name: 'code' }), codeOpen ? '收起代码' : '写代码'),
     allowReveal
       ? h(Button, {
           className: 'di-answer-button',
@@ -35,7 +42,10 @@ export function QuestionResultCard({ sessionId, question, artifact, answerDisabl
           disabled: transition.locked,
           busy: command.busy === 'session.finish',
           onClick: () => transition.run('session.finish'),
-        }, '结束面试'),
+        }, '结束面试')),
+    question.hot100 ? h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: artifact.practiceId, question }) : null,
+    allowReveal ? h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: artifact.practiceId, question, canGenerate: !answerDisabled }) : null,
+    codeOpen ? h(CodeAnswerEditor, { key: question.id, sessionId, question, artifact, disabled: transition.locked }) : null,
     h(ErrorNotice, null, command.error))
 }
 
@@ -62,19 +72,21 @@ export function ReviewResultCard({ sessionId, question, attempt, artifact, actio
           ? h('div', { className: 'di-dimensions' }, Object.entries(evaluation.dimensions).map(([name, score]) =>
               h('span', { key: name }, name, h('span', { className: 'di-dimension-score' }, `${score}/10`))))
           : null) : null,
+      h(SolutionDisclosure, { key: `${question.id}:${explanation.createdAt}` },
       h('section', { className: 'di-review-section' },
         h('h3', null, '讲解'),
         h('div', { className: 'di-explanation-copy' }, h(Markdown, null, explanation.detail))),
       h('section', { className: 'di-memorize-box' },
         h('div', { className: 'di-memorize-copy' },
           h('div', { className: 'di-memorize-label' }, isLeetcode ? '解题要点' : '直接背'),
-          h(Markdown, null, explanation.memorizationPoints))),
+          h(Markdown, null, explanation.memorizationPoints)))),
       h(ErrorNotice, null, command.error),
       h('div', { className: 'di-review-actions' },
         isLeetcode
           ? h(Button, { tone: 'primary', disabled: transition.locked, onClick: () => transition.run('question.next') }, transition.consumedBy === 'question.next' ? '已出下一题' : '随机下一题')
           : h(Button, { tone: 'primary', disabled: transition.locked, busy: command.busy === 'question.next', onClick: () => transition.run('question.next') }, '下一题'),
         !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === 'question.retry', onClick: () => transition.run('question.retry') }, h(Icon, { name: 'swap' }), '重新作答') : null,
+        isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === 'question.retry', onClick: () => transition.run('question.retry') }, h(Icon, { name: 'code' }), '修改代码') : null,
         !isLeetcode ? h(Button, { disabled: transition.locked, busy: command.busy === 'session.finish', onClick: () => transition.run('session.finish') }, '结束练习') : null)))
 }
 

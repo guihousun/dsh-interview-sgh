@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { DomainError } from '../../domain/errors.js'
 import { dispatchCommand } from './command-dispatcher.js'
+import { DOCUMENT_REQUEST_LIMIT, extractUploadedDocument } from '../../infrastructure/document-extraction.js'
 
 function sendJson(response, status, data) {
   response.writeHead(status, {
@@ -14,15 +15,20 @@ function sendJson(response, status, data) {
 
 function readJsonBody(request, maximumBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
+    request.setEncoding?.('utf8')
     let body = ''
+    let oversized = false
     request.on('data', (chunk) => {
+      if (oversized) return
       body += chunk
       if (Buffer.byteLength(body, 'utf8') > maximumBytes) {
+        oversized = true
+        body = ''
         reject(new DomainError('REQUEST_TOO_LARGE', '请求体超过大小限制'))
-        request.destroy()
       }
     })
     request.on('end', () => {
+      if (oversized) return
       if (!body) return resolve({})
       try { resolve(JSON.parse(body)) } catch { reject(new DomainError('INVALID_JSON', '请求体不是有效 JSON')) }
     })
@@ -49,8 +55,17 @@ function requiredSessionId(value) {
   return value.trim()
 }
 
-export function registerApiRoutes(hostCtx, { application, eventBridge, exporter }) {
+export function registerApiRoutes(hostCtx, { application, eventBridge, exporter, documentExtractor = extractUploadedDocument }) {
   const register = (path, handler) => hostCtx.effect(() => hostCtx.webServer.register({ kind: 'exact', path, handler }))
+
+  register('/interview/api/materials/extract', async (request, response) => {
+    if (request.method !== 'POST') return sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '仅支持 POST' } })
+    try {
+      sendJson(response, 200, await documentExtractor(await readJsonBody(request, DOCUMENT_REQUEST_LIMIT)))
+    } catch (error) {
+      const output = errorResponse(error); sendJson(response, output.status, output.body)
+    }
+  })
 
   register('/interview/api/session', async (request, response) => {
     if (request.method !== 'GET') return sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '仅支持 GET' } })
@@ -79,6 +94,18 @@ export function registerApiRoutes(hostCtx, { application, eventBridge, exporter 
       const output = errorResponse(error); sendJson(response, output.status, output.body)
     }
   })
+
+  for (const [path, method] of [['/interview/api/question-learning', 'getQuestionLearning'], ['/interview/api/question-solution', 'getQuestionSolution']]) {
+    register(path, async (request, response) => {
+      if (request.method !== 'GET') return sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '仅支持 GET' } })
+      try {
+        const params = query(request)
+        sendJson(response, 200, await application[method](params.get('practice'), params.get('question')))
+      } catch (error) {
+        const output = errorResponse(error); sendJson(response, output.status, output.body)
+      }
+    })
+  }
 
   register('/interview/api/insights', async (request, response) => {
     if (request.method !== 'GET') return sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '仅支持 GET' } })

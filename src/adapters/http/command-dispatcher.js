@@ -1,4 +1,6 @@
 import { assertModeCapability } from '../../domain/mode-capabilities.js'
+import { assertDomain } from '../../domain/errors.js'
+import { listLeetcodeProblems } from '../../domain/leetcode-problems.js'
 
 function practiceInput(payload) {
   return { mode: payload.mode, config: payload.config }
@@ -13,13 +15,22 @@ function selectionOf(payload) {
 
 function filtersOf(payload) {
   if (!payload) return null
-  if (!payload.category && !payload.difficulty) return null
-  return { category: payload.category, difficulty: payload.difficulty }
+  if (payload.category === undefined && !payload.difficulty && payload.difficulties === undefined) return null
+  return { category: payload.category, difficulty: payload.difficulty, ...(payload.difficulties === undefined ? {} : { difficulties: payload.difficulties }) }
 }
 
 function leetcodeRequestOf(payload) {
   const source = payload?.problem || payload?.selection || payload
-  return { selection: selectionOf(source), filters: filtersOf(source) }
+  return { selection: selectionOf(source), filters: filtersOf(source), ...(payload.selectionMode ? { selectionMode: payload.selectionMode } : {}) }
+}
+
+function validateLeetcodeStart(request, config = {}) {
+  assertDomain(['random', 'ordered'].includes(request.selectionMode || 'random'), 'INVALID_LEETCODE_SELECTION_MODE', '请选择按专题顺序或随机出题')
+  if (request.selection) return
+  const filters = request.filters || {}
+  const problems = listLeetcodeProblems({ category: filters.category === undefined ? config?.category : filters.category,
+    difficulty: filters.difficulty, difficulties: filters.difficulties !== undefined ? filters.difficulties : filters.difficulty ? undefined : config?.difficulties, limit: 1 })
+  assertDomain(problems.length, 'LEETCODE_PROBLEM_NOT_FOUND', '所选专题和难度没有题目，请调整训练范围')
 }
 
 function guidanceOf(practice) {
@@ -27,7 +38,7 @@ function guidanceOf(practice) {
 }
 
 function dispatchAgent(eventBridge, sessionId, event) {
-  eventBridge?.dispatch(sessionId, event)
+  return eventBridge?.dispatch(sessionId, event)
 }
 
 function refreshAgentTools(eventBridge, sessionId) {
@@ -54,12 +65,15 @@ export const UI_COMMANDS = Object.freeze([
   'session.start', 'session.continue', 'session.select', 'session.reopen', 'session.finish',
   'practice.update', 'question.open', 'question.focus', 'question.update', 'question.delete', 'question.next',
   'question.retry', 'question.reveal', 'question.hint', 'question.materials',
+  'question.code-open', 'question.code-review', 'question.code-review.retry', 'question.learning-hint', 'question.solution-generate',
   'leetcode.select', 'leetcode.set-completion', 'library.delete', 'library.export',
+  'leetcode.train', 'leetcode.practice-next',
 ])
 
 export async function dispatchCommand({ application, eventBridge }, sessionId, command, payload = {}) {
   switch (command) {
     case 'session.start': {
+      if (payload.mode === 'leetcode') validateLeetcodeStart(leetcodeRequestOf(payload), payload.config)
       await application.createAtomicPractice(sessionId, practiceInput(payload))
       let session = await application.readAtomicSession(sessionId)
       if (payload.mode === 'leetcode') {
@@ -78,11 +92,13 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       }
       return session
     }
+    case 'leetcode.train':
     case 'leetcode.select': {
       const request = leetcodeRequestOf(payload)
       const current = (await application.readAtomicSession(sessionId)).resource.data
       const activeLeetcode = current.selected && current.practice.mode === 'leetcode' && current.practice.status === 'active'
       if (!activeLeetcode) {
+        validateLeetcodeStart(request, payload.config)
         await application.createAtomicPractice(sessionId, { mode: 'leetcode', config: payload.config })
       }
       // 旧练习可能只存了 language：界面补选的配置要覆盖到新练习，否则领域层会要求引导强度。
@@ -90,12 +106,17 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         ? await application.drawNextAtomicLeetcode(sessionId, { ...request, config: payload.config || null })
         : await application.drawAtomicLeetcode(sessionId, request)
       const session = await application.readAtomicSession(sessionId)
-      dispatchAgent(eventBridge, sessionId, {
+      if (command === 'leetcode.select') dispatchAgent(eventBridge, sessionId, {
         type: 'leetcode.present', practiceId: question.references.practiceId, questionId: question.references.questionId,
         mode: 'leetcode', guidance: guidanceOf(session.resource.data.practice), includeModeContext: true,
       })
       refreshAgentTools(eventBridge, sessionId)
       return session
+    }
+    case 'leetcode.practice-next': {
+      const result = await application.advanceLeetcodePractice(sessionId, payload.practiceId, leetcodeRequestOf(payload))
+      refreshAgentTools(eventBridge, sessionId)
+      return result
     }
     case 'session.continue': {
       const current = await selected(application, sessionId)
@@ -161,6 +182,61 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
         type: 'question.show', practiceId: result.references.practiceId, questionId: result.references.questionId,
       })
       return result
+    }
+    case 'question.learning-hint':
+      return application.revealQuestionLearningHint(payload.practiceId, payload.questionId)
+    case 'question.solution-generate': {
+      const practice = (await application.getPractice(payload.practiceId)).resource.data
+      if (practice.status !== 'active') throw new TypeError('请先重新打开这条练习，再生成答案')
+      assertModeCapability(practice, 'explanation.create', 'REVEAL_NOT_ALLOWED', '当前模式不提供看答案')
+      if (!practice.questions.some((question) => question.id === payload.questionId)) throw new TypeError('找不到题目')
+      const current = (await application.readAtomicSession(sessionId)).resource.data
+      if (current.practice?.id !== payload.practiceId || current.currentQuestionId !== payload.questionId) {
+        await application.bindAtomicPractice(sessionId, payload.practiceId)
+        await application.focusAtomicQuestion(sessionId, payload.questionId)
+      }
+      const queued = dispatchAgent(eventBridge, sessionId, {
+        type: 'review.generate', practiceId: payload.practiceId, questionId: payload.questionId,
+        mode: practice.mode, guidance: guidanceOf(practice),
+      })
+      return { ...(await application.readAtomicSession(sessionId)), analysisQueued: Boolean(queued) }
+    }
+    case 'question.code-open': {
+      const practice = await application.getPractice(payload.practiceId)
+      if (practice.resource.data.status !== 'active') throw new TypeError('请先重新打开这条练习，再写代码')
+      if (!practice.resource.data.questions.some((item) => item.id === payload.questionId)) throw new TypeError('找不到题目')
+      await application.bindAtomicPractice(sessionId, payload.practiceId)
+      await application.focusAtomicQuestion(sessionId, payload.questionId)
+      refreshAgentTools(eventBridge, sessionId)
+      return application.readAtomicSession(sessionId)
+    }
+    case 'question.code-review': {
+      const current = await selected(application, sessionId)
+      const result = await application.submitAtomicCodeAnswer(sessionId, payload)
+      const queued = dispatchAgent(eventBridge, sessionId, {
+        type: 'code.review', practiceId: current.practiceId, questionId: payload.questionId,
+        attemptId: result.references.attemptId, language: payload.language,
+        mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
+      })
+      return { ...result, analysisQueued: Boolean(queued) }
+    }
+    case 'question.code-review.retry': {
+      const current = await selected(application, sessionId)
+      if (current.practiceId !== payload.practiceId || current.questionId !== payload.questionId) {
+        throw new TypeError('当前题目已经改变，请回到这道题再分析')
+      }
+      const question = current.data.practice.questions.find((item) => item.id === payload.questionId)
+      const attempt = question?.attempts.at(-1)
+      if (!attempt || attempt.id !== payload.attemptId) throw new TypeError('只能分析本题最近一次提交的代码')
+      const { parseCodeAnswer } = await import('../../domain/code-answer.js')
+      const codeAnswer = parseCodeAnswer(attempt.answer)
+      if (!codeAnswer) throw new TypeError('找不到代码作答')
+      const queued = dispatchAgent(eventBridge, sessionId, {
+        type: 'code.review', practiceId: current.practiceId, questionId: payload.questionId,
+        attemptId: attempt.id, language: codeAnswer.language,
+        mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
+      })
+      return { ...current.result, analysisQueued: Boolean(queued) }
     }
     case 'question.reveal': {
       const current = await selected(application, sessionId)

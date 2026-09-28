@@ -23,6 +23,18 @@ export function leetcodeDifficultyFromLabel(value) {
   return DIFFICULTY_BY_LABEL[key] || DIFFICULTY_BY_LABEL[key.toLowerCase()] || ''
 }
 
+export function normalizeLeetcodeDifficulties(value) {
+  if (value === undefined || value === null) return []
+  assertDomain(Array.isArray(value), 'INVALID_LEETCODE_DIFFICULTIES', '难度标签必须是列表，可选择 easy、medium、hard')
+  const normalized = value.map(leetcodeDifficultyFromLabel)
+  assertDomain(normalized.every(Boolean), 'INVALID_LEETCODE_DIFFICULTIES', '难度标签只能选择 easy、medium、hard')
+  return LEETCODE_DIFFICULTY_IDS.filter((id) => normalized.includes(id))
+}
+
+export function leetcodeDifficultyTagsLabel(value) {
+  return normalizeLeetcodeDifficulties(value).join(' + ') || '全部难度'
+}
+
 function matchesKeyword(problem, keyword) {
   const haystack = searchText(problem)
   return keyword.split(/\s+/).filter(Boolean).every((part) => haystack.includes(part))
@@ -36,13 +48,14 @@ function relevance(problem, keyword) {
   return 4
 }
 
-export function listLeetcodeProblems({ keyword, category, difficulty, limit = 20 } = {}) {
+export function listLeetcodeProblems({ keyword, category, difficulty, difficulties, limit = 20 } = {}) {
   const normalizedKeyword = text(keyword).toLowerCase()
   const normalizedCategory = text(category)
   const normalizedDifficulty = leetcodeDifficultyFromLabel(difficulty) || text(difficulty)
+  const selectedDifficulties = difficulties === undefined ? (normalizedDifficulty ? [normalizedDifficulty] : []) : normalizeLeetcodeDifficulties(difficulties)
   const matched = LEETCODE_TOP_100
     .filter((problem) => !normalizedCategory || problem.category === normalizedCategory)
-    .filter((problem) => !normalizedDifficulty || problem.difficulty === normalizedDifficulty)
+    .filter((problem) => !selectedDifficulties.length || selectedDifficulties.includes(problem.difficulty))
     .filter((problem) => !normalizedKeyword || matchesKeyword(problem, normalizedKeyword))
   if (normalizedKeyword) matched.sort((left, right) => relevance(left, normalizedKeyword) - relevance(right, normalizedKeyword) || Number(left.id) - Number(right.id))
   const normalizedLimit = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.min(Number(limit), LEETCODE_TOP_100.length) : 20

@@ -4,6 +4,7 @@ import { LeetcodeCatalog } from './leetcode.js'
 import { interviewApi } from '../shared/api.js'
 import { useInterviewQuery } from '../shared/hooks.js'
 import { h, Icon } from '../shared/ui.js'
+import { currentInterviewSession } from '../shared/current-session.js'
 
 const WORKSPACE_TABS = Object.freeze([
   { id: 'active', label: '进行中', icon: 'clock' },
@@ -11,9 +12,9 @@ const WORKSPACE_TABS = Object.freeze([
   { id: 'leetcode', label: '题库', icon: 'flame' },
 ])
 
-function WorkspaceContent({ tab, sessionId }) {
+function WorkspaceContent({ tab, sessionId, practiceId }) {
   if (tab === 'active') return h(PracticeLibrary, {
-    sessionId, statusScope: 'active', title: '进行中', allowCreate: true,
+    sessionId, initialPracticeId: practiceId, statusScope: 'active', title: '进行中', allowCreate: true,
   })
   if (tab === 'library') return h(PracticeLibrary, {
     sessionId, statusScope: 'completed', title: '练习档案', allowCreate: false,
@@ -23,7 +24,7 @@ function WorkspaceContent({ tab, sessionId }) {
 }
 
 export function WorkspaceSidebarEntry({ wide = true, useSessions }) {
-  const sessionId = useSessions((state) => state.current)
+  const sessionId = useSessions(currentInterviewSession)
   return h(WorkspaceDock, { sessionId, wide })
 }
 
@@ -31,6 +32,7 @@ export function WorkspaceDock({ sessionId, wide = true }) {
   const [open, setOpen] = React.useState(false)
   const [tab, setTab] = React.useState('active')
   const [notice, setNotice] = React.useState('')
+  const [practiceId, setPracticeId] = React.useState(null)
   const closeButtonRef = React.useRef(null)
   const activeQuery = useInterviewQuery(
     `workspace-active-count:${open}`,
@@ -53,8 +55,9 @@ export function WorkspaceDock({ sessionId, wide = true }) {
     }
   }, [])
 
-  React.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab) => {
+  React.useEffect(() => interviewApi.subscribeWorkspaceNavigation((nextTab, context) => {
     if (WORKSPACE_TABS.some((item) => item.id === nextTab)) setTab(nextTab)
+    setPracticeId(context?.practiceId || null)
     setOpen(true)
   }), [])
 
@@ -107,7 +110,7 @@ export function WorkspaceDock({ sessionId, wide = true }) {
           onClick: () => setTab(item.id),
         }, h(Icon, { name: item.icon, size: 16 }), h('span', null, item.label),
         item.id === 'active' && activeCount > 0 ? h('span', { className: 'di-workspace-count' }, activeCount) : null))),
-        h('main', { className: `di-workspace-content is-${tab}` }, h(WorkspaceContent, { tab, sessionId }))))
+        h('main', { className: `di-workspace-content is-${tab}` }, h(WorkspaceContent, { tab, sessionId, practiceId }))))
       ) : null,
     notice ? h('div', { className: 'di-local-toast', role: 'status' }, notice) : null)
 }

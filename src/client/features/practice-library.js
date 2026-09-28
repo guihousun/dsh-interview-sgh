@@ -2,12 +2,17 @@ import React from 'react'
 import { interviewApi } from '../shared/api.js'
 import { useCommand, useInterviewQuery } from '../shared/hooks.js'
 import { Button, Empty, ErrorNotice, h, Icon, Loading, Markdown, ScoreRail, Select } from '../shared/ui.js'
-import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
 import { leetcodeLanguageLabel } from '../../domain/leetcode-languages.js'
 import { leetcodeGuidanceLabel } from '../../domain/leetcode-guidance.js'
 import { PRACTICE_MODE_OPTIONS, PracticeConfigForm } from './practice-config.js'
+import { CodeAnswerEditor } from './code-answer.js'
+import { QuestionLearningPanel } from './question-learning.js'
+import { QuestionSolutionPanel } from './question-solution.js'
+import { PracticeDocumentSources } from './practice-documents.js'
+import { DifficultyBadge } from '../shared/difficulty-tags.js'
+import { LeetcodeTrainingControls } from './leetcode-training.js'
 
-function PracticeDetail({ practice, sessionId, onDeleted }) {
+function PracticeDetail({ practice, sessionId, onDeleted, onAdvanced, initialCodeContext = null }) {
   const command = useCommand(sessionId)
   const [confirming, setConfirming] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
@@ -15,6 +20,15 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
   const [questionDraft, setQuestionDraft] = React.useState('')
   const [deletingQuestionId, setDeletingQuestionId] = React.useState(null)
   const [downloads, setDownloads] = React.useState([])
+  const [codeContext, setCodeContext] = React.useState(initialCodeContext)
+  const [advancingMode, setAdvancingMode] = React.useState('')
+  const detailRef = React.useRef(null)
+  React.useEffect(() => {
+    if (initialCodeContext?.practiceId === practice?.id) {
+      setCodeContext(initialCodeContext)
+      detailRef.current?.scrollIntoView({ block: 'start' })
+    }
+  }, [initialCodeContext, practice?.id])
   if (!practice) return h(Empty, { title: '选择一条练习', detail: '右侧会展示题目、历次作答和讲解。' })
   const run = (name, payload) => command.run(name, payload).catch(() => null)
   const activate = async () => {
@@ -45,7 +59,26 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
     if (practice.status !== 'active') return
     await run('question.focus', { practiceId: practice.id, questionId })
   }
-  return h('section', { className: 'di-detail' },
+  const openCode = async (questionId) => {
+    const result = await run('question.code-open', { practiceId: practice.id, questionId })
+    const session = result?.resource?.data
+    if (!session) return
+    setCodeContext({
+      practiceId: practice.id, questionId,
+      presentationId: `workspace-code:${session.revision}:${Date.now()}`,
+      sessionRevision: session.revision,
+    })
+  }
+  const nextLeetcode = async (options) => {
+    setAdvancingMode(options.selectionMode)
+    try {
+      const result = await run('leetcode.practice-next', { practiceId: practice.id, ...options })
+      const next = result?.resource?.data
+      if (!next?.practice || !next.currentQuestionId) return
+      onAdvanced(next)
+    } finally { setAdvancingMode('') }
+  }
+  return h('section', { className: 'di-detail', ref: detailRef },
     h('div', { className: 'di-detail-heading' },
       h('h3', { className: 'di-ledger-title' }, practice.topic),
       h('span', { className: 'di-meta' }, practice.mode === 'leetcode'
@@ -66,8 +99,13 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
         h('div', { className: 'di-actions' },
           h(Button, { onClick: () => setConfirming(false) }, '取消'),
           h(Button, { tone: 'danger', busy: command.busy === 'library.delete', onClick: remove }, '确认删除')))) : null,
-    editing ? h(PracticeConfigForm, { initial: practice, busy: command.busy === 'practice.update', onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
+    editing ? h(PracticeConfigForm, { key: practice.id, initial: practice, busy: command.busy === 'practice.update', onSubmit: updateConfiguration, onCancel: () => setEditing(false) }) : null,
+    !editing ? h(PracticeDocumentSources, { config: practice.config }) : null,
     h(ErrorNotice, null, command.error),
+    practice.mode === 'leetcode' && practice.status === 'active' ? h(LeetcodeTrainingControls, {
+      key: `${practice.id}:${practice.config.category || ''}:${(practice.config.difficulties || []).join(',')}`,
+      practice, sessionId, busy: advancingMode, onNext: nextLeetcode,
+    }) : null,
     practice.summary?.kind === 'leetcode' ? h('section', { className: 'di-section' },
       h('div', { className: 'di-section-label' }, '刷题汇总'),
       h('div', { className: 'di-meta' }, `本次共记录 ${practice.summary.questionCount} 道题，详细题目见下方。`))
@@ -89,21 +127,24 @@ function PracticeDetail({ practice, sessionId, onDeleted }) {
             ? h('input', { className: 'di-input', value: questionDraft, onChange: (event) => setQuestionDraft(event.target.value) })
             : h(Markdown, null, question.prompt)),
           fixedProblem
-            ? h('a', { className: 'di-link', href: fixedProblem.url, target: '_blank', rel: 'noreferrer' }, `${fixedProblem.category} · ${leetcodeDifficultyLabel(fixedProblem.difficulty)}`)
+            ? h('a', { className: 'di-link di-problem-tags', href: fixedProblem.url, target: '_blank', rel: 'noreferrer' }, fixedProblem.category, h(DifficultyBadge, { difficulty: fixedProblem.difficulty, custom: fixedProblem.custom }))
             : h(ScoreRail, { score: question.latestScore, compact: true })),
+        fixedProblem ? h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: practice.id, question }) : null,
         question.attempts.map((attempt) => h('div', { className: 'di-attempt', key: attempt.id },
           h('div', { className: 'di-attempt-head' }, h('span', null, `第 ${attempt.sequence} 次作答`), h('span', null, attempt.evaluation ? `${attempt.evaluation.score}/10` : '未评价')),
           h(Markdown, null, attempt.answer),
           attempt.evaluation ? h('div', { className: 'di-section' }, h(Markdown, null, attempt.evaluation.feedback)) : null)),
-        question.explanation ? h('div', { className: 'di-section' },
-          h('div', { className: 'di-section-label' }, question.leetcode ? '算法讲解' : '参考讲解'),
-          h(Markdown, null, question.explanation.detail),
-          question.explanation.memorizationPoints
-            ? h('div', { className: 'di-attempt' },
-                h('div', { className: 'di-section-label' }, question.leetcode ? '解题要点' : '直接背'),
-                h(Markdown, null, question.explanation.memorizationPoints))
-            : null) : null,
+        question.capabilities?.allowReveal !== false ? h(QuestionSolutionPanel, {
+          key: `solution:${question.id}`, sessionId, practiceId: practice.id, question, canGenerate: practice.status === 'active',
+        }) : null,
+        codeContext?.practiceId === practice.id && codeContext.questionId === question.id
+          ? h(CodeAnswerEditor, {
+            key: codeContext.presentationId, sessionId, question, artifact: codeContext,
+            language: practice.mode === 'leetcode' ? practice.config.language : '',
+          }) : null,
         h('div', { className: 'di-detail-actions' },
+          practice.status === 'active' ? h(Button, { disabled: !sessionId, title: sessionId ? undefined : '请先选择一个会话', busy: command.busy === 'question.code-open', onClick: () => openCode(question.id) },
+            h(Icon, { name: 'code' }), codeContext?.questionId === question.id ? '继续写代码' : '写代码') : null,
           !fixedProblem && editingQuestionId === question.id
             ? h(React.Fragment, null,
                 h(Button, { tone: 'primary', disabled: !questionDraft.trim(), busy: command.busy === 'question.update', onClick: () => updateQuestion(question.id) }, '保存题目'),
@@ -134,6 +175,7 @@ export function PracticeLibrary({
   const [confirmingId, setConfirmingId] = React.useState(null)
   const [downloads, setDownloads] = React.useState([])
   const [creating, setCreating] = React.useState(false)
+  const [advancedSession, setAdvancedSession] = React.useState(null)
   const command = useCommand(sessionId)
   const effectiveStatus = statusScope === 'active' ? 'active' : 'completed'
   const normalizedQuery = queryText.trim()
@@ -146,14 +188,21 @@ export function PracticeLibrary({
     { cache: false },
   )
   const practices = list.data?.resource?.data || []
-  const visibleSelectedId = practices.some((practice) => practice.id === selectedId) ? selectedId : null
+  const advancedPractice = advancedSession?.session?.practice
+  const advancePending = advancedPractice?.id === selectedId && advancedPractice.status === effectiveStatus && (!modeFilter || advancedPractice.mode === modeFilter)
+  const visibleSelectedId = practices.some((practice) => practice.id === selectedId) || advancePending ? selectedId : null
   const detail = useInterviewQuery(
     `practice:${visibleSelectedId || 'none'}`,
     () => visibleSelectedId ? interviewApi.practice(visibleSelectedId) : Promise.resolve(null),
     [visibleSelectedId],
     { cache: false },
   )
-  const selected = detail.data?.resource?.data || null
+  const savedDetail = detail.data?.resource?.data
+  const selected = savedDetail?.id === visibleSelectedId ? savedDetail : advancePending ? advancedPractice : null
+  const advanced = (session) => {
+    setAdvancedSession({ session, codeContext: { practiceId: session.practice.id, questionId: session.currentQuestionId, sessionRevision: session.revision, presentationId: `workspace-code:${session.revision}:${Date.now()}` } })
+    setSelectedId(session.practice.id)
+  }
   const run = (name, payload) => command.run(name, payload).catch(() => null)
   const createPractice = async (payload) => {
     const result = await run('session.start', payload)
@@ -235,8 +284,10 @@ export function PracticeLibrary({
           h('div', { className: 'di-history-empty-title' }, emptyState.title),
           h('span', null, emptyState.detail)),
     visibleSelectedId ? h('div', { className: 'di-history-detail' },
-      detail.loading ? h(Loading, { label: '正在读取练习详情…' })
-        : h(PracticeDetail, { practice: selected, sessionId, onDeleted: () => { setSelectedId(null); interviewApi.invalidate() } })) : null)
+      !selected ? h(Loading, { label: '正在读取练习详情…' })
+        : h(PracticeDetail, { key: selected.id, practice: selected, sessionId, onAdvanced: advanced,
+            initialCodeContext: advancedSession?.codeContext?.practiceId === selected.id ? advancedSession.codeContext : null,
+            onDeleted: () => { setSelectedId(null); interviewApi.invalidate() } })) : null)
 }
 
 export function InsightsCard() {

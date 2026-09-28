@@ -54,7 +54,7 @@ export function normalizeReferenceRecord(record = {}) {
     category: text(record.category, 40),
     tags: uniqueStrings(record.tags || []).slice(0, 8),
     url: text(record.url, 300),
-    statement: text(record.statement, 3000),
+    statement: text(record.statement, 20000),
     examples,
     constraints: uniqueStrings(record.constraints || []).slice(0, MATERIALS_LIMITS.constraints),
     advanced: text(record.advanced, 600),

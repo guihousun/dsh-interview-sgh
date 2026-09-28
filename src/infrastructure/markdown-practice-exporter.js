@@ -7,6 +7,7 @@ import { leetcodeGuidanceLabel } from '../domain/leetcode-guidance.js'
 import { leetcodeLanguageLabel } from '../domain/leetcode-languages.js'
 import { summarizePractice } from '../domain/practice.js'
 import { defaultDataDirectory } from './paths.js'
+import { leetcodeDifficultyTagsLabel } from '../domain/leetcode-problems.js'
 
 const ALL_SECTIONS = ['metadata', 'questions', 'answers', 'evaluations', 'explanations', 'summary']
 
@@ -74,8 +75,18 @@ export function renderPracticeMarkdown(practice, include) {
     if (practice.mode === 'leetcode') lines.push(
       `- 编程语言：${leetcodeLanguageLabel(practice.config.language)}`,
       `- 引导强度：${leetcodeGuidanceLabel(practice.config.guidance)}`,
+      `- 训练专题：${practice.config.category || '全部专题'}`,
+      `- 训练难度标签：${leetcodeDifficultyTagsLabel(practice.config.difficulties)}`,
       `- 题目地址：${practice.source.content}`,
     )
+  }
+
+  if (sections.has('metadata') && (practice.config.resumeFile || practice.config.referenceMaterials?.length)) {
+    if (practice.config.resumeFile) lines.push('', `简历文件：${practice.config.resumeFile.name}`)
+    if (practice.config.referenceMaterials?.length) {
+      lines.push('', '## 参考资料')
+      for (const material of practice.config.referenceMaterials) lines.push('', `### ${material.name}`, '', ...material.text.split('\n').map((line) => `> ${line}`))
+    }
   }
 
   if (sections.has('summary')) {

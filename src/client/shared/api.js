@@ -1,3 +1,5 @@
+import { readDocumentUpload } from './document-upload.js'
+
 const cache = new Map()
 const listeners = new Set()
 const notificationListeners = new Set()
@@ -44,6 +46,10 @@ function queryString(values) {
 }
 
 export const interviewApi = {
+  async extractDocument(file) {
+    const payload = await readDocumentUpload(file)
+    return jsonRequest('/interview/api/materials/extract', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+  },
   session(sessionId) {
     return jsonRequest(`/interview/api/session?${queryString({ session: sessionId })}`)
   },
@@ -55,6 +61,12 @@ export const interviewApi = {
   },
   insights() {
     return jsonRequest('/interview/api/insights')
+  },
+  questionLearning(practiceId, questionId) {
+    return jsonRequest(`/interview/api/question-learning?${queryString({ practice: practiceId, question: questionId })}`)
+  },
+  questionSolution(practiceId, questionId) {
+    return jsonRequest(`/interview/api/question-solution?${queryString({ practice: practiceId, question: questionId })}`)
   },
   leetcodeCatalog() {
     return jsonRequest('/interview/api/leetcode')
@@ -82,8 +94,8 @@ export const interviewApi = {
     notificationListeners.add(listener)
     return () => notificationListeners.delete(listener)
   },
-  navigateWorkspace(tab) {
-    for (const listener of workspaceNavigationListeners) listener(tab)
+  navigateWorkspace(tab, context = null) {
+    for (const listener of workspaceNavigationListeners) listener(tab, context)
   },
   subscribeWorkspaceNavigation(listener) {
     workspaceNavigationListeners.add(listener)

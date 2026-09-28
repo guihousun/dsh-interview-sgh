@@ -2,7 +2,9 @@ import React from 'react'
 import { interviewApi } from '../shared/api.js'
 import { useInterviewQuery } from '../shared/hooks.js'
 import { h, Markdown } from '../shared/ui.js'
-import { leetcodeDifficultyLabel } from '../../domain/leetcode-top-100.js'
+import { QuestionLearningPanel } from './question-learning.js'
+import { QuestionSolutionPanel } from './question-solution.js'
+import { DifficultyBadge } from '../shared/difficulty-tags.js'
 
 const TIMELINE_VIEWS = [
   { id: 'question', label: '题目' },
@@ -14,11 +16,12 @@ function EmptyTimelineContent({ children }) {
   return h('div', { className: 'di-time-empty' }, children)
 }
 
-function TimelineContent({ question, view }) {
+function TimelineContent({ question, view, sessionId, practice }) {
   if (view === 'question') return (question.leetcode || question.hot100)
     ? h('div', { className: 'di-time-lc-question' },
         h('a', { className: 'di-link', href: (question.leetcode || question.hot100).url, target: '_blank', rel: 'noreferrer' }, question.prompt, ' ↗'),
-        h('div', { className: 'di-meta' }, `${(question.leetcode || question.hot100).category} · ${leetcodeDifficultyLabel((question.leetcode || question.hot100).difficulty)}`))
+        h('div', { className: 'di-meta di-problem-tags' }, (question.leetcode || question.hot100).category, h(DifficultyBadge, { difficulty: (question.leetcode || question.hot100).difficulty })),
+        h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: practice.id, question }))
     : h(Markdown, null, question.prompt)
 
   if (view === 'attempts') {
@@ -36,14 +39,7 @@ function TimelineContent({ question, view }) {
           h(Markdown, null, attempt.evaluation.feedback)) : null)))
   }
 
-  if (!question.explanation) return h(EmptyTimelineContent, null, '暂无答案')
-  return h('div', { className: 'di-time-answer' },
-    h(Markdown, null, question.explanation.detail),
-    question.explanation.memorizationPoints
-      ? h('section', { className: 'di-time-memorize' },
-          h('div', { className: 'di-time-record-label' }, question.leetcode ? '解题要点' : '直接背'),
-          h(Markdown, null, question.explanation.memorizationPoints))
-      : null)
+  return h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: practice.id, question, canGenerate: practice.status === 'active' })
 }
 
 export function TimelinePanel({ sessionId, revisionSignal }) {
@@ -56,9 +52,7 @@ export function TimelinePanel({ sessionId, revisionSignal }) {
   if (!session?.selected || !practice?.questions?.length) return null
 
   const selectedQuestion = practice.questions.find((question) => question.id === selection?.questionId)
-  const selectedViews = selectedQuestion?.leetcode
-    ? TIMELINE_VIEWS.slice(0, 1)
-    : selectedQuestion?.capabilities?.allowReveal === false
+  const selectedViews = selectedQuestion?.capabilities?.allowReveal === false
       ? TIMELINE_VIEWS.slice(0, 2)
       : TIMELINE_VIEWS
   const selectedView = selectedViews.some((item) => item.id === selection?.view) ? selection.view : null
@@ -97,5 +91,5 @@ export function TimelinePanel({ sessionId, revisionSignal }) {
             onClick: () => setSelection({ questionId: selectedQuestion.id, view: item.id }),
           }, item.label))),
         h('button', { type: 'button', onClick: () => setSelection(null), 'aria-label': '关闭' }, '×')),
-      h('div', { className: 'di-time-flyout-body', role: 'tabpanel' }, h(TimelineContent, { question: selectedQuestion, view: selectedView }))) : null)
+      h('div', { className: 'di-time-flyout-body', role: 'tabpanel' }, h(TimelineContent, { question: selectedQuestion, view: selectedView, sessionId, practice }))) : null)
 }

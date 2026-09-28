@@ -68,5 +68,9 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "mammoth": "1.13.0",
+    "unpdf": "1.8.1"
+  }
 }

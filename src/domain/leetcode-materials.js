@@ -1,7 +1,7 @@
 import { assertDomain } from './errors.js'
 
 export const MATERIALS_LIMITS = Object.freeze({
-  statement: 2000,
+  statement: 20000,
   examples: 4,
   exampleField: 300,
   constraints: 10,
