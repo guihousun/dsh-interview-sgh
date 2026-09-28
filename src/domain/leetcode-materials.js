@@ -7,10 +7,11 @@ export const MATERIALS_LIMITS = Object.freeze({
   constraints: 10,
   constraint: 300,
   hints: 4,
-  hint: 400,
+  hint: 1200,
+  guidanceIntro: 600,
   knowledge: 4,
   knowledgeTitle: 60,
-  knowledgeDetail: 600,
+  knowledgeDetail: 1200,
   pitfalls: 5,
   pitfall: 300,
   related: 5,
@@ -88,12 +89,12 @@ function normalizeRelated(value) {
 function normalizeSource(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return {
-    // 材料正文始终由模型撰写；official 只表示示例与数据范围取自官方题面。
-    kind: 'model',
+    kind: value.kind === 'local' ? 'local' : 'model',
     official: value.official === true,
     file: optionalText(value.file, 200),
     anchor: optionalText(value.anchor, 200),
     url: optionalText(value.url, 300),
+    ...(value.cacheKey ? { cacheKey: optionalText(value.cacheKey, 300), reused: value.reused === true } : {}),
   }
 }
 
@@ -101,6 +102,7 @@ export function normalizeLeetcodeMaterials(input) {
   assertDomain(input && typeof input === 'object' && !Array.isArray(input), 'MATERIALS_REQUIRED', '必须提供题目材料')
   return {
     statement: requiredText(input.statement, 'INVALID_MATERIALS_STATEMENT', '题目材料必须包含题意说明', MATERIALS_LIMITS.statement),
+    guidanceIntro: optionalText(input.guidanceIntro, MATERIALS_LIMITS.guidanceIntro),
     examples: normalizeExamples(input.examples),
     constraints: textList(input.constraints, {
       code: 'INVALID_MATERIALS_CONSTRAINTS', message: '数据范围必须是字符串', maximum: MATERIALS_LIMITS.constraints, itemMaximum: MATERIALS_LIMITS.constraint,

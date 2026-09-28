@@ -32,6 +32,51 @@ function aggregate() {
   return { practice, binding }
 }
 
+test('题库缓存与生成锁随 SQLite 重启保留，多个连接共同去重，删练习保留缓存', async () => {
+  const context = fixture(), other = new SqliteInterviewRepository(context.repository.filePath)
+  try {
+    const entry = { key: 'merge-intervals:python:guidance:guided:v1', slug: 'merge-intervals', language: 'python',
+      kind: 'guidance', variant: 'guided', fingerprint: 'v1' }
+    const first = await context.repository.reserveLearningRequest(entry, { requestId: 'r1', questionId: 'q1', now: 100, timeout: 180000 })
+    assert.equal(first.claimed, true)
+    const duplicate = await other.reserveLearningRequest(entry, { requestId: 'r2', questionId: 'q2', now: 110, force: true, timeout: 180000 })
+    assert.equal(duplicate.claimed, false)
+    assert.equal((await other.getLearningCache(entry.key)).requestId, 'r1')
+    assert.equal((await other.findLearningRequest('q1', 'guidance')).key, entry.key)
+    const payload = { hints: ['已保存提示'] }
+    await context.repository.commit({ ...aggregate(), learningCache: [{ ...entry, requestId: 'r1', payload,
+      originQuestionId: 'q1', createdAt: 120, updatedAt: 120 }] })
+    assert.deepEqual((await other.getLearningCache(entry.key)).payload, payload)
+    assert.equal((await other.getLearningCache(entry.key)).requestId, null)
+    await context.repository.deletePractice('practice-1')
+    assert.equal((await other.getLearningCache(entry.key)).status, 'ready')
+    const restarted = new SqliteInterviewRepository(context.repository.filePath)
+    try { assert.deepEqual((await restarted.getLearningCache(entry.key)).payload, payload) } finally { restarted.close() }
+  } finally { other.close(); context.cleanup() }
+})
+
+test('旧生成结果不能覆盖新请求或修改练习，失败状态保留已完成缓存', async () => {
+  const context = fixture()
+  try {
+    const entry = { key: 'test-key', slug: 'merge-intervals', language: 'python', kind: 'solution', variant: 'reference', fingerprint: 'v1' }
+    const payload = { detail: '已有完整讲解' }
+    assert.equal(await context.repository.seedLearningCache({ ...entry, payload, originQuestionId: 'q1', createdAt: 1, updatedAt: 1 }), true)
+    assert.equal(await context.repository.seedLearningCache({ ...entry, payload: { detail: '不得覆盖' }, originQuestionId: 'q2', createdAt: 2, updatedAt: 2 }), false)
+    const original = aggregate()
+    await context.repository.commit(original)
+    const request = await context.repository.reserveLearningRequest(entry, { requestId: 'new', questionId: 'q1', now: 10, force: true, timeout: 180000 })
+    assert.equal(request.claimed, true)
+    const revised = { ...original.practice, topic: '不应写入' }
+    await assert.rejects(context.repository.commit({ practice: revised, learningCache: [{ ...entry, payload: { detail: '迟到结果' },
+      requestId: 'old', originQuestionId: 'q1', createdAt: 11, updatedAt: 11 }] }), /旧结果没有覆盖/)
+    assert.deepEqual(await context.repository.getPractice(original.practice.id), original.practice)
+    assert.deepEqual((await context.repository.getLearningCache(entry.key)).payload, payload)
+    await context.repository.failLearningRequest(entry.key, 'new', '服务暂不可用')
+    assert.equal((await context.repository.getLearningCache(entry.key)).status, 'failed')
+    assert.deepEqual((await context.repository.getLearningCache(entry.key)).payload, payload)
+  } finally { context.cleanup() }
+})
+
 test('SQLite 事务保存并恢复完整聚合与无阶段会话绑定', async () => {
   const context = fixture()
   try {
@@ -40,6 +85,37 @@ test('SQLite 事务保存并恢复完整聚合与无阶段会话绑定', async (
     assert.deepEqual(await context.repository.getPractice(practice.id), practice)
     assert.deepEqual(await context.repository.getSessionBinding(binding.sessionId), binding)
     assert.equal(context.repository.database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='session_cursors'").get(), undefined)
+  } finally { context.cleanup() }
+})
+
+test('完成标记与作答聚合事务提交，标记写入失败时不留下半份点评', async () => {
+  const context = fixture()
+  try {
+    const original = aggregate()
+    await context.repository.commit(original)
+    context.repository.database.exec(`CREATE TEMP TRIGGER reject_progress BEFORE INSERT ON leetcode_progress
+      BEGIN SELECT RAISE(ABORT, '模拟完成标记写入失败'); END`)
+    await assert.rejects(context.repository.commit({ practice: { ...original.practice, topic: '不应保存' },
+      leetcodeProgress: [{ slug: 'two-sum', completed: true, completedAt: 100, updatedAt: 100, automatic: true }] }), /标记写入失败/)
+    assert.deepEqual(await context.repository.getPractice(original.practice.id), original.practice)
+    assert.deepEqual(await context.repository.listLeetcodeProgress(), [])
+  } finally { context.cleanup() }
+})
+
+test('自动标记保持首次完成时间，晚到的旧事件不覆盖手动取消，重启后进度持久保留', async () => {
+  const context = fixture()
+  try {
+    const auto = (time) => ({ slug: 'two-sum', completed: true, completedAt: time, updatedAt: time, automatic: true })
+    await context.repository.commit({ leetcodeProgress: [auto(100), auto(110)] })
+    assert.equal((await context.repository.listLeetcodeProgress())[0].completedAt, 100)
+    await context.repository.saveLeetcodeProgress({ slug: 'two-sum', completed: false, completedAt: null, updatedAt: 200 })
+    await context.repository.commit({ leetcodeProgress: [auto(150)] })
+    assert.equal((await context.repository.listLeetcodeProgress())[0].completed, false)
+    await context.repository.commit({ leetcodeProgress: [{ ...auto(250), answeredAt: 150 }] })
+    assert.equal((await context.repository.listLeetcodeProgress())[0].completed, false)
+    await context.repository.commit({ leetcodeProgress: [auto(250)] })
+    const reopened = new SqliteInterviewRepository(context.repository.filePath)
+    try { assert.equal((await reopened.listLeetcodeProgress())[0].completedAt, 250) } finally { reopened.close() }
   } finally { context.cleanup() }
 })
 

@@ -274,6 +274,8 @@ function definitionsFor(afterExecute = null) {
         question_id: { type: 'string', minLength: 1 },
         detail: { type: 'string', minLength: 1 },
         memorization_points: { type: 'string', minLength: 1 },
+        scope: { type: 'string', enum: ['reference', 'attempt'], description: 'reference 是可跨练习复用的通用题解，不提个人作答；attempt 是本次作答的专用修正版，不进入公共题库缓存' },
+        request_id: { type: 'string', description: '生成请求给出的 request_id，原样传回，避免旧请求覆盖新缓存' },
       },
       required: ['operation', 'question_id', 'detail', 'memorization_points'],
       additionalProperties: false,
@@ -284,6 +286,7 @@ function definitionsFor(afterExecute = null) {
       detail: args.detail,
       memorizationPoints: args.memorization_points,
       replace: args.operation === 'replace',
+      scope: args.scope, requestId: args.request_id,
     }),
   }),
   atomicTool({
@@ -333,7 +336,10 @@ function definitionsFor(afterExecute = null) {
       properties: {
         operation: { type: 'string', enum: ['create', 'replace'] },
         question_id: { type: 'string', minLength: 1, description: '不传时使用当前会话的当前题' },
+        request_id: { type: 'string', description: '引导生成请求的 request_id，原样传回' },
+        reusable: { type: 'boolean', description: '仅当内容适用于以后练习同一道题、不引用个人作答时设为 true' },
         statement: { type: 'string', minLength: 1, maxLength: 2000, description: '用中文复述题意：输入是什么、要求输出什么、有什么约束' },
+        guidance_intro: { type: 'string', maxLength: 600, description: '针对本题的学习目标和推导路线，点出本题要理解的具体关系，不提前揭示最优算法或答案' },
         examples: {
           type: 'array',
           items: {
@@ -348,7 +354,7 @@ function definitionsFor(afterExecute = null) {
           },
         },
         constraints: { type: 'array', items: { type: 'string', minLength: 1 }, description: '数据范围与约束，例如 1 <= nums.length <= 10^4' },
-        hints: { type: 'array', items: { type: 'string', minLength: 1 }, description: '由浅入深的分级提示，引导模式 4 级、标准模式 3 级；最后一级才允许接近伪代码' },
+        hints: { type: 'array', maxItems: 4, items: { type: 'string', minLength: 1, maxLength: 1200 }, description: '引导模式恰好 4 级、标准模式恰好 3 级。每级用 Markdown 写本题的关键观察、具体小例子和一个自检问题；解释为什么，逐步到状态不变量和边界，最后一级才允许局部伪代码，不提供完整代码' },
         knowledge: {
           type: 'array',
           items: {
@@ -386,8 +392,10 @@ function definitionsFor(afterExecute = null) {
       return application.saveAtomicMaterials(sessionId, {
         questionId: args.question_id,
         replace: args.operation === 'replace',
+        requestId: args.request_id, reusable: args.reusable,
         materials: {
           statement: args.statement,
+          guidanceIntro: args.guidance_intro,
           examples: args.examples,
           constraints: args.constraints,
           hints: args.hints,

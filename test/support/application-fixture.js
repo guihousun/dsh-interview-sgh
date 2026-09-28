@@ -11,6 +11,7 @@ export class InMemoryInterviewRepository {
     this.leetcodeProgress = new Map()
     this.references = new Map()
     this.topicNotes = new Map()
+    this.learningCache = new Map()
   }
 
   async findReference(slug) { return clone(this.references.get(slug) || null) }
@@ -58,7 +59,11 @@ export class InMemoryInterviewRepository {
     return clone([...this.bindings.values()].find((binding) => binding.practiceId === practiceId) || null)
   }
 
-  async commit({ practice, practices = [], binding, unbindSessionId }) {
+  async commit({ practice, practices = [], binding, unbindSessionId, learningCache = [], leetcodeProgress = [] }) {
+    for (const entry of learningCache) {
+      const current = this.learningCache.get(entry.key)
+      if (entry.requestId ? current?.requestId !== entry.requestId : current?.status === 'generating') throw new Error('生成请求已被替换')
+    }
     for (const item of [...practices, ...(practice ? [practice] : [])]) this.practices.set(item.id, clone(item))
     if (unbindSessionId) this.bindings.delete(unbindSessionId)
     if (binding) {
@@ -66,6 +71,11 @@ export class InMemoryInterviewRepository {
         if (selected.practiceId === binding.practiceId) this.bindings.delete(sessionId)
       }
       this.bindings.set(binding.sessionId, clone(binding))
+    }
+    for (const entry of learningCache) this.learningCache.set(entry.key, clone({ ...entry, requestId: null, status: 'ready', error: '' }))
+    for (const { automatic, answeredAt, ...progress } of leetcodeProgress) {
+      const current = this.leetcodeProgress.get(progress.slug)
+      if (!automatic || !current || (!current.completed && current.updatedAt < progress.updatedAt && current.updatedAt < (answeredAt ?? progress.updatedAt))) this.leetcodeProgress.set(progress.slug, clone(progress))
     }
   }
 
@@ -79,6 +89,31 @@ export class InMemoryInterviewRepository {
   async listLeetcodeProgress() { return [...this.leetcodeProgress.values()].map(clone) }
 
   async saveLeetcodeProgress(progress) { this.leetcodeProgress.set(progress.slug, clone(progress)) }
+
+  async getLearningCache(key) { return clone(this.learningCache.get(key) || null) }
+  async findLearningRequest(questionId, kind) {
+    return clone([...this.learningCache.values()].filter((entry) => entry.questionId === questionId && entry.kind === kind && entry.requestId)
+      .sort((a, b) => b.startedAt - a.startedAt)[0] || null)
+  }
+  async findLearningOrigin(questionId, kind) {
+    return clone([...this.learningCache.values()].filter((entry) => entry.originQuestionId === questionId && entry.kind === kind)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null)
+  }
+  async seedLearningCache(entry) {
+    if (this.learningCache.has(entry.key)) return false
+    this.learningCache.set(entry.key, clone({ ...entry, status: 'ready', requestId: null, error: '' }))
+    return true
+  }
+  async reserveLearningRequest(entry, { requestId, questionId, now, force, timeout }) {
+    const current = this.learningCache.get(entry.key)
+    const claimed = !(current?.status === 'generating' && now - current.startedAt < timeout) && (force || !current?.payload)
+    if (claimed) this.learningCache.set(entry.key, clone({ ...entry, ...current, requestId, questionId, startedAt: now, status: 'generating', error: '' }))
+    return { claimed, entry: await this.getLearningCache(entry.key) }
+  }
+  async failLearningRequest(key, requestId, error) {
+    const entry = this.learningCache.get(key)
+    if (entry?.requestId === requestId) { entry.status = 'failed'; entry.error = error }
+  }
 }
 
 export function applicationFixture() {

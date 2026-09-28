@@ -3,6 +3,7 @@ import { LEETCODE_TOP_100_SOURCE, leetcodeTop100Problem } from './leetcode-top-1
 import { LEETCODE_LANGUAGES, leetcodeLanguageDefinition } from './leetcode-languages.js'
 import { leetcodeGuidanceDefinition } from './leetcode-guidance.js'
 import { hintTotalOf, normalizeLeetcodeMaterials } from './leetcode-materials.js'
+import { assertSolutionCodeComments } from './solution-code-comments.js'
 import { LEETCODE_CATEGORIES, leetcodeProblemQueryLabel, normalizeLeetcodeDifficulties, resolveLeetcodeProblem } from './leetcode-problems.js'
 import { modeDefinition } from './modes.js'
 import { assertModeCapability } from './mode-capabilities.js'
@@ -248,7 +249,7 @@ export function evaluateAnswer(practice, { questionId, attemptId, score, feedbac
   return { practice: withUpdatedAt(practice, now, { questions }), evaluation }
 }
 
-export function saveExplanation(practice, { questionId, detail, memorizationPoints, replace = false, now }) {
+export function saveExplanation(practice, { questionId, detail, memorizationPoints, replace = false, scope, now }) {
   activePractice(practice)
   assertModeCapability(
     practice,
@@ -258,6 +259,7 @@ export function saveExplanation(practice, { questionId, detail, memorizationPoin
   )
   const target = findQuestion(practice, questionId)
   assertDomain(replace || !target.explanation, 'EXPLANATION_ALREADY_EXISTS', '该题已经存在讲解')
+  assertDomain(scope === undefined || ['reference', 'attempt'].includes(scope), 'INVALID_EXPLANATION_SCOPE', '讲解范围必须是 reference 或 attempt')
   const normalizedDetail = requiredText(detail, 'INVALID_EXPLANATION', '讲解内容不能为空')
   if (target.leetcode) {
     const selectedLanguage = leetcodeLanguageDefinition(practice.config.language)
@@ -277,11 +279,13 @@ export function saveExplanation(practice, { questionId, detail, memorizationPoin
       `力扣讲解只能包含配置的 ${selectedLanguage.label} 代码`,
       { language: selectedLanguage.id, unexpectedLanguages },
     )
+    assertSolutionCodeComments(normalizedDetail, selectedLanguage.id)
   }
   const explanation = {
     detail: normalizedDetail,
     memorizationPoints: requiredText(memorizationPoints, 'INVALID_MEMORIZATION_POINTS', '讲解要点不能为空'),
     createdAt: now,
+    ...(practice.mode === 'leetcode' ? { scope: scope === 'reference' || (!scope && !target.attempts.length) ? 'reference' : 'attempt' } : {}),
   }
   const questions = practice.questions.map((question) => question.id === target.id
     ? { ...question, explanation }
@@ -289,7 +293,7 @@ export function saveExplanation(practice, { questionId, detail, memorizationPoin
   return { practice: withUpdatedAt(practice, now, { questions }), explanation }
 }
 
-export function saveMaterials(practice, { questionId, materials, replace = false, now }) {
+export function saveMaterials(practice, { questionId, materials, replace = false, resetHints = false, now }) {
   activePractice(practice)
   assertModeCapability(
     practice,
@@ -301,7 +305,7 @@ export function saveMaterials(practice, { questionId, materials, replace = false
   assertDomain(target.leetcode, 'MATERIALS_LEETCODE_ONLY', '只有力扣题目支持题目材料')
   assertDomain(replace || !target.materials, 'MATERIALS_ALREADY_EXISTS', '该题已经存在题目材料')
   const normalized = normalizeLeetcodeMaterials(materials)
-  const hintLevel = Math.min(Number(target.hintLevel) || 0, hintTotalOf(normalized))
+  const hintLevel = resetHints ? 0 : Math.min(Number(target.hintLevel) || 0, hintTotalOf(normalized))
   const questions = practice.questions.map((question) => question.id === target.id
     ? { ...question, materials: normalized, hintLevel }
     : question)

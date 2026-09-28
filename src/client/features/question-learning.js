@@ -4,11 +4,35 @@ import { useCommand, useInterviewQuery } from '../shared/hooks.js'
 import { Button, ErrorNotice, h, Loading, Markdown } from '../shared/ui.js'
 
 export function QuestionLearningPanel({ sessionId, practiceId, question }) {
-  const query = useInterviewQuery(`learning:${practiceId}:${question.id}`, () => interviewApi.questionLearning(practiceId, question.id), [practiceId, question.id], { cache: false })
+  const query = useInterviewQuery(`learning:${sessionId}:${practiceId}:${question.id}`, () => interviewApi.questionLearning(practiceId, question.id, sessionId), [sessionId, practiceId, question.id], { cache: false })
   const command = useCommand(sessionId)
   const [bodyOpen, setBodyOpen] = React.useState(true)
   const [guideOpen, setGuideOpen] = React.useState(true)
+  const [pollCount, setPollCount] = React.useState(0)
+  const autoRequested = React.useRef('')
+  const reloadRef = React.useRef(query.reload)
+  reloadRef.current = query.reload
   const context = query.data?.resource?.data
+  const guide = context?.guidance
+  const generating = guide?.status === 'generating'
+  const generate = async (force = false, automatic = false) => {
+    try {
+      await command.run('question.guidance-generate', { practiceId, questionId: question.id, force, automatic })
+      setPollCount(0)
+      await reloadRef.current()
+    } catch { /* 原题、材料和代码草稿继续保留，用户可以重试。 */ }
+  }
+  React.useEffect(() => {
+    const key = `${sessionId}:${practiceId}:${question.id}`
+    if (!guideOpen || !guide?.canAutoGenerate || guide.ready || guide.status !== 'missing' || autoRequested.current === key) return
+    autoRequested.current = key
+    void generate(false, true)
+  }, [sessionId, practiceId, question.id, guideOpen, guide?.canAutoGenerate, guide?.ready, guide?.status])
+  React.useEffect(() => {
+    if (!guideOpen || !generating || pollCount >= 90) return undefined
+    const timer = setTimeout(() => { void reloadRef.current(); setPollCount((value) => value + 1) }, 2000)
+    return () => clearTimeout(timer)
+  }, [guideOpen, generating, guide?.requestId, pollCount])
   const reveal = async () => {
     try {
       await command.run('question.learning-hint', { practiceId, questionId: question.id })
@@ -41,19 +65,31 @@ export function QuestionLearningPanel({ sessionId, practiceId, question }) {
         problem.url ? h('a', { className: 'di-link', href: problem.url, target: '_blank', rel: 'noreferrer' }, '查看官方题目 ↗') : null) : null) : null,
     guidance.enabled || guidance.hintTotal ? h('section', { className: 'di-guided-panel', 'aria-label': guidance.enabled ? '引导模式' : '解题提示' },
       h('div', { className: 'di-learning-heading' },
-        h('h4', null, guidance.enabled ? '引导模式：一步一步来' : '解题提示'),
+        h('h4', null, guidance.enabled ? 'AI 引导：一步一步推导' : 'AI 解题提示'),
         h(Button, { 'aria-expanded': guideOpen, onClick: () => setGuideOpen((value) => !value) }, guideOpen ? '收起引导' : '展开引导')),
       guideOpen ? h(React.Fragment, null,
-        guidance.enabled ? h('div', { className: 'di-guided-intro' },
+        h('div', { className: 'di-meta', role: 'status' }, guidance.ready
+          ? guidance.reused ? '复用题库中的 AI 引导 · 本次未请求 AI · 提示逐级解锁'
+            : guidance.cached ? 'AI 引导已存入题库 · 再次练习直接复用' : 'AI 针对本题生成 · 提示逐级解锁'
+          : '首次生成后存入题库，重做直接复用；完整答案保持遮蔽'),
+        generating ? h(Loading, { label: pollCount >= 90 ? 'AI 尚未完成，请查看对话中的状态后重试。' : 'AI 正在阅读题面并推导逐级引导…' }) : null,
+        guidance.enabled && guidance.ready ? h('div', { className: 'di-guided-intro' },
           h('div', { className: 'di-guided-stages' }, ['读懂题意', '手推示例', '推导思路', '自己编码'].map((label, index) => h('span', { key: label, className: index === Math.min(guidance.hintLevel, 3) ? 'is-current' : '' }, `${index + 1}. ${label}`))),
           h('p', null, guidance.introduction)) : null,
         guidance.knowledge.length ? h('div', { className: 'di-guided-knowledge' }, h('h5', null, '先补前置知识'),
           guidance.knowledge.map((knowledge) => h('div', { key: knowledge.title }, h('div', { className: 'di-lc-knowledge-title' }, knowledge.title), h(Markdown, null, knowledge.detail)))) : null,
         guidance.revealedHints.map((hint, index) => h('div', { className: 'di-guided-hint', key: index }, h('h5', null, `第 ${index + 1} 级引导`), h(Markdown, null, hint))),
+        !guidance.ready && !generating ? h('p', { className: 'di-meta' }, guidance.canAutoGenerate
+          ? '题库中还没有当前语言和模式的引导，首次生成后会保存供以后复用。'
+          : guidance.canGenerate ? '点击生成，让 AI 根据这道题的示例、约束和练习语言编写引导。' : '这道题尚未生成 AI 引导，请先重新打开练习。') : null,
         h('div', { className: 'di-guided-actions' },
-          h('span', { className: 'di-meta', role: 'status' }, `已解锁 ${guidance.hintLevel}/${guidance.hintTotal}，不会自动展示后续提示或答案`),
-          h(Button, { tone: 'primary', disabled: !sessionId || !guidance.canReveal, busy: command.busy === 'question.learning-hint', onClick: reveal },
-            guidance.hintLevel >= guidance.hintTotal ? '引导已全部解锁' : guidance.enabled ? '解锁下一步引导' : '给我一个提示')),
-        h(ErrorNotice, null, command.error)) : null) : null,
+          guidance.ready ? h(React.Fragment, null,
+            h('span', { className: 'di-meta', role: 'status' }, `已解锁 ${guidance.hintLevel}/${guidance.hintTotal}，不会自动展示后续提示或答案`),
+            h(Button, { tone: 'primary', disabled: !sessionId || !guidance.canReveal || generating || Boolean(command.busy), busy: command.busy === 'question.learning-hint', onClick: reveal },
+              guidance.hintLevel >= guidance.hintTotal ? '引导已全部解锁' : guidance.enabled ? '解锁下一步引导' : '给我一个提示')) : null,
+          guidance.canGenerate ? h(Button, { tone: guidance.ready ? 'default' : 'primary', disabled: !sessionId || generating || Boolean(command.busy), busy: command.busy === 'question.guidance-generate',
+            title: guidance.ready ? '会重新请求 AI 并更新题库缓存，从第 1 级重新解锁；代码草稿保留' : undefined,
+            onClick: () => generate(guidance.ready) }, guidance.ready ? '重新生成 AI 引导' : '生成 AI 引导') : null),
+        h(ErrorNotice, null, command.error || guidance.error)) : null) : null,
     h(ErrorNotice, null, query.error))
 }

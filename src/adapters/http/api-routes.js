@@ -100,7 +100,7 @@ export function registerApiRoutes(hostCtx, { application, eventBridge, exporter,
       if (request.method !== 'GET') return sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '仅支持 GET' } })
       try {
         const params = query(request)
-        sendJson(response, 200, await application[method](params.get('practice'), params.get('question')))
+        sendJson(response, 200, await application[method](params.get('practice'), params.get('question'), params.get('session')))
       } catch (error) {
         const output = errorResponse(error); sendJson(response, output.status, output.body)
       }

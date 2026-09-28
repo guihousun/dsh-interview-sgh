@@ -131,8 +131,8 @@ var interviewApi = {
   insights() {
     return jsonRequest("/interview/api/insights");
   },
-  questionLearning(practiceId, questionId) {
-    return jsonRequest(`/interview/api/question-learning?${queryString({ practice: practiceId, question: questionId })}`);
+  questionLearning(practiceId, questionId, sessionId = null) {
+    return jsonRequest(`/interview/api/question-learning?${queryString({ practice: practiceId, question: questionId, session: sessionId })}`);
   },
   questionSolution(practiceId, questionId) {
     return jsonRequest(`/interview/api/question-solution?${queryString({ practice: practiceId, question: questionId })}`);
@@ -1448,11 +1448,39 @@ function CodeAnswerEditor({ sessionId, question, artifact, language = "", disabl
 // src/client/features/question-learning.js
 var import_react8 = __toESM(require("react"), 1);
 function QuestionLearningPanel({ sessionId, practiceId, question }) {
-  const query = useInterviewQuery(`learning:${practiceId}:${question.id}`, () => interviewApi.questionLearning(practiceId, question.id), [practiceId, question.id], { cache: false });
+  const query = useInterviewQuery(`learning:${sessionId}:${practiceId}:${question.id}`, () => interviewApi.questionLearning(practiceId, question.id, sessionId), [sessionId, practiceId, question.id], { cache: false });
   const command = useCommand(sessionId);
   const [bodyOpen, setBodyOpen] = import_react8.default.useState(true);
   const [guideOpen, setGuideOpen] = import_react8.default.useState(true);
+  const [pollCount, setPollCount] = import_react8.default.useState(0);
+  const autoRequested = import_react8.default.useRef("");
+  const reloadRef = import_react8.default.useRef(query.reload);
+  reloadRef.current = query.reload;
   const context = query.data?.resource?.data;
+  const guide = context?.guidance;
+  const generating = guide?.status === "generating";
+  const generate = async (force = false, automatic = false) => {
+    try {
+      await command.run("question.guidance-generate", { practiceId, questionId: question.id, force, automatic });
+      setPollCount(0);
+      await reloadRef.current();
+    } catch {
+    }
+  };
+  import_react8.default.useEffect(() => {
+    const key = `${sessionId}:${practiceId}:${question.id}`;
+    if (!guideOpen || !guide?.canAutoGenerate || guide.ready || guide.status !== "missing" || autoRequested.current === key) return;
+    autoRequested.current = key;
+    void generate(false, true);
+  }, [sessionId, practiceId, question.id, guideOpen, guide?.canAutoGenerate, guide?.ready, guide?.status]);
+  import_react8.default.useEffect(() => {
+    if (!guideOpen || !generating || pollCount >= 90) return void 0;
+    const timer = setTimeout(() => {
+      void reloadRef.current();
+      setPollCount((value) => value + 1);
+    }, 2e3);
+    return () => clearTimeout(timer);
+  }, [guideOpen, generating, guide?.requestId, pollCount]);
   const reveal = async () => {
     try {
       await command.run("question.learning-hint", { practiceId, questionId: question.id });
@@ -1509,13 +1537,15 @@ function QuestionLearningPanel({ sessionId, practiceId, question }) {
       h(
         "div",
         { className: "di-learning-heading" },
-        h("h4", null, guidance.enabled ? "\u5F15\u5BFC\u6A21\u5F0F\uFF1A\u4E00\u6B65\u4E00\u6B65\u6765" : "\u89E3\u9898\u63D0\u793A"),
+        h("h4", null, guidance.enabled ? "AI \u5F15\u5BFC\uFF1A\u4E00\u6B65\u4E00\u6B65\u63A8\u5BFC" : "AI \u89E3\u9898\u63D0\u793A"),
         h(Button, { "aria-expanded": guideOpen, onClick: () => setGuideOpen((value) => !value) }, guideOpen ? "\u6536\u8D77\u5F15\u5BFC" : "\u5C55\u5F00\u5F15\u5BFC")
       ),
       guideOpen ? h(
         import_react8.default.Fragment,
         null,
-        guidance.enabled ? h(
+        h("div", { className: "di-meta", role: "status" }, guidance.ready ? guidance.reused ? "\u590D\u7528\u9898\u5E93\u4E2D\u7684 AI \u5F15\u5BFC \xB7 \u672C\u6B21\u672A\u8BF7\u6C42 AI \xB7 \u63D0\u793A\u9010\u7EA7\u89E3\u9501" : guidance.cached ? "AI \u5F15\u5BFC\u5DF2\u5B58\u5165\u9898\u5E93 \xB7 \u518D\u6B21\u7EC3\u4E60\u76F4\u63A5\u590D\u7528" : "AI \u9488\u5BF9\u672C\u9898\u751F\u6210 \xB7 \u63D0\u793A\u9010\u7EA7\u89E3\u9501" : "\u9996\u6B21\u751F\u6210\u540E\u5B58\u5165\u9898\u5E93\uFF0C\u91CD\u505A\u76F4\u63A5\u590D\u7528\uFF1B\u5B8C\u6574\u7B54\u6848\u4FDD\u6301\u906E\u853D"),
+        generating ? h(Loading, { label: pollCount >= 90 ? "AI \u5C1A\u672A\u5B8C\u6210\uFF0C\u8BF7\u67E5\u770B\u5BF9\u8BDD\u4E2D\u7684\u72B6\u6001\u540E\u91CD\u8BD5\u3002" : "AI \u6B63\u5728\u9605\u8BFB\u9898\u9762\u5E76\u63A8\u5BFC\u9010\u7EA7\u5F15\u5BFC\u2026" }) : null,
+        guidance.enabled && guidance.ready ? h(
           "div",
           { className: "di-guided-intro" },
           h("div", { className: "di-guided-stages" }, ["\u8BFB\u61C2\u9898\u610F", "\u624B\u63A8\u793A\u4F8B", "\u63A8\u5BFC\u601D\u8DEF", "\u81EA\u5DF1\u7F16\u7801"].map((label, index) => h("span", { key: label, className: index === Math.min(guidance.hintLevel, 3) ? "is-current" : "" }, `${index + 1}. ${label}`))),
@@ -1528,17 +1558,29 @@ function QuestionLearningPanel({ sessionId, practiceId, question }) {
           guidance.knowledge.map((knowledge) => h("div", { key: knowledge.title }, h("div", { className: "di-lc-knowledge-title" }, knowledge.title), h(Markdown, null, knowledge.detail)))
         ) : null,
         guidance.revealedHints.map((hint, index) => h("div", { className: "di-guided-hint", key: index }, h("h5", null, `\u7B2C ${index + 1} \u7EA7\u5F15\u5BFC`), h(Markdown, null, hint))),
+        !guidance.ready && !generating ? h("p", { className: "di-meta" }, guidance.canAutoGenerate ? "\u9898\u5E93\u4E2D\u8FD8\u6CA1\u6709\u5F53\u524D\u8BED\u8A00\u548C\u6A21\u5F0F\u7684\u5F15\u5BFC\uFF0C\u9996\u6B21\u751F\u6210\u540E\u4F1A\u4FDD\u5B58\u4F9B\u4EE5\u540E\u590D\u7528\u3002" : guidance.canGenerate ? "\u70B9\u51FB\u751F\u6210\uFF0C\u8BA9 AI \u6839\u636E\u8FD9\u9053\u9898\u7684\u793A\u4F8B\u3001\u7EA6\u675F\u548C\u7EC3\u4E60\u8BED\u8A00\u7F16\u5199\u5F15\u5BFC\u3002" : "\u8FD9\u9053\u9898\u5C1A\u672A\u751F\u6210 AI \u5F15\u5BFC\uFF0C\u8BF7\u5148\u91CD\u65B0\u6253\u5F00\u7EC3\u4E60\u3002") : null,
         h(
           "div",
           { className: "di-guided-actions" },
-          h("span", { className: "di-meta", role: "status" }, `\u5DF2\u89E3\u9501 ${guidance.hintLevel}/${guidance.hintTotal}\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u5C55\u793A\u540E\u7EED\u63D0\u793A\u6216\u7B54\u6848`),
-          h(
-            Button,
-            { tone: "primary", disabled: !sessionId || !guidance.canReveal, busy: command.busy === "question.learning-hint", onClick: reveal },
-            guidance.hintLevel >= guidance.hintTotal ? "\u5F15\u5BFC\u5DF2\u5168\u90E8\u89E3\u9501" : guidance.enabled ? "\u89E3\u9501\u4E0B\u4E00\u6B65\u5F15\u5BFC" : "\u7ED9\u6211\u4E00\u4E2A\u63D0\u793A"
-          )
+          guidance.ready ? h(
+            import_react8.default.Fragment,
+            null,
+            h("span", { className: "di-meta", role: "status" }, `\u5DF2\u89E3\u9501 ${guidance.hintLevel}/${guidance.hintTotal}\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u5C55\u793A\u540E\u7EED\u63D0\u793A\u6216\u7B54\u6848`),
+            h(
+              Button,
+              { tone: "primary", disabled: !sessionId || !guidance.canReveal || generating || Boolean(command.busy), busy: command.busy === "question.learning-hint", onClick: reveal },
+              guidance.hintLevel >= guidance.hintTotal ? "\u5F15\u5BFC\u5DF2\u5168\u90E8\u89E3\u9501" : guidance.enabled ? "\u89E3\u9501\u4E0B\u4E00\u6B65\u5F15\u5BFC" : "\u7ED9\u6211\u4E00\u4E2A\u63D0\u793A"
+            )
+          ) : null,
+          guidance.canGenerate ? h(Button, {
+            tone: guidance.ready ? "default" : "primary",
+            disabled: !sessionId || generating || Boolean(command.busy),
+            busy: command.busy === "question.guidance-generate",
+            title: guidance.ready ? "\u4F1A\u91CD\u65B0\u8BF7\u6C42 AI \u5E76\u66F4\u65B0\u9898\u5E93\u7F13\u5B58\uFF0C\u4ECE\u7B2C 1 \u7EA7\u91CD\u65B0\u89E3\u9501\uFF1B\u4EE3\u7801\u8349\u7A3F\u4FDD\u7559" : void 0,
+            onClick: () => generate(guidance.ready)
+          }, guidance.ready ? "\u91CD\u65B0\u751F\u6210 AI \u5F15\u5BFC" : "\u751F\u6210 AI \u5F15\u5BFC") : null
         ),
-        h(ErrorNotice, null, command.error)
+        h(ErrorNotice, null, command.error || guidance.error)
       ) : null
     ) : null,
     h(ErrorNotice, null, query.error)
@@ -1583,30 +1625,35 @@ function QuestionSolutionPanel({ sessionId, practiceId, question, canGenerate = 
   const command = useCommand(sessionId);
   const query = useInterviewQuery(`solution:${practiceId}:${question.id}:${opened}`, () => opened ? interviewApi.questionSolution(practiceId, question.id) : Promise.resolve(null), [practiceId, question.id, opened], { cache: false });
   const solution = query.data?.resource?.data || (question.explanation ? { available: true, allowed: true, source: "AI \u8BB2\u89E3", ...question.explanation } : null);
+  const generating = solution?.status === "generating" || pending;
   const reloadRef = import_react10.default.useRef(query.reload);
   reloadRef.current = query.reload;
   import_react10.default.useEffect(() => {
-    if (pending && solution?.available) {
+    if (pending && solution?.status !== "generating" && (solution?.available || solution?.status === "failed")) {
       setPending(false);
       setNotice("");
     }
-  }, [pending, solution?.available]);
+  }, [pending, solution?.available, solution?.status]);
   import_react10.default.useEffect(() => {
-    if (!opened || !pending || pollCount >= 20) return void 0;
+    if (!opened || !generating || pollCount >= 90) return void 0;
     const timer = setTimeout(() => {
       void reloadRef.current();
       setPollCount((value) => value + 1);
     }, 2e3);
     return () => clearTimeout(timer);
-  }, [opened, pending, pollCount]);
-  const generate = async () => {
+  }, [opened, generating, pollCount]);
+  const generate = async (force = false) => {
     try {
-      const result = await command.run("question.solution-generate", { practiceId, questionId: question.id });
+      const result = await command.run("question.solution-generate", { practiceId, questionId: question.id, force });
       if (result.analysisQueued) {
         setPending(true);
         setPollCount(0);
         setNotice("");
-      } else setNotice("\u7B54\u6848\u751F\u6210\u8BF7\u6C42\u6682\u672A\u542F\u52A8\uFF0C\u8BF7\u786E\u8BA4\u5F53\u524D\u5BF9\u8BDD\u53EF\u7528\u540E\u91CD\u8BD5\u3002");
+      } else if (result.cacheHit) {
+        setPending(false);
+        setNotice("\u76F4\u63A5\u8BFB\u53D6\u5DF2\u4FDD\u5B58\u7B54\u6848\uFF0C\u672C\u6B21\u672A\u8BF7\u6C42 AI\u3002");
+      } else setNotice(result.resource?.data?.error || "\u7B54\u6848\u751F\u6210\u8BF7\u6C42\u6682\u672A\u542F\u52A8\uFF0C\u8BF7\u786E\u8BA4\u5F53\u524D\u5BF9\u8BDD\u53EF\u7528\u540E\u91CD\u8BD5\u3002");
+      await reloadRef.current();
     } catch {
     }
   };
@@ -1619,15 +1666,26 @@ function QuestionSolutionPanel({ sessionId, practiceId, question, canGenerate = 
       null,
       h("div", { className: "di-meta di-solution-source" }, solution.source),
       h(Markdown, null, solution.detail),
-      solution.memorizationPoints ? h("section", { className: "di-attempt" }, h("div", { className: "di-section-label" }, question.leetcode ? "\u89E3\u9898\u8981\u70B9" : "\u53C2\u8003\u8981\u70B9"), h(Markdown, null, solution.memorizationPoints)) : null
+      solution.memorizationPoints ? h("section", { className: "di-attempt" }, h("div", { className: "di-section-label" }, question.leetcode ? "\u89E3\u9898\u8981\u70B9" : "\u53C2\u8003\u8981\u70B9"), h(Markdown, null, solution.memorizationPoints)) : null,
+      solution.reused ? h("p", { className: "di-meta", role: "status" }, "\u8FD9\u4EFD\u8BB2\u89E3\u76F4\u63A5\u4ECE\u9898\u5E93\u8BFB\u53D6\uFF0C\u672A\u8BF7\u6C42 AI\u3002") : null,
+      solution.canGenerate && canGenerate ? h(
+        Button,
+        {
+          disabled: !sessionId || generating || Boolean(command.busy),
+          title: "\u91CD\u65B0\u8BF7\u6C42 AI\uFF0C\u751F\u6210\u9002\u7528\u4E8E\u4EE5\u540E\u7EC3\u4E60\u7684\u901A\u7528\u8BB2\u89E3\u5E76\u66F4\u65B0\u9898\u5E93\u7F13\u5B58",
+          onClick: () => generate(true)
+        },
+        solution.source.startsWith("\u672C\u5730\u9898\u89E3\u5E93") ? "\u751F\u6210 AI \u8BE6\u89E3\u5E76\u4FDD\u5B58" : "\u91CD\u65B0\u751F\u6210 AI \u8BB2\u89E3"
+      ) : null
     ) : solution ? h(
       "div",
       { className: "di-solution-missing" },
       h("p", null, solution.reason || "\u8FD9\u9053\u9898\u8FD8\u6CA1\u6709\u4FDD\u5B58\u53C2\u8003\u7B54\u6848\u3002"),
-      pending ? h("p", { className: "di-meta", role: "status" }, pollCount >= 20 ? "\u7B54\u6848\u4ECD\u5728\u751F\u6210\uFF0C\u53EF\u7A0D\u540E\u91CD\u65B0\u5C55\u5F00\u67E5\u770B\u3002" : "AI \u6B63\u5728\u751F\u6210\u7B54\u6848\uFF0C\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002") : solution.allowed !== false ? h(Button, { tone: "primary", disabled: !sessionId || !canGenerate, busy: Boolean(command.busy), onClick: generate }, "\u751F\u6210\u53C2\u8003\u7B54\u6848") : null,
+      !generating && solution.allowed !== false ? h(Button, { tone: "primary", disabled: !sessionId || !canGenerate, busy: Boolean(command.busy), onClick: () => generate(false) }, "\u751F\u6210\u53C2\u8003\u7B54\u6848\u5E76\u4FDD\u5B58") : null,
       !canGenerate && solution.allowed !== false ? h("div", { className: "di-meta" }, "\u8BF7\u5148\u91CD\u65B0\u6253\u5F00\u7EC3\u4E60\uFF0C\u518D\u751F\u6210\u7B54\u6848\u3002") : null
     ) : null,
-    h(ErrorNotice, null, notice || command.error || query.error)
+    generating ? h("p", { className: "di-meta", role: "status" }, pollCount >= 90 ? "\u7B54\u6848\u4ECD\u5728\u751F\u6210\uFF0C\u8BF7\u68C0\u67E5\u5BF9\u8BDD\u4E2D\u7684\u72B6\u6001\u540E\u91CD\u8BD5\u3002" : "AI \u6B63\u5728\u751F\u6210\u901A\u7528\u8BB2\u89E3\uFF0C\u5B8C\u6210\u540E\u4F1A\u4FDD\u5B58\u5230\u9898\u5E93\u4F9B\u4EE5\u540E\u590D\u7528\u3002") : null,
+    h(ErrorNotice, null, notice || solution?.error || command.error || query.error)
   );
 }
 
@@ -1754,6 +1812,24 @@ function LeetcodeCatalog({ sessionId }) {
   const [difficulties, setDifficulties] = import_react11.default.useState([]);
   const [category, setCategory] = import_react11.default.useState("");
   const [customOpen, setCustomOpen] = import_react11.default.useState(false);
+  const catalogReload = import_react11.default.useRef(query.reload);
+  catalogReload.current = query.reload;
+  import_react11.default.useEffect(() => {
+    let stopped = false;
+    let timer;
+    const refresh = async () => {
+      try {
+        await catalogReload.current();
+      } finally {
+        if (!stopped) timer = setTimeout(refresh, 5e3);
+      }
+    };
+    timer = setTimeout(refresh, 5e3);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, []);
   if (query.loading && !query.data) return h("div", { className: "di-lc-catalog" }, h(Loading, { label: "\u6B63\u5728\u8BFB\u53D6\u529B\u6263\u9898\u5E93\u2026" }));
   if (query.error) return h("div", { className: "di-lc-catalog" }, h(ErrorNotice, null, query.error));
   const catalog = query.data?.resource?.data;
@@ -1905,6 +1981,7 @@ function LeetcodeCatalog({ sessionId }) {
       { className: "di-lc-toolbar-note" },
       h("span", { className: "di-meta" }, filtering ? `\u7B5B\u9009\u51FA ${filtered.length} \u9053\u9898` : "\u70B9\u300C\u505A\u8FD9\u9898\u300D\u76F4\u63A5\u5F00\u59CB\uFF1B\u5DF2\u6709\u8FDB\u884C\u4E2D\u7684\u529B\u6263\u7EC3\u4E60\u65F6\u4F1A\u81EA\u52A8\u7ED3\u675F\u5B83\u5E76\u5207\u5230\u65B0\u9898\u3002")
     ),
+    h("div", { className: "di-meta di-lc-toolbar-note" }, "\u4F5C\u7B54\u7ECF AI \u70B9\u8BC4\uFF0C\u6216\u7ED3\u675F\u5DF2\u6709\u4F5C\u7B54\u7684\u7EC3\u4E60\u540E\u81EA\u52A8\u6253\u52FE\uFF1B\u52FE\u9009\u8868\u793A\u7EC3\u4E60\u8FC7\uFF0C\u53EF\u624B\u52A8\u8C03\u6574\u3002"),
     h(ErrorNotice, null, command.error),
     !visibleGroups.length ? h(Empty, { title: "\u6CA1\u6709\u5339\u914D\u7684\u9898\u76EE", detail: "\u6362\u4E2A\u5173\u952E\u5B57\uFF0C\u6216\u8005\u7528\u300C\u81EA\u5B9A\u4E49\u9898\u76EE\u300D\u70B9\u540D\u4E00\u9053\u70ED\u9898 100 \u4E4B\u5916\u7684\u9898\u3002" }) : h("div", { className: "di-lc-groups" }, visibleGroups.map((group) => h(CatalogGroup, {
       key: group.category,
@@ -2899,48 +2976,87 @@ function InsightsCard() {
 
 // src/client/features/timeline.js
 var import_react15 = __toESM(require("react"), 1);
-var TIMELINE_VIEWS = [
-  { id: "question", label: "\u9898\u76EE" },
-  { id: "attempts", label: "\u4F5C\u7B54\u8BB0\u5F55" },
-  { id: "answer", label: "\u7B54\u6848" }
-];
-function EmptyTimelineContent({ children }) {
-  return h("div", { className: "di-time-empty" }, children);
+function timelineArtifact(practiceId, questionId, revision) {
+  return { practiceId, questionId, sessionRevision: revision, presentationId: `timeline-code:${revision}:${Date.now()}` };
 }
-function TimelineContent({ question, view, sessionId, practice }) {
-  if (view === "question") return question.leetcode || question.hot100 ? h(
+function TimelineAnswerEntry({ sessionId, session, practice, question }) {
+  const command = useCommand(sessionId);
+  const [artifact, setArtifact] = import_react15.default.useState(() => practice.status === "active" && session?.practice?.id === practice.id && session.currentQuestionId === question.id ? timelineArtifact(practice.id, question.id, session.revision) : null);
+  const openCode = async () => {
+    try {
+      const result = await command.run("question.code-open", { practiceId: practice.id, questionId: question.id });
+      const session2 = result.resource?.data;
+      if (session2?.practice?.id !== practice.id || session2.currentQuestionId !== question.id) return;
+      setArtifact(timelineArtifact(practice.id, question.id, session2.revision));
+    } catch {
+    }
+  };
+  return h(
+    "section",
+    { className: "di-time-answer-entry", "aria-label": "\u672C\u9898\u4F5C\u7B54" },
+    practice.status === "active" ? h(
+      import_react15.default.Fragment,
+      null,
+      !artifact || question.attempts.length ? h(
+        Button,
+        { tone: "primary", disabled: !sessionId || Boolean(command.busy), busy: command.busy === "question.code-open", onClick: openCode },
+        h(Icon, { name: "code" }),
+        artifact ? "\u91CD\u65B0\u5199\u4EE3\u7801" : question.attempts.length ? "\u518D\u6B21\u4F5C\u7B54" : "\u5199\u4EE3\u7801\u4F5C\u7B54"
+      ) : null,
+      !artifact || practice.mode !== "leetcode" ? h("p", { className: "di-meta" }, "\u5728\u8FD9\u91CC\u5199\u4EE3\u7801\u5E76\u63D0\u4EA4 AI \u5206\u6790\uFF1B\u6587\u5B57\u56DE\u7B54\u4E5F\u53EF\u76F4\u63A5\u53D1\u9001\u5230\u5BF9\u8BDD\u3002") : null
+    ) : h("p", { className: "di-meta" }, "\u7EC3\u4E60\u5DF2\u7ED3\u675F\uFF0C\u91CD\u65B0\u6253\u5F00\u540E\u53EF\u4EE5\u7EE7\u7EED\u4F5C\u7B54\u3002"),
+    artifact && practice.status === "active" ? h(CodeAnswerEditor, {
+      key: artifact.presentationId,
+      sessionId,
+      question,
+      artifact,
+      language: practice.mode === "leetcode" ? practice.config.language : ""
+    }) : null,
+    h(ErrorNotice, null, command.error)
+  );
+}
+function TimelineContent({ question, sessionId, session, practice }) {
+  const prompt = question.leetcode || question.hot100 ? h(
     "div",
     { className: "di-time-lc-question" },
     h("a", { className: "di-link", href: (question.leetcode || question.hot100).url, target: "_blank", rel: "noreferrer" }, question.prompt, " \u2197"),
     h("div", { className: "di-meta di-problem-tags" }, (question.leetcode || question.hot100).category, h(DifficultyBadge, { difficulty: (question.leetcode || question.hot100).difficulty })),
     h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: practice.id, question })
   ) : h(Markdown, null, question.prompt);
-  if (view === "attempts") {
-    if (!question.attempts.length) return h(EmptyTimelineContent, null, "\u5C1A\u672A\u4F5C\u7B54");
-    return h("div", { className: "di-time-records" }, question.attempts.map((attempt) => h(
+  return h(
+    "div",
+    { className: "di-time-unified" },
+    h("section", { "aria-label": "\u9898\u76EE" }, prompt),
+    h(
       "section",
-      { className: "di-time-record", key: attempt.id },
-      h(
-        "div",
-        { className: "di-time-record-label" },
-        h("span", null, `\u7B2C ${attempt.sequence} \u6B21\u56DE\u7B54`),
-        h("span", null, attempt.evaluation ? `${attempt.evaluation.score}/10` : "\u5F85\u70B9\u8BC4")
-      ),
-      h(
-        "div",
-        { className: "di-time-record-answer" },
-        h("div", { className: "di-time-content-label" }, "\u56DE\u7B54"),
-        h(Markdown, null, attempt.answer)
-      ),
-      attempt.evaluation ? h(
-        "div",
-        { className: "di-time-record-review" },
-        h("div", { className: "di-time-content-label" }, "\u70B9\u8BC4"),
-        h(Markdown, null, attempt.evaluation.feedback)
-      ) : null
-    )));
-  }
-  return h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: practice.id, question, canGenerate: practice.status === "active" });
+      { "aria-label": "\u4F5C\u7B54\u4E0E\u8BB0\u5F55" },
+      h("h4", null, "\u4F5C\u7B54"),
+      h(TimelineAnswerEntry, { key: question.id, sessionId, session, practice, question }),
+      !question.attempts.length ? null : h("div", { className: "di-time-records" }, question.attempts.map((attempt) => h(
+        "section",
+        { className: "di-time-record", key: attempt.id },
+        h(
+          "div",
+          { className: "di-time-record-label" },
+          h("span", null, `\u7B2C ${attempt.sequence} \u6B21\u56DE\u7B54`),
+          h("span", null, attempt.evaluation ? `${attempt.evaluation.score}/10` : "\u5F85\u70B9\u8BC4")
+        ),
+        h(
+          "div",
+          { className: "di-time-record-answer" },
+          h("div", { className: "di-time-content-label" }, "\u56DE\u7B54"),
+          h(Markdown, null, attempt.answer)
+        ),
+        attempt.evaluation ? h(
+          "div",
+          { className: "di-time-record-review" },
+          h("div", { className: "di-time-content-label" }, "\u70B9\u8BC4"),
+          h(Markdown, null, attempt.evaluation.feedback)
+        ) : null
+      )))
+    ),
+    question.capabilities?.allowReveal !== false ? h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: practice.id, question, canGenerate: practice.status === "active" }) : null
+  );
 }
 function TimelinePanel({ sessionId, revisionSignal }) {
   const [selection, setSelection] = import_react15.default.useState(null);
@@ -2951,9 +3067,6 @@ function TimelinePanel({ sessionId, revisionSignal }) {
   const practice = detailQuery.data?.resource?.data;
   if (!session?.selected || !practice?.questions?.length) return null;
   const selectedQuestion = practice.questions.find((question) => question.id === selection?.questionId);
-  const selectedViews = selectedQuestion?.capabilities?.allowReveal === false ? TIMELINE_VIEWS.slice(0, 2) : TIMELINE_VIEWS;
-  const selectedView = selectedViews.some((item) => item.id === selection?.view) ? selection.view : null;
-  const selectedLabel = selectedViews.find((item) => item.id === selectedView)?.label;
   return h(
     "nav",
     {
@@ -2974,33 +3087,22 @@ function TimelinePanel({ sessionId, revisionSignal }) {
           className: "di-time-node",
           type: "button",
           "aria-label": `\u7B2C ${question.sequence} \u9898\uFF1A${question.prompt}`,
-          onClick: () => setSelection({ questionId: question.id, view: "question" })
+          onClick: () => setSelection({ questionId: question.id })
         },
         h("span", { className: "di-time-dot", "aria-hidden": "true" }),
         h("span", null, `Q${String(question.sequence).padStart(2, "0")}`)
       ));
     })),
-    selectedQuestion && selectedView ? h(
+    selectedQuestion ? h(
       "section",
-      { className: "di-time-flyout", "aria-label": `${selectedLabel}\u5185\u5BB9` },
+      { className: "di-time-flyout", "aria-label": "\u9898\u76EE\u3001\u4F5C\u7B54\u4E0E\u7B54\u6848" },
       h(
         "header",
         { className: "di-time-flyout-head" },
-        h(
-          "div",
-          { className: "di-time-tabs", role: "tablist", "aria-label": `\u7B2C ${selectedQuestion.sequence} \u9898\u8BE6\u60C5` },
-          selectedViews.map((item) => h("button", {
-            className: `di-time-tab${selectedView === item.id ? " is-active" : ""}`,
-            type: "button",
-            role: "tab",
-            key: item.id,
-            "aria-selected": selectedView === item.id,
-            onClick: () => setSelection({ questionId: selectedQuestion.id, view: item.id })
-          }, item.label))
-        ),
+        h("h3", { className: "di-time-title" }, `Q${String(selectedQuestion.sequence).padStart(2, "0")} \xB7 ${selectedQuestion.prompt}`),
         h("button", { type: "button", onClick: () => setSelection(null), "aria-label": "\u5173\u95ED" }, "\xD7")
       ),
-      h("div", { className: "di-time-flyout-body", role: "tabpanel" }, h(TimelineContent, { question: selectedQuestion, view: selectedView, sessionId, practice }))
+      h("div", { className: "di-time-flyout-body" }, h(TimelineContent, { question: selectedQuestion, sessionId, session, practice }))
     ) : null
   );
 }
@@ -3233,6 +3335,9 @@ body[data-ds-dark-theme]{--di-ink:var(--dsw-alias-label-primary,#f2f3f5);--di-in
 .di-guided-panel{display:grid;gap:14px;padding:16px;border:1px solid var(--di-line-2);border-radius:10px;background:var(--di-accent-tint)}.di-guided-stages{display:flex;gap:7px;flex-wrap:wrap}.di-guided-stages span{padding:4px 8px;border-radius:6px;background:var(--di-surface);color:var(--di-faint);font-size:11px}.di-guided-stages .is-current{color:var(--di-accent-ink);background:var(--di-accent-soft)}.di-guided-intro p{margin:10px 0 0;color:var(--di-muted);font-size:12px;line-height:1.7}.di-guided-knowledge{display:grid;gap:8px}.di-lc-knowledge-title{color:var(--di-ink-2);font-size:12px}.di-guided-panel .di-markdown{font-size:12px;line-height:1.75}.di-guided-hint{padding:12px;border:1px solid var(--di-line-2);border-radius:8px;background:var(--di-surface)}.di-guided-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.di-guided-actions .di-button{flex-shrink:0}.di-solution-source{margin-bottom:12px}.di-solution-missing p{font-size:13px;line-height:1.7}
 @media(max-width:760px){.di-learning-panel,.di-guided-panel{padding:12px}.di-learning-heading{flex-wrap:wrap}.di-guided-actions{align-items:stretch;flex-direction:column}.di-problem-body .di-lc-example>div{flex-wrap:wrap}.di-problem-body .di-lc-example code{overflow-wrap:anywhere}}
 /* \u7B80\u5386\u4E0E\u53C2\u8003\u8D44\u6599\u5BFC\u5165 */
+.di-time-answer-entry{display:grid;gap:10px;margin-bottom:16px}.di-time-answer-entry>.di-meta{margin:0}.di-time-flyout .di-code-input{min-height:220px}
+.di-time-flyout{display:flex;flex-direction:column;width:min(680px,calc(100vw - 112px))}.di-time-flyout-body{min-height:0}.di-time-title{flex:1;min-width:0;margin:0;padding:14px 16px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}.di-time-unified{display:grid;gap:20px}.di-time-unified>section>h4{margin:0 0 12px;font-size:14px}.di-time-unified .di-time-records{margin-top:18px;padding-top:16px;border-top:1px solid var(--di-line)}
+@media(max-width:760px){.di-timeline{display:block;top:96px;right:6px;width:52px}.di-time-node{width:48px;padding:0 5px}.di-time-flyout{top:96px;right:62px;width:calc(100vw - 76px);max-height:calc(100vh - 120px)}.di-time-flyout-body{max-height:calc(100vh - 180px);padding:12px}.di-time-title{font-size:13px}}
 .di-document-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.di-document-head .di-button{flex-shrink:0}.di-resume-document .di-textarea{min-height:160px}.di-document-file{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--di-ink-2);font-size:12px;line-height:1.6}.di-document-file>span{min-width:0;overflow-wrap:anywhere}.di-reference-documents{display:grid;gap:9px;padding:16px;border:1px dashed var(--di-line-3);border-radius:10px;background:var(--di-surface-2)}.di-reference-file{padding:10px 12px;border:1px solid var(--di-line-2);border-radius:8px;background:var(--di-surface)}.di-reference-file summary{padding:7px 0;color:var(--di-muted);font-size:12px;line-height:1.6;cursor:pointer;overflow-wrap:anywhere}.di-reference-file .di-textarea{width:100%;margin-top:7px;min-height:140px;max-height:360px;resize:vertical}.di-reference-documents>.di-error{white-space:pre-wrap}.di-practice-sources{display:grid;gap:9px;margin:14px 0}.di-document-text{margin:8px 0 0;color:var(--di-ink-2);font:12px/1.7 "Segoe UI","Microsoft YaHei",sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}
 @media(max-width:760px){.di-document-head,.di-document-file{flex-wrap:wrap}.di-reference-documents{padding:12px}}
 /* \u4E13\u9898\u8BAD\u7EC3\u548C\u53EF\u591A\u9009\u7684\u96BE\u5EA6\u6807\u7B7E */

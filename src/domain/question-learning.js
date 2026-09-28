@@ -1,10 +1,6 @@
 import { effectiveLeetcodeGuidance, leetcodeHintBudget } from './leetcode-guidance.js'
 
 const MERGE_INTERVALS = {
-  knowledge: [
-    { title: '先理解闭区间', detail: '区间 [start, end] 包含两个端点。先看题目示例中首尾相接的区间如何处理，再定义你的“重叠”判断。' },
-    { title: '把输入顺序与覆盖范围分开', detail: '输出需要保留的是区间覆盖的范围。先确认输入是否有序、输出是否允许重新排列，以及一个区间完全包含另一个时应该怎样处理。' },
-  ],
   hints: [
     '先手推两个示例：[1,3] 与 [2,6] 为什么合并？[1,4] 与 [4,5] 是否也合并？用左右端点关系描述“重叠”，暂时不写代码。',
     '当输入区间顺序很乱时，能否先按某个端点排列，让每次只需要与一个已处理区间比较？试着手工重排示例，再观察比较顺序。',
@@ -20,11 +16,17 @@ const GENERAL_HINTS = [
   '把思路拆成初始化、每一步更新、终止条件与返回结果。先核对最小输入和边界，再自己写代码，并手工推演示例。',
 ]
 
-export function learningHints(practice, question) {
-  const saved = question.materials?.hints
-  if (saved?.length) return saved
-  const prepared = (question.leetcode || question.hot100)?.slug === 'merge-intervals' ? MERGE_INTERVALS.hints : GENERAL_HINTS
-  return prepared.slice(0, leetcodeHintBudget(effectiveLeetcodeGuidance(practice.config)))
+export function guidanceSource(question) {
+  const hints = question.materials?.hints || []
+  if (!hints.length) return 'none'
+  // 旧工作台曾把本地兜底模板误标为 model；识别原文，避免当成 AI 材料继续使用。
+  const legacy = [GENERAL_HINTS, MERGE_INTERVALS.hints].some((template) =>
+    hints.every((hint, index) => hint === template[index]))
+  return question.materials?.source?.kind === 'local' || legacy ? 'local' : 'ai'
+}
+
+export function learningHints(_practice, question) {
+  return guidanceSource(question) === 'ai' ? question.materials.hints : []
 }
 
 export function questionLearningView(practice, question, reference = null) {
@@ -33,8 +35,8 @@ export function questionLearningView(practice, question, reference = null) {
   const guided = practice.mode === 'leetcode' && effectiveLeetcodeGuidance(practice.config) === 'guided'
   const hints = problem && practice.mode === 'leetcode' ? learningHints(practice, question) : []
   const hintLevel = Math.min(Number(question.hintLevel) || 0, hints.length)
-  const knowledge = materials.knowledge?.length ? materials.knowledge
-    : problem?.slug === 'merge-intervals' ? MERGE_INTERVALS.knowledge : []
+  const ready = hints.length > 0
+  const knowledge = ready ? materials.knowledge || [] : []
   // 学习视图只返回题面与已解锁提示，不返回题解笔记、答案代码或未来提示。
   return {
     questionId: question.id,
@@ -49,31 +51,23 @@ export function questionLearningView(practice, question, reference = null) {
     },
     guidance: {
       enabled: guided,
-      introduction: '先读懂输入、输出和约束，用示例手推一遍；想清楚每一步需要保留的信息，再开始编码。卡住时逐级解锁引导，正确答案不会自动展开。',
+      source: guidanceSource(question), ready,
+      cached: Boolean(materials.source?.cacheKey), reused: materials.source?.reused === true,
+      status: ready ? 'ready' : 'missing',
+      canGenerate: practice.mode === 'leetcode' && practice.status === 'active',
+      introduction: materials.guidanceIntro || '围绕当前题目的具体示例逐步推导，每一级都有关键观察和自检问题。按需解锁提示，完整答案保持遮蔽。',
       knowledge: guided ? knowledge : [],
       revealedHints: hints.slice(0, hintLevel),
-      hintLevel, hintTotal: hints.length,
+      hintLevel, hintTotal: problem && practice.mode === 'leetcode' ? hints.length || leetcodeHintBudget(effectiveLeetcodeGuidance(practice.config)) : 0,
       canReveal: practice.mode === 'leetcode' && practice.status === 'active' && hints.length > hintLevel,
     },
   }
 }
 
-export function learningMaterials(practice, question, reference) {
-  const view = questionLearningView(practice, question, reference)
-  if (!view.problem.statement) return null
-  return {
-    ...(question.materials || {}),
-    statement: view.problem.statement,
-    examples: view.problem.examples, constraints: view.problem.constraints,
-    hints: learningHints(practice, question), knowledge: view.guidance.knowledge,
-    pitfalls: question.materials?.pitfalls || [], related: question.materials?.related || [],
-    source: { kind: 'model', official: Boolean(reference?.statement), url: view.problem.url },
-  }
-}
-
 export function questionSolutionView(practice, question, reference = null) {
   if (practice.mode === 'mock') return { available: false, allowed: false, reason: '模拟面试不主动展示参考答案。' }
-  if (question.explanation) return { available: true, allowed: true, source: 'AI 讲解', ...question.explanation }
+  if (question.explanation) return { available: true, allowed: true,
+    source: question.explanation.reused ? '题库缓存 · AI 讲解（直接复用）' : 'AI 讲解', ...question.explanation }
   const language = practice.config?.language || 'python'
   if (reference?.code && language === 'python') {
     const fence = '`'.repeat((reference.code.match(/`+/g) || []).reduce((max, run) => Math.max(max, run.length), 2) + 1)

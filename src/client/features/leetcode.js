@@ -126,6 +126,18 @@ export function LeetcodeCatalog({ sessionId }) {
   const [difficulties, setDifficulties] = React.useState([])
   const [category, setCategory] = React.useState('')
   const [customOpen, setCustomOpen] = React.useState(false)
+  const catalogReload = React.useRef(query.reload)
+  catalogReload.current = query.reload
+  // AI 点评在后台保存；题库打开时仅轮询本地进度，不请求模型。
+  React.useEffect(() => {
+    let stopped = false
+    let timer
+    const refresh = async () => {
+      try { await catalogReload.current() } finally { if (!stopped) timer = setTimeout(refresh, 5000) }
+    }
+    timer = setTimeout(refresh, 5000)
+    return () => { stopped = true; clearTimeout(timer) }
+  }, [])
 
   if (query.loading && !query.data) return h('div', { className: 'di-lc-catalog' }, h(Loading, { label: '正在读取力扣题库…' }))
   if (query.error) return h('div', { className: 'di-lc-catalog' }, h(ErrorNotice, null, query.error))
@@ -256,6 +268,7 @@ export function LeetcodeCatalog({ sessionId }) {
       h('span', { className: 'di-meta' }, filtering
         ? `筛选出 ${filtered.length} 道题`
         : '点「做这题」直接开始；已有进行中的力扣练习时会自动结束它并切到新题。')),
+    h('div', { className: 'di-meta di-lc-toolbar-note' }, '作答经 AI 点评，或结束已有作答的练习后自动打勾；勾选表示练习过，可手动调整。'),
     h(ErrorNotice, null, command.error),
     !visibleGroups.length
       ? h(Empty, { title: '没有匹配的题目', detail: '换个关键字，或者用「自定义题目」点名一道热题 100 之外的题。' })

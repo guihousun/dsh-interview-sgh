@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { defaultDatabasePath } from './paths.js'
+import { reviewReferenceCode } from '../domain/reviewed-reference-code.js'
 
 function parseJson(value, fallback) {
   if (typeof value !== 'string' || !value) return fallback
@@ -45,6 +46,7 @@ export class SqliteInterviewRepository {
         explanation_detail TEXT,
         explanation_memo TEXT,
         explained_at INTEGER,
+        explanation_meta_json TEXT,
         UNIQUE (practice_id, sequence)
       );
 
@@ -75,6 +77,17 @@ export class SqliteInterviewRepository {
         completed_at INTEGER,
         updated_at INTEGER NOT NULL
       );
+
+      -- 可复用教学内容独立于练习，删掉练习不会丢失缓存；生成锁也随重启保留。
+      CREATE TABLE IF NOT EXISTS leetcode_learning_cache (
+        cache_key TEXT PRIMARY KEY, slug TEXT NOT NULL, language TEXT NOT NULL,
+        kind TEXT NOT NULL, variant TEXT NOT NULL, fingerprint TEXT NOT NULL,
+        payload_json TEXT, origin_question_id TEXT, created_at INTEGER, updated_at INTEGER,
+        request_id TEXT, request_question_id TEXT, started_at INTEGER,
+        request_status TEXT NOT NULL DEFAULT 'missing', request_error TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS idx_learning_request ON leetcode_learning_cache(request_question_id, kind);
+      CREATE INDEX IF NOT EXISTS idx_learning_origin ON leetcode_learning_cache(origin_question_id, kind);
 
       -- 题解库：热题 100 的官方题面（事实层）+ 用户自己的题解笔记（参考层）。由导入脚本写入，做题时只读。
       CREATE TABLE IF NOT EXISTS leetcode_reference (
@@ -131,6 +144,7 @@ export class SqliteInterviewRepository {
     const columns = new Set(this.database.prepare('PRAGMA table_info(questions)').all().map((column) => column.name))
     if (!columns.has('materials_json')) this.database.exec('ALTER TABLE questions ADD COLUMN materials_json TEXT')
     if (!columns.has('hint_level')) this.database.exec('ALTER TABLE questions ADD COLUMN hint_level INTEGER NOT NULL DEFAULT 0')
+    if (!columns.has('explanation_meta_json')) this.database.exec('ALTER TABLE questions ADD COLUMN explanation_meta_json TEXT')
     // 题解库表是后加的：早期导入过的库需要补上来源与抓取时间两列。
     const referenceColumns = new Set(this.database.prepare('PRAGMA table_info(leetcode_reference)').all().map((column) => column.name))
     if (referenceColumns.size && !referenceColumns.has('official_source')) this.database.exec('ALTER TABLE leetcode_reference ADD COLUMN official_source TEXT')
@@ -163,6 +177,7 @@ export class SqliteInterviewRepository {
         detail: row.explanation_detail,
         memorizationPoints: row.explanation_memo || '',
         createdAt: row.explained_at,
+        ...parseJson(row.explanation_meta_json, {}),
       },
       ...(leetcode ? { leetcode, materials: parseJson(row.materials_json, null), hintLevel: Number(row.hint_level) || 0 } : {}),
     }
@@ -258,8 +273,8 @@ export class SqliteInterviewRepository {
       INSERT INTO questions (
         id, practice_id, sequence, prompt, created_at,
         leetcode_json, materials_json, hint_level,
-        explanation_detail, explanation_memo, explained_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        explanation_detail, explanation_memo, explained_at, explanation_meta_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     const insertAttempt = this.database.prepare(`
       INSERT INTO attempts (
@@ -280,6 +295,8 @@ export class SqliteInterviewRepository {
         question.explanation?.detail ?? null,
         question.explanation?.memorizationPoints ?? null,
         question.explanation?.createdAt ?? null,
+        question.explanation ? JSON.stringify(Object.fromEntries(Object.entries(question.explanation)
+          .filter(([key]) => !['detail', 'memorizationPoints', 'createdAt'].includes(key)))) : null,
       )
       for (const attempt of question.attempts) {
         insertAttempt.run(
@@ -313,12 +330,14 @@ export class SqliteInterviewRepository {
     )
   }
 
-  async commit({ practice, practices = [], binding, unbindSessionId }) {
+  async commit({ practice, practices = [], binding, unbindSessionId, learningCache = [], leetcodeProgress = [] }) {
     this.database.exec('BEGIN IMMEDIATE')
     try {
       for (const item of [...practices, ...(practice ? [practice] : [])]) this.#writePractice(item)
       if (unbindSessionId) this.database.prepare('DELETE FROM session_bindings WHERE session_id = ?').run(unbindSessionId)
       if (binding) this.#writeSessionBinding(binding)
+      for (const entry of learningCache) this.#writeLearningCache(entry)
+      for (const progress of leetcodeProgress) this.#writeLeetcodeProgress(progress)
       this.database.exec('COMMIT')
     } catch (error) {
       this.database.exec('ROLLBACK')
@@ -328,6 +347,65 @@ export class SqliteInterviewRepository {
 
   async deletePractice(id) {
     this.database.prepare('DELETE FROM practices WHERE id = ?').run(id)
+  }
+
+  #readLearningCache(row) {
+    if (!row) return null
+    return { key: row.cache_key, slug: row.slug, language: row.language, kind: row.kind,
+      variant: row.variant, fingerprint: row.fingerprint, payload: parseJson(row.payload_json, null),
+      originQuestionId: row.origin_question_id, createdAt: row.created_at, updatedAt: row.updated_at,
+      requestId: row.request_id, questionId: row.request_question_id, startedAt: row.started_at,
+      status: row.request_status, error: row.request_error }
+  }
+
+  async getLearningCache(key) {
+    return this.#readLearningCache(this.database.prepare('SELECT * FROM leetcode_learning_cache WHERE cache_key = ?').get(key))
+  }
+
+  async findLearningRequest(questionId, kind) {
+    return this.#readLearningCache(this.database.prepare(`SELECT * FROM leetcode_learning_cache
+      WHERE request_question_id = ? AND kind = ? AND request_id IS NOT NULL ORDER BY started_at DESC LIMIT 1`).get(questionId, kind))
+  }
+
+  async findLearningOrigin(questionId, kind) {
+    return this.#readLearningCache(this.database.prepare(`SELECT * FROM leetcode_learning_cache
+      WHERE origin_question_id = ? AND kind = ? ORDER BY updated_at DESC LIMIT 1`).get(questionId, kind))
+  }
+
+  async seedLearningCache(entry) {
+    return this.database.prepare(`INSERT OR IGNORE INTO leetcode_learning_cache
+      (cache_key, slug, language, kind, variant, fingerprint, payload_json, origin_question_id, created_at, updated_at, request_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')`).run(entry.key, entry.slug, entry.language, entry.kind,
+      entry.variant, entry.fingerprint, JSON.stringify(entry.payload), entry.originQuestionId, entry.createdAt, entry.updatedAt).changes > 0
+  }
+
+  async reserveLearningRequest(entry, { requestId, questionId, now, force = false, timeout }) {
+    this.database.prepare(`INSERT OR IGNORE INTO leetcode_learning_cache
+      (cache_key, slug, language, kind, variant, fingerprint) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(entry.key, entry.slug, entry.language, entry.kind, entry.variant, entry.fingerprint)
+    const claimed = this.database.prepare(`UPDATE leetcode_learning_cache
+      SET request_id = ?, request_question_id = ?, started_at = ?, request_status = 'generating', request_error = ''
+      WHERE cache_key = ? AND (request_status <> 'generating' OR started_at <= ?)
+      AND (? = 1 OR payload_json IS NULL)`).run(requestId, questionId, now, entry.key, now - timeout, force ? 1 : 0).changes > 0
+    return { claimed, entry: await this.getLearningCache(entry.key) }
+  }
+
+  async failLearningRequest(key, requestId, error) {
+    this.database.prepare(`UPDATE leetcode_learning_cache SET request_status = 'failed', request_error = ?
+      WHERE cache_key = ? AND request_id = ?`).run(error, key, requestId)
+  }
+
+  #writeLearningCache(entry) {
+    this.database.prepare(`INSERT OR IGNORE INTO leetcode_learning_cache
+      (cache_key, slug, language, kind, variant, fingerprint) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(entry.key, entry.slug, entry.language, entry.kind, entry.variant, entry.fingerprint)
+    const written = this.database.prepare(`UPDATE leetcode_learning_cache SET payload_json = ?, origin_question_id = ?,
+      created_at = ?, updated_at = ?, request_id = NULL, request_question_id = NULL, started_at = NULL,
+      request_status = 'ready', request_error = '' WHERE cache_key = ? AND
+      ((? IS NOT NULL AND request_id = ?) OR (? IS NULL AND request_status <> 'generating'))`)
+      .run(JSON.stringify(entry.payload), entry.originQuestionId, entry.createdAt, entry.updatedAt,
+        entry.key, entry.requestId, entry.requestId, entry.requestId).changes
+    if (!written) throw new Error('生成请求已被替换，旧结果没有覆盖缓存')
   }
 
   async clearSessionBinding(sessionId) {
@@ -344,6 +422,19 @@ export class SqliteInterviewRepository {
   }
 
   async saveLeetcodeProgress(progress) {
+    this.#writeLeetcodeProgress(progress)
+  }
+
+  #writeLeetcodeProgress(progress) {
+    if (progress.automatic) {
+      this.database.prepare(`INSERT INTO leetcode_progress (slug, completed, completed_at, updated_at)
+        VALUES (?, 1, ?, ?) ON CONFLICT(slug) DO UPDATE SET
+          completed = 1, completed_at = excluded.completed_at, updated_at = excluded.updated_at
+        WHERE leetcode_progress.completed = 0 AND leetcode_progress.updated_at < excluded.updated_at
+          AND leetcode_progress.updated_at < ?`)
+        .run(progress.slug, progress.completedAt, progress.updatedAt, progress.answeredAt ?? progress.updatedAt)
+      return
+    }
     this.database.prepare(`
       INSERT INTO leetcode_progress (slug, completed, completed_at, updated_at)
       VALUES (?, ?, ?, ?)
@@ -356,7 +447,7 @@ export class SqliteInterviewRepository {
 
   #readReference(row) {
     if (!row) return null
-    return {
+    return reviewReferenceCode({
       slug: row.slug,
       number: row.number || '',
       title: row.title || '',
@@ -384,7 +475,7 @@ export class SqliteInterviewRepository {
       officialSource: row.official_source || '',
       fetchedAt: row.fetched_at || 0,
       updatedAt: row.updated_at || 0,
-    }
+    })
   }
 
   // 题解库整批导入：一次事务里 upsert，导入脚本可以反复执行。

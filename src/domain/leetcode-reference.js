@@ -1,4 +1,5 @@
 import { normalizeLeetcodeMaterials, MATERIALS_LIMITS } from './leetcode-materials.js'
+import { reviewReferenceCode } from './reviewed-reference-code.js'
 
 const MAX_TEXT = 4000
 
@@ -17,6 +18,7 @@ function uniqueStrings(values) {
 
 // 题解库记录：官方题面（事实层）+ 用户题解笔记（参考层）。导入时统一清洗，读取时可直接用。
 export function normalizeReferenceRecord(record = {}) {
+  record = reviewReferenceCode(record)
   const slug = text(record.slug, 120)
   if (!slug) throw new TypeError('题解库记录缺少 slug')
   const examples = list(record.examples, MATERIALS_LIMITS.examples, (example) => {

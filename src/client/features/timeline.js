@@ -1,32 +1,55 @@
 import React from 'react'
 import { interviewApi } from '../shared/api.js'
-import { useInterviewQuery } from '../shared/hooks.js'
-import { h, Markdown } from '../shared/ui.js'
+import { useCommand, useInterviewQuery } from '../shared/hooks.js'
+import { Button, ErrorNotice, h, Icon, Markdown } from '../shared/ui.js'
 import { QuestionLearningPanel } from './question-learning.js'
 import { QuestionSolutionPanel } from './question-solution.js'
 import { DifficultyBadge } from '../shared/difficulty-tags.js'
+import { CodeAnswerEditor } from './code-answer.js'
 
-const TIMELINE_VIEWS = [
-  { id: 'question', label: '题目' },
-  { id: 'attempts', label: '作答记录' },
-  { id: 'answer', label: '答案' },
-]
-
-function EmptyTimelineContent({ children }) {
-  return h('div', { className: 'di-time-empty' }, children)
+function timelineArtifact(practiceId, questionId, revision) {
+  return { practiceId, questionId, sessionRevision: revision, presentationId: `timeline-code:${revision}:${Date.now()}` }
 }
 
-function TimelineContent({ question, view, sessionId, practice }) {
-  if (view === 'question') return (question.leetcode || question.hot100)
+export function TimelineAnswerEntry({ sessionId, session, practice, question }) {
+  const command = useCommand(sessionId)
+  const [artifact, setArtifact] = React.useState(() => practice.status === 'active' && session?.practice?.id === practice.id && session.currentQuestionId === question.id
+    ? timelineArtifact(practice.id, question.id, session.revision) : null)
+  const openCode = async () => {
+    try {
+      const result = await command.run('question.code-open', { practiceId: practice.id, questionId: question.id })
+      const session = result.resource?.data
+      if (session?.practice?.id !== practice.id || session.currentQuestionId !== question.id) return
+      setArtifact(timelineArtifact(practice.id, question.id, session.revision))
+    } catch { /* 保留历史记录，错误由 useCommand 展示。 */ }
+  }
+  return h('section', { className: 'di-time-answer-entry', 'aria-label': '本题作答' },
+    practice.status === 'active' ? h(React.Fragment, null,
+      !artifact || question.attempts.length ? h(Button, { tone: 'primary', disabled: !sessionId || Boolean(command.busy), busy: command.busy === 'question.code-open', onClick: openCode },
+        h(Icon, { name: 'code' }), artifact ? '重新写代码' : question.attempts.length ? '再次作答' : '写代码作答') : null,
+      !artifact || practice.mode !== 'leetcode' ? h('p', { className: 'di-meta' }, '在这里写代码并提交 AI 分析；文字回答也可直接发送到对话。') : null)
+      : h('p', { className: 'di-meta' }, '练习已结束，重新打开后可以继续作答。'),
+    artifact && practice.status === 'active' ? h(CodeAnswerEditor, {
+      key: artifact.presentationId, sessionId, question, artifact,
+      language: practice.mode === 'leetcode' ? practice.config.language : '',
+    }) : null,
+    h(ErrorNotice, null, command.error))
+}
+
+export function TimelineContent({ question, sessionId, session, practice }) {
+  const prompt = (question.leetcode || question.hot100)
     ? h('div', { className: 'di-time-lc-question' },
         h('a', { className: 'di-link', href: (question.leetcode || question.hot100).url, target: '_blank', rel: 'noreferrer' }, question.prompt, ' ↗'),
         h('div', { className: 'di-meta di-problem-tags' }, (question.leetcode || question.hot100).category, h(DifficultyBadge, { difficulty: (question.leetcode || question.hot100).difficulty })),
         h(QuestionLearningPanel, { key: `learning:${question.id}`, sessionId, practiceId: practice.id, question }))
     : h(Markdown, null, question.prompt)
 
-  if (view === 'attempts') {
-    if (!question.attempts.length) return h(EmptyTimelineContent, null, '尚未作答')
-    return h('div', { className: 'di-time-records' }, question.attempts.map((attempt) =>
+  return h('div', { className: 'di-time-unified' },
+    h('section', { 'aria-label': '题目' }, prompt),
+    h('section', { 'aria-label': '作答与记录' },
+      h('h4', null, '作答'),
+      h(TimelineAnswerEntry, { key: question.id, sessionId, session, practice, question }),
+      !question.attempts.length ? null : h('div', { className: 'di-time-records' }, question.attempts.map((attempt) =>
       h('section', { className: 'di-time-record', key: attempt.id },
         h('div', { className: 'di-time-record-label' },
           h('span', null, `第 ${attempt.sequence} 次回答`),
@@ -36,10 +59,8 @@ function TimelineContent({ question, view, sessionId, practice }) {
           h(Markdown, null, attempt.answer)),
         attempt.evaluation ? h('div', { className: 'di-time-record-review' },
           h('div', { className: 'di-time-content-label' }, '点评'),
-          h(Markdown, null, attempt.evaluation.feedback)) : null)))
-  }
-
-  return h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: practice.id, question, canGenerate: practice.status === 'active' })
+          h(Markdown, null, attempt.evaluation.feedback)) : null)))),
+    question.capabilities?.allowReveal !== false ? h(QuestionSolutionPanel, { key: `solution:${question.id}`, sessionId, practiceId: practice.id, question, canGenerate: practice.status === 'active' }) : null)
 }
 
 export function TimelinePanel({ sessionId, revisionSignal }) {
@@ -52,11 +73,6 @@ export function TimelinePanel({ sessionId, revisionSignal }) {
   if (!session?.selected || !practice?.questions?.length) return null
 
   const selectedQuestion = practice.questions.find((question) => question.id === selection?.questionId)
-  const selectedViews = selectedQuestion?.capabilities?.allowReveal === false
-      ? TIMELINE_VIEWS.slice(0, 2)
-      : TIMELINE_VIEWS
-  const selectedView = selectedViews.some((item) => item.id === selection?.view) ? selection.view : null
-  const selectedLabel = selectedViews.find((item) => item.id === selectedView)?.label
 
   return h('nav', {
     className: 'di-timeline',
@@ -74,22 +90,14 @@ export function TimelinePanel({ sessionId, revisionSignal }) {
       className: 'di-time-node',
       type: 'button',
       'aria-label': `第 ${question.sequence} 题：${question.prompt}`,
-      onClick: () => setSelection({ questionId: question.id, view: 'question' }),
+      onClick: () => setSelection({ questionId: question.id }),
     },
     h('span', { className: 'di-time-dot', 'aria-hidden': 'true' }),
     h('span', null, `Q${String(question.sequence).padStart(2, '0')}`)))
   })),
-  selectedQuestion && selectedView ? h('section', { className: 'di-time-flyout', 'aria-label': `${selectedLabel}内容` },
+  selectedQuestion ? h('section', { className: 'di-time-flyout', 'aria-label': '题目、作答与答案' },
       h('header', { className: 'di-time-flyout-head' },
-        h('div', { className: 'di-time-tabs', role: 'tablist', 'aria-label': `第 ${selectedQuestion.sequence} 题详情` },
-          selectedViews.map((item) => h('button', {
-            className: `di-time-tab${selectedView === item.id ? ' is-active' : ''}`,
-            type: 'button',
-            role: 'tab',
-            key: item.id,
-            'aria-selected': selectedView === item.id,
-            onClick: () => setSelection({ questionId: selectedQuestion.id, view: item.id }),
-          }, item.label))),
+        h('h3', { className: 'di-time-title' }, `Q${String(selectedQuestion.sequence).padStart(2, '0')} · ${selectedQuestion.prompt}`),
         h('button', { type: 'button', onClick: () => setSelection(null), 'aria-label': '关闭' }, '×')),
-      h('div', { className: 'di-time-flyout-body', role: 'tabpanel' }, h(TimelineContent, { question: selectedQuestion, view: selectedView, sessionId, practice }))) : null)
+      h('div', { className: 'di-time-flyout-body' }, h(TimelineContent, { question: selectedQuestion, sessionId, session, practice }))) : null)
 }

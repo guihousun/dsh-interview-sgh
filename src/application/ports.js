@@ -8,6 +8,7 @@ const REQUIRED_REPOSITORY_METHODS = [
   'clearSessionBinding',
   'listLeetcodeProgress',
   'saveLeetcodeProgress',
+  'getLearningCache', 'findLearningRequest', 'findLearningOrigin', 'seedLearningCache', 'reserveLearningRequest', 'failLearningRequest',
 ]
 
 export function validateApplicationPorts(ports) {

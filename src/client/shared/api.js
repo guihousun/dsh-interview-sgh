@@ -62,8 +62,8 @@ export const interviewApi = {
   insights() {
     return jsonRequest('/interview/api/insights')
   },
-  questionLearning(practiceId, questionId) {
-    return jsonRequest(`/interview/api/question-learning?${queryString({ practice: practiceId, question: questionId })}`)
+  questionLearning(practiceId, questionId, sessionId = null) {
+    return jsonRequest(`/interview/api/question-learning?${queryString({ practice: practiceId, question: questionId, session: sessionId })}`)
   },
   questionSolution(practiceId, questionId) {
     return jsonRequest(`/interview/api/question-solution?${queryString({ practice: practiceId, question: questionId })}`)

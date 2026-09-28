@@ -90,6 +90,19 @@ test('点评讲解展示拒绝尚未保存讲解的题目', async () => {
   }, context.exec), /还没有讲解/)
 })
 
+test('力扣代码点评可展示本地参考答案，不要求重复生成一份 AI 讲解', async () => {
+  const context = fixture()
+  await context.repository.saveReferenceLibrary({ references: [{ slug: 'two-sum', code: 'class Solution:\n    pass', statement: '两数之和' }] })
+  await context.application.createAtomicPractice('session-1', { mode: 'leetcode', config: { language: 'python', guidance: 'guided' } })
+  const ids = (await context.application.drawAtomicLeetcode('session-1', { selection: { slug: 'two-sum' } })).references
+  const attempt = await context.application.createAtomicAttempt('session-1', { questionId: ids.questionId, answer: '自己的代码' })
+  await context.application.createAtomicEvaluation('session-1', { questionId: ids.questionId, attemptId: attempt.resource.data.id, score: 8, feedback: '本次代码建议' })
+  const review = await context.tools.interview_show_review.execute({ practice_id: ids.practiceId, question_id: ids.questionId,
+    attempt_id: attempt.resource.data.id }, context.exec)
+  assert.equal(review.artifact.kind, 'review')
+  assert.equal((await context.repository.getPractice(ids.practiceId)).questions[0].explanation, null)
+})
+
 test('各类展示工具的描述明确禁止普通文本代替 UI', () => {
   const context = fixture()
   for (const tool of Object.values(context.tools)) {

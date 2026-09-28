@@ -1,6 +1,7 @@
 import { assertModeCapability } from '../../domain/mode-capabilities.js'
 import { assertDomain } from '../../domain/errors.js'
 import { listLeetcodeProblems } from '../../domain/leetcode-problems.js'
+import { guidanceSource } from '../../domain/question-learning.js'
 
 function practiceInput(payload) {
   return { mode: payload.mode, config: payload.config }
@@ -65,7 +66,7 @@ export const UI_COMMANDS = Object.freeze([
   'session.start', 'session.continue', 'session.select', 'session.reopen', 'session.finish',
   'practice.update', 'question.open', 'question.focus', 'question.update', 'question.delete', 'question.next',
   'question.retry', 'question.reveal', 'question.hint', 'question.materials',
-  'question.code-open', 'question.code-review', 'question.code-review.retry', 'question.learning-hint', 'question.solution-generate',
+  'question.code-open', 'question.code-review', 'question.code-review.retry', 'question.learning-hint', 'question.guidance-generate', 'question.solution-generate',
   'leetcode.select', 'leetcode.set-completion', 'library.delete', 'library.export',
   'leetcode.train', 'leetcode.practice-next',
 ])
@@ -185,21 +186,10 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     }
     case 'question.learning-hint':
       return application.revealQuestionLearningHint(payload.practiceId, payload.questionId)
+    case 'question.guidance-generate':
+      return application.generateQuestionGuidance(sessionId, payload, (event) => dispatchAgent(eventBridge, sessionId, event))
     case 'question.solution-generate': {
-      const practice = (await application.getPractice(payload.practiceId)).resource.data
-      if (practice.status !== 'active') throw new TypeError('请先重新打开这条练习，再生成答案')
-      assertModeCapability(practice, 'explanation.create', 'REVEAL_NOT_ALLOWED', '当前模式不提供看答案')
-      if (!practice.questions.some((question) => question.id === payload.questionId)) throw new TypeError('找不到题目')
-      const current = (await application.readAtomicSession(sessionId)).resource.data
-      if (current.practice?.id !== payload.practiceId || current.currentQuestionId !== payload.questionId) {
-        await application.bindAtomicPractice(sessionId, payload.practiceId)
-        await application.focusAtomicQuestion(sessionId, payload.questionId)
-      }
-      const queued = dispatchAgent(eventBridge, sessionId, {
-        type: 'review.generate', practiceId: payload.practiceId, questionId: payload.questionId,
-        mode: practice.mode, guidance: guidanceOf(practice),
-      })
-      return { ...(await application.readAtomicSession(sessionId)), analysisQueued: Boolean(queued) }
+      return application.generateQuestionSolution(sessionId, payload, (event) => dispatchAgent(eventBridge, sessionId, event))
     }
     case 'question.code-open': {
       const practice = await application.getPractice(payload.practiceId)
@@ -213,11 +203,14 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
     case 'question.code-review': {
       const current = await selected(application, sessionId)
       const result = await application.submitAtomicCodeAnswer(sessionId, payload)
+      const reference = await application.prepareCodeReviewReference(current.practiceId, payload.questionId)
       const queued = dispatchAgent(eventBridge, sessionId, {
         type: 'code.review', practiceId: current.practiceId, questionId: payload.questionId,
         attemptId: result.references.attemptId, language: payload.language,
         mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
+        ...reference,
       })
+      if (!queued) await application.failCodeReviewReference(payload.questionId, reference.requestId)
       return { ...result, analysisQueued: Boolean(queued) }
     }
     case 'question.code-review.retry': {
@@ -231,11 +224,14 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const { parseCodeAnswer } = await import('../../domain/code-answer.js')
       const codeAnswer = parseCodeAnswer(attempt.answer)
       if (!codeAnswer) throw new TypeError('找不到代码作答')
+      const reference = await application.prepareCodeReviewReference(current.practiceId, payload.questionId)
       const queued = dispatchAgent(eventBridge, sessionId, {
         type: 'code.review', practiceId: current.practiceId, questionId: payload.questionId,
         attemptId: attempt.id, language: codeAnswer.language,
         mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
+        ...reference,
       })
+      if (!queued) await application.failCodeReviewReference(payload.questionId, reference.requestId)
       return { ...current.result, analysisQueued: Boolean(queued) }
     }
     case 'question.reveal': {
@@ -245,8 +241,11 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
       assertModeCapability(current.data.practice, 'explanation.create', 'REVEAL_NOT_ALLOWED', '当前模式不提供看答案')
       await consumeCard(application, sessionId, payload)
+      const solution = (await application.getQuestionSolution(current.practiceId, questionId)).resource.data
+      if (!solution.available) return application.generateQuestionSolution(sessionId, { practiceId: current.practiceId, questionId },
+        (event) => dispatchAgent(eventBridge, sessionId, event))
       dispatchAgent(eventBridge, sessionId, {
-        type: question.explanation ? 'review.show' : 'review.generate',
+        type: 'review.show',
         practiceId: current.practiceId,
         questionId,
         mode: current.data.practice.mode,
@@ -276,12 +275,10 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const question = current.data.practice.questions.find((item) => item.id === questionId)
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
       assertModeCapability(current.data.practice, 'materials.reveal', 'HINTS_NOT_ALLOWED', '当前模式不提供提示阶梯')
-      if (!question.materials) {
-        dispatchAgent(eventBridge, sessionId, {
-          type: 'materials.generate', practiceId: current.practiceId, questionId,
-          mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
-        })
-        return { ...current.result, resource: { kind: 'materials-pending', data: { questionId } } }
+      if (guidanceSource(question) !== 'ai') {
+        const result = await application.generateQuestionGuidance(sessionId, { practiceId: current.practiceId, questionId },
+          (event) => dispatchAgent(eventBridge, sessionId, event))
+        return { ...result, resource: { kind: 'materials-pending', data: { questionId } } }
       }
       return application.revealAtomicHint(sessionId, questionId)
     }
@@ -291,11 +288,13 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const question = current.data.practice.questions.find((item) => item.id === questionId)
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
       assertModeCapability(current.data.practice, 'materials.create', 'MATERIALS_NOT_ALLOWED', '当前模式不提供题目材料')
-      dispatchAgent(eventBridge, sessionId, {
-        type: 'materials.generate', practiceId: current.practiceId, questionId,
-        mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice),
-      })
-      return { ...current.result, resource: { kind: 'materials-pending', data: { questionId } } }
+      if (!payload.force && guidanceSource(question) === 'ai') {
+        dispatchAgent(eventBridge, sessionId, { type: 'question.show', practiceId: current.practiceId, questionId,
+          mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice) })
+        return application.getQuestion(current.practiceId, questionId)
+      }
+      return application.generateQuestionGuidance(sessionId, { practiceId: current.practiceId, questionId, force: payload.force === true },
+        (event) => dispatchAgent(eventBridge, sessionId, event))
     }
     case 'leetcode.set-completion':
       return application.setLeetcodeProblemCompletion(payload.slug, payload.completed)

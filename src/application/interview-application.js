@@ -16,7 +16,10 @@ import { materialsWithReference } from '../domain/leetcode-reference.js'
 import { validateApplicationPorts } from './ports.js'
 import { assertModeCapability } from '../domain/mode-capabilities.js'
 import { formatCodeAnswer } from '../domain/code-answer.js'
-import { learningMaterials, questionLearningView, questionSolutionView } from '../domain/question-learning.js'
+import { guidanceSource, questionLearningView, questionSolutionView } from '../domain/question-learning.js'
+import { LeetcodeLearningCache } from './leetcode-learning-cache.js'
+import { LEARNING_REQUEST_TIMEOUT, reusableGuidance } from '../domain/learning-cache.js'
+import { leetcodeCompletionProgress } from '../domain/leetcode-completion.js'
 
 function requiredId(value, name) {
   assertDomain(typeof value === 'string' && value.trim(), `INVALID_${name.toUpperCase()}`, `${name} 不能为空`)
@@ -67,13 +70,15 @@ export class InterviewApplication {
     this.random = validated.random
     this.codeSubmissions = new Map()
     this.leetcodeAdvances = new Map()
+    this.learningCache = new LeetcodeLearningCache(this.repository, this.clock)
+    this.completionHistorySync = null
   }
 
   async #practice(practiceId) {
     const id = requiredId(practiceId, 'practiceId')
     const practice = await this.repository.getPractice(id)
     if (!practice) throw new DomainError('PRACTICE_NOT_FOUND', `找不到练习：${id}`)
-    return practice
+    return this.learningCache.hydrate(practice)
   }
 
   async #session(sessionId) {
@@ -101,7 +106,23 @@ export class InterviewApplication {
   }
 
   async #leetcodeProgress() {
+    await this.syncLeetcodeCompletionHistory()
     return new Map((await this.repository.listLeetcodeProgress()).map((item) => [item.slug, item]))
+  }
+
+  async syncLeetcodeCompletionHistory() {
+    if (!this.completionHistorySync) this.completionHistorySync = (async () => {
+      const existing = new Set((await this.repository.listLeetcodeProgress()).map((item) => item.slug))
+      const practices = await this.repository.listPractices({ mode: 'leetcode' })
+      const history = new Map()
+      for (const practice of practices) for (const item of leetcodeCompletionProgress(practice, { historical: true })) {
+        if (!existing.has(item.slug) && (!history.has(item.slug) || history.get(item.slug).completedAt > item.completedAt)) history.set(item.slug, item)
+      }
+      const progress = [...history.values()]
+      if (progress.length) await this.repository.commit({ leetcodeProgress: progress })
+      return progress.length
+    })().catch((error) => { this.completionHistorySync = null; throw error })
+    return this.completionHistorySync
   }
 
   async #drawLeetcodeQuestion(practice, binding, now, { selection = null, filters = null, excludedSlugs = [], selectionMode = 'random' } = {}) {
@@ -126,6 +147,16 @@ export class InterviewApplication {
       leetcode: problem,
       now,
     })
+    added.practice = await this.learningCache.hydrate(added.practice)
+    added.question = findQuestion(added.practice, added.question.id)
+    // 展示题目不必请求模型重述已保存的官方题面，AI 只在缺少引导或用户请求详解时参与。
+    const reference = await this.#referenceForSlug(problem.slug)
+    if (!added.question.materials && reference?.statement) {
+      const materials = materialsWithReference({ statement: reference.statement }, reference)
+      materials.source.kind = 'local'
+      added.question = { ...added.question, materials }
+      added.practice = { ...added.practice, questions: added.practice.questions.map((q) => q.id === added.question.id ? added.question : q) }
+    }
     return { ...added, binding: focusSessionQuestion(binding, added.question.id, now) }
   }
 
@@ -284,7 +315,8 @@ export class InterviewApplication {
     const questionId = requiredId(input.questionId, 'questionId')
     const attemptId = requiredId(input.attemptId, 'attemptId')
     const added = evaluateAnswer(practice, { ...input, questionId, attemptId, now })
-    await this.repository.commit({ practice: added.practice })
+    await this.repository.commit({ practice: added.practice,
+      leetcodeProgress: leetcodeCompletionProgress(added.practice, { at: now, questionId, attemptId, requireEvaluation: true }) })
     return this.#result('evaluation-detail', { questionId, attemptId, ...added.evaluation }, binding, {
       references: { attemptId },
     })
@@ -294,8 +326,15 @@ export class InterviewApplication {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)
     const questionId = requiredId(input.questionId, 'questionId')
-    const added = saveExplanation(practice, { ...input, questionId, replace: input.replace === true, now })
-    await this.repository.commit({ practice: added.practice })
+    const pending = await this.learningCache.pending(questionId, 'solution')
+    assertDomain(!(input.requestId && input.scope === 'attempt'), 'INVALID_REFERENCE_SCOPE', '题库生成请求只能保存通用题解，个人修正版请单独保存')
+    const added = saveExplanation(practice, { ...input, questionId, scope: input.scope || (pending ? 'reference' : undefined),
+      replace: input.replace === true, now })
+    const question = findQuestion(added.practice, questionId)
+    const write = added.explanation.scope === 'reference'
+      ? await this.learningCache.write(practice, question, 'solution', added.explanation, input.requestId) : null
+    if (write) Object.assign(added.explanation, { cacheKey: write.key, reused: false })
+    await this.repository.commit({ practice: added.practice, learningCache: write ? [write] : [] })
     return this.#result('explanation-detail', { questionId, ...added.explanation }, binding)
   }
 
@@ -304,15 +343,25 @@ export class InterviewApplication {
     const { binding, practice } = await this.#session(sessionId)
     const questionId = requiredId(input.questionId || binding.currentQuestionId, 'questionId')
     const target = findQuestion(practice, questionId)
+    const request = await this.learningCache.pending(questionId, 'guidance')
+    if (request) {
+      const expected = effectiveLeetcodeGuidance(practice.config) === 'guided' ? 4 : 3
+      assertDomain(input.materials?.hints?.length === expected && guidanceSource({ materials: input.materials }) === 'ai',
+        'INVALID_AI_GUIDANCE', `AI 引导必须包含 ${expected} 级针对本题的具体提示，不能使用通用模板`)
+    }
     // 示例与数据范围属于事实：题解库里有官方题面时以官方为准，其余表达仍按模型提供的内容保存。
     const reference = await this.#referenceForSlug(target.leetcode?.slug)
     const saved = saveMaterials(practice, {
       questionId,
       materials: materialsWithReference(input.materials, reference),
-      replace: input.replace === true,
+      replace: input.replace === true || (target.materials?.source?.kind === 'local' && !target.materials.hints.length),
+      resetHints: Boolean(request) || guidanceSource(target) === 'local',
       now,
     })
-    await this.repository.commit({ practice: saved.practice })
+    const write = reusableGuidance(practice, saved.question) && (request || input.reusable === true || !target.attempts.length)
+      ? await this.learningCache.write(practice, saved.question, 'guidance', saved.materials, input.requestId) : null
+    if (write) saved.materials.source = { ...saved.materials.source, cacheKey: write.key, reused: false }
+    await this.repository.commit({ practice: saved.practice, learningCache: write ? [write] : [] })
     return this.#result('question-detail', toQuestionDto(saved.question, practice), binding, {
       references: { questionId },
     })
@@ -390,6 +439,9 @@ export class InterviewApplication {
     const { binding, practice } = await this.#session(sessionId)
     const targetId = questionId || binding.currentQuestionId
     assertDomain(Boolean(targetId), 'QUESTION_NOT_FOCUSED', '必须指定需要提示的题目')
+    const question = findQuestion(practice, targetId)
+    const request = await this.learningCache.read(await this.learningCache.context(practice, question, 'guidance'))
+    assertDomain(request?.status !== 'generating', 'AI_GUIDANCE_PENDING', 'AI 引导正在生成，请稍候')
     const revealed = revealHint(practice, { questionId: targetId, now })
     await this.repository.commit({ practice: revealed.practice })
     return this.#result('question-detail', toQuestionDto(revealed.question, practice), binding, {
@@ -403,7 +455,8 @@ export class InterviewApplication {
     const completed = practice.mode === 'leetcode'
       ? completeLeetcodePractice(practice, { now })
       : completePractice(practice, { ...input, now })
-    await this.repository.commit({ practice: completed, unbindSessionId: binding.sessionId })
+    await this.repository.commit({ practice: completed, unbindSessionId: binding.sessionId,
+      leetcodeProgress: leetcodeCompletionProgress(completed, { at: now }) })
     return this.#result('practice-detail', toPracticeDetailDto(completed), binding)
   }
 
@@ -479,7 +532,8 @@ export class InterviewApplication {
     const now = this.clock.now()
     const { binding, practice } = await this.#session(sessionId)
     const { completed, drawn } = await this.#nextLeetcodePractice(sessionId, practice, now, options)
-    await this.repository.commit({ practices: [completed, drawn.practice], binding: drawn.binding })
+    await this.repository.commit({ practices: [completed, drawn.practice], binding: drawn.binding,
+      leetcodeProgress: leetcodeCompletionProgress(completed, { at: now }) })
     return this.#result('question-detail', toQuestionDto(drawn.question, drawn.practice), drawn.binding)
   }
 
@@ -515,6 +569,7 @@ export class InterviewApplication {
     const previousBinding = await this.repository.getSessionBindingByPractice(practice.id)
     const { completed, drawn } = await this.#nextLeetcodePractice(id, practice, this.clock.now(), options)
     await this.repository.commit({ practices: [completed, drawn.practice], binding: drawn.binding,
+      leetcodeProgress: leetcodeCompletionProgress(completed, { at: completed.completedAt }),
       ...(previousBinding && previousBinding.sessionId !== id ? { unbindSessionId: previousBinding.sessionId } : {}) })
     return this.#result('session-context', toSessionContextDto(drawn.binding, drawn.practice), drawn.binding)
   }
@@ -534,34 +589,132 @@ export class InterviewApplication {
     })
   }
 
-  async getQuestionLearning(practiceId, questionId) {
+  async getQuestionLearning(practiceId, questionId, sessionId = null) {
     const practice = await this.#practice(practiceId)
     const question = findQuestion(practice, requiredId(questionId, 'questionId'))
     const reference = await this.#referenceForSlug((question.leetcode || question.hot100)?.slug)
-    return this.#result('question-learning', questionLearningView(practice, question, reference), null, {
+    const view = questionLearningView(practice, question, reference)
+    const context = await this.learningCache.context(practice, question, 'guidance')
+    const request = await this.learningCache.read(context)
+    const binding = sessionId ? await this.repository.getSessionBinding(sessionId) : null
+    view.guidance.canAutoGenerate = view.guidance.enabled && view.guidance.canGenerate
+      && binding?.practiceId === practice.id && binding?.currentQuestionId === question.id
+    if (request?.requestId) {
+      Object.assign(view.guidance, { status: request.status, requestId: request.requestId, error: request.error || '' })
+      if (request.status === 'generating') view.guidance.canReveal = false
+    }
+    return this.#result('question-learning', view, null, {
       references: { practiceId: practice.id, questionId: question.id },
     })
+  }
+
+  async generateQuestionGuidance(sessionId, { practiceId, questionId, force = false, automatic = false }, dispatch) {
+    const practice = await this.#practice(practiceId)
+    const question = findQuestion(practice, requiredId(questionId, 'questionId'))
+    assertDomain(practice.status === 'active', 'PRACTICE_COMPLETED', '请先重新打开练习，再生成引导')
+    assertModeCapability(practice, 'materials.create', 'MATERIALS_NOT_ALLOWED', '当前模式不提供 AI 引导')
+    const binding = await this.repository.getSessionBinding(sessionId)
+    const current = binding?.practiceId === practice.id && binding?.currentQuestionId === question.id
+    if (automatic) assertDomain(current, 'GUIDANCE_SESSION_CHANGED', '请先切换到这道题，再生成 AI 引导')
+    if (!force && guidanceSource(question) === 'ai') return this.getQuestionLearning(practice.id, question.id, sessionId)
+    const context = await this.learningCache.context(practice, question, 'guidance')
+    assertDomain(context, 'GUIDANCE_LEETCODE_REQUIRED', '只有力扣题支持可复用引导')
+    const reservation = await this.repository.reserveLearningRequest(context, { requestId: this.ids.next('guidance'), questionId: question.id,
+      now: this.clock.now(), force, timeout: LEARNING_REQUEST_TIMEOUT })
+    if (!reservation.claimed) return { ...(await this.getQuestionLearning(practice.id, question.id, sessionId)),
+      analysisQueued: reservation.entry?.status === 'generating', cacheHit: Boolean(reservation.entry?.payload) }
+    const request = reservation.entry
+    if (!current) {
+      try {
+        await this.bindAtomicPractice(sessionId, practice.id)
+        await this.focusAtomicQuestion(sessionId, question.id)
+      } catch (error) {
+        await this.repository.failLearningRequest(context.key, request.requestId, '练习切换失败，请手动重试。')
+        throw error
+      }
+    }
+    let queued = false
+    try {
+      queued = Boolean(dispatch({ type: 'guidance.generate', practiceId: practice.id, questionId: question.id,
+        requestId: request.requestId, mode: practice.mode, guidance: effectiveLeetcodeGuidance(practice.config), includeModeContext: true }))
+    } catch { /* 投递失败保持原题、草稿和材料。 */ }
+    if (!queued) {
+      await this.repository.failLearningRequest(context.key, request.requestId, 'AI 请求未启动，请确认当前对话可用后重试。')
+    }
+    return { ...(await this.getQuestionLearning(practice.id, question.id, sessionId)), analysisQueued: queued }
   }
 
   async getQuestionSolution(practiceId, questionId) {
     const practice = await this.#practice(practiceId)
     const question = findQuestion(practice, requiredId(questionId, 'questionId'))
     const reference = await this.#referenceForSlug((question.leetcode || question.hot100)?.slug)
-    return this.#result('question-solution', questionSolutionView(practice, question, reference), null, {
+    const view = questionSolutionView(practice, question, reference)
+    const context = await this.learningCache.context(practice, question, 'solution')
+    const request = await this.learningCache.read(context)
+    Object.assign(view, { status: request?.requestId ? request.status : view.available ? 'ready' : 'missing',
+      requestId: request?.requestId || '', error: request?.error || '', canGenerate: practice.status === 'active' && view.allowed })
+    return this.#result('question-solution', view, null, {
       references: { practiceId: practice.id, questionId: question.id },
     })
   }
 
+  async generateQuestionSolution(sessionId, { practiceId, questionId, force = false }, dispatch) {
+    const practice = await this.#practice(practiceId)
+    const question = findQuestion(practice, requiredId(questionId, 'questionId'))
+    assertDomain(practice.status === 'active', 'PRACTICE_COMPLETED', '请先重新打开练习，再生成答案')
+    assertModeCapability(practice, 'explanation.create', 'REVEAL_NOT_ALLOWED', '当前模式不提供看答案')
+    const solution = await this.getQuestionSolution(practice.id, question.id)
+    if (!force && solution.resource.data.available) return { ...solution, analysisQueued: false, cacheHit: true }
+    const context = await this.learningCache.context(practice, question, 'solution')
+    let reservation = null
+    if (context) {
+      reservation = await this.repository.reserveLearningRequest(context, { requestId: this.ids.next('solution'), questionId: question.id,
+        now: this.clock.now(), force, timeout: LEARNING_REQUEST_TIMEOUT })
+      if (!reservation.claimed) return { ...(await this.getQuestionSolution(practice.id, question.id)),
+        analysisQueued: reservation.entry?.status === 'generating', cacheHit: Boolean(reservation.entry?.payload) }
+    }
+    try {
+      const binding = await this.repository.getSessionBinding(sessionId)
+      if (binding?.practiceId !== practice.id || binding.currentQuestionId !== question.id) {
+        await this.bindAtomicPractice(sessionId, practice.id)
+        await this.focusAtomicQuestion(sessionId, question.id)
+      }
+      const queued = Boolean(dispatch({ type: 'review.generate', practiceId: practice.id, questionId: question.id,
+        requestId: reservation?.entry.requestId, force, mode: practice.mode, guidance: effectiveLeetcodeGuidance(practice.config) }))
+      if (!queued && context) await this.repository.failLearningRequest(context.key, reservation.entry.requestId, 'AI 请求未启动，请手动重试。')
+      return { ...(await this.getQuestionSolution(practice.id, question.id)), analysisQueued: queued }
+    } catch (error) {
+      if (context) await this.repository.failLearningRequest(context.key, reservation.entry.requestId, 'AI 请求失败，请手动重试。')
+      throw error
+    }
+  }
+
+  async prepareCodeReviewReference(practiceId, questionId) {
+    const solution = (await this.getQuestionSolution(practiceId, questionId)).resource.data
+    if (solution.available) return { hasReferenceSolution: true }
+    const practice = await this.#practice(practiceId)
+    const question = findQuestion(practice, questionId)
+    const context = await this.learningCache.context(practice, question, 'solution')
+    if (!context) return { hasReferenceSolution: false }
+    const reservation = await this.repository.reserveLearningRequest(context, { requestId: this.ids.next('solution'), questionId,
+      now: this.clock.now(), timeout: LEARNING_REQUEST_TIMEOUT })
+    return reservation.claimed ? { hasReferenceSolution: false, requestId: reservation.entry.requestId }
+      : { hasReferenceSolution: Boolean(reservation.entry.payload), referenceSolutionPending: reservation.entry.status === 'generating' }
+  }
+
+  async failCodeReviewReference(questionId, requestId) {
+    if (!requestId) return
+    const request = await this.learningCache.pending(questionId, 'solution')
+    if (request?.requestId === requestId) await this.repository.failLearningRequest(request.key, requestId, 'AI 代码分析请求未启动，请手动重试。')
+  }
+
   async revealQuestionLearningHint(practiceId, questionId) {
-    let practice = await this.#practice(practiceId)
+    const practice = await this.#practice(practiceId)
     const question = findQuestion(practice, requiredId(questionId, 'questionId'))
     assertModeCapability(practice, 'materials.reveal', 'HINTS_NOT_ALLOWED', '当前模式不提供提示阶梯')
-    if (!question.materials?.hints?.length) {
-      const reference = await this.#referenceForSlug(question.leetcode?.slug)
-      const materials = learningMaterials(practice, question, reference)
-      assertDomain(materials, 'MATERIALS_REQUIRED', '本题缺少题面，请先生成题目材料')
-      practice = saveMaterials(practice, { questionId: question.id, materials, replace: Boolean(question.materials), now: this.clock.now() }).practice
-    }
+    assertDomain(guidanceSource(question) === 'ai', 'AI_GUIDANCE_REQUIRED', '请先让 AI 为这道题生成引导')
+    const request = await this.learningCache.read(await this.learningCache.context(practice, question, 'guidance'))
+    assertDomain(request?.status !== 'generating', 'AI_GUIDANCE_PENDING', 'AI 引导正在生成，请稍候')
     const revealed = revealHint(practice, { questionId: question.id, now: this.clock.now() })
     await this.repository.commit({ practice: revealed.practice })
     return this.getQuestionLearning(practice.id, question.id)

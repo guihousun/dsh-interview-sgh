@@ -45,7 +45,7 @@ test('Markdown 导出力扣题目地址、题型和难度', () => {
     questionId: 'question-1',
     detail: [
       '使用哈希表一次遍历。',
-      '```cpp\nvector<int> twoSum() { return {}; }\n```',
+      '```cpp\n// 返回本次找到的两个下标\nvector<int> twoSum() { return {}; }\n```',
     ].join('\n\n'),
     memorizationPoints: '查找 target - x，时间 O(n)，空间 O(n)。',
     now: 3,

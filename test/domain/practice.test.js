@@ -215,7 +215,7 @@ test('刷力扣题目只能引用固定题库并保留规范元数据', () => {
   }), { code: 'LEETCODE_SOLUTION_LANGUAGE_MISMATCH' })
   practice = saveExplanation(practice, {
     questionId: 'question-1',
-    detail: '只给配置语言。\n\n```cpp\nvector<int> twoSum() { return {}; }\n```',
+    detail: '只给配置语言。\n\n```cpp\n// 返回本次找到的两个下标\nvector<int> twoSum() { return {}; }\n```',
     memorizationPoints: '哈希表查找差值。',
     now: 3,
   }).practice
