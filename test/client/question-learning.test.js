@@ -119,3 +119,16 @@ test('复用的引导明确显示未请求 AI，打开和解锁都不调用生�
   await button(tree, '解锁下一步引导').props.onClick()
   assert.deepEqual(f.calls.map((call) => call.command), ['question.learning-hint'])
 })
+
+test('第 1 步准确高亮并包含基础知识，各步可折叠且不渲染未解锁的代码', () => {
+  const f = fixture({ ...initial(), guidance: { ...initial().guidance, ready: true, status: 'ready', hintLevel: 1,
+    knowledge: [{ title: '闭区间', detail: '端点属于区间' }], revealedHints: ['明确输入输出和边界'] } })
+  const tree = f.render(), all = nodes(tree)
+  const current = all.find(node => node.props.className === 'is-current')
+  assert.equal(current.children[0], '1. 拆解题目与基础知识')
+  const step = all.find(node => node.type === 'details')
+  assert.equal(step.children[0].children[0], '1. 拆解题目与基础知识')
+  assert.equal(nodes(step).some(node => node.props.className === 'di-guided-knowledge'), true)
+  assert.equal(all.filter(node => node.type === 'details').length, 1)
+  assert.equal(all.some(node => node.children.includes('理清思路')), false)
+})

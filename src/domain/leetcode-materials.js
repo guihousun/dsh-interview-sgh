@@ -7,7 +7,7 @@ export const MATERIALS_LIMITS = Object.freeze({
   constraints: 10,
   constraint: 300,
   hints: 4,
-  hint: 1200,
+  hint: 8000,
   guidanceIntro: 600,
   knowledge: 4,
   knowledgeTitle: 60,

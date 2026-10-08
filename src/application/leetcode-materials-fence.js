@@ -1,5 +1,7 @@
 import { leetcodeDifficultyLabel } from '../domain/leetcode-top-100.js'
 import { effectiveLeetcodeGuidance, isGuidedLeetcode, leetcodeGuidanceLabel } from '../domain/leetcode-guidance.js'
+import { GUIDED_LEARNING_STAGES, hasGuidedLearningMaterials } from '../domain/guided-learning.js'
+import { LEETCODE_LANGUAGES } from '../domain/leetcode-languages.js'
 
 const DIFFICULTY_TONES = Object.freeze({ easy: 'success', medium: 'warn', hard: 'danger' })
 
@@ -51,6 +53,8 @@ export function createMaterialsSpec(question, { guidance } = {}) {
   if (!materials) return null
   const problem = question.leetcode || {}
   const level = effectiveLeetcodeGuidance({ guidance })
+  const codeLanguage = LEETCODE_LANGUAGES.find(item => item.pattern.test(materials.hints?.[3] || ''))?.id
+  const guided = isGuidedLeetcode(level) && hasGuidedLearningMaterials(materials, codeLanguage)
   const items = [{ type: 'row', items: badgeItems(problem, level) }]
 
   if (text(materials.statement)) {
@@ -63,7 +67,7 @@ export function createMaterialsSpec(question, { guidance } = {}) {
       items: materials.constraints.map((constraint) => inlineCode(constraint)),
     })
   }
-  if (materials.knowledge?.length) {
+  if (materials.knowledge?.length && !guided) {
     items.push({
       type: 'callout',
       tone: 'info',
@@ -75,12 +79,16 @@ export function createMaterialsSpec(question, { guidance } = {}) {
     items.push({
       type: 'accordion',
       items: materials.hints.map((hint, index) => ({
-        title: `提示 ${index + 1}（卡住了再点开）`,
-        items: [{ type: 'text', size: 'body', content: text(hint) }],
+        title: guided ? `${index + 1}. ${GUIDED_LEARNING_STAGES[index].label}${index === 3 ? '（主动展开后查看完整实现）' : ''}` : `提示 ${index + 1}（卡住了再点开）`,
+        items: [{ type: 'text', size: 'body', content: text(hint) },
+          ...(guided && index === 0 && materials.knowledge?.length ? [{ type: 'callout', tone: 'info', title: '本题需要的基础知识',
+            content: materials.knowledge.map(item => `**${text(item.title)}**：${text(item.detail)}`).join('\n\n') }] : []),
+          ...(guided && index === 3 && materials.pitfalls?.length ? [{ type: 'callout', tone: 'warning', title: '实现时的易错点',
+            content: materials.pitfalls.map(pitfall => `- ${text(pitfall)}`).join('\n') }] : [])],
       })),
     })
   }
-  if (materials.pitfalls?.length) {
+  if (materials.pitfalls?.length && !guided) {
     items.push({
       type: 'callout',
       tone: 'warning',

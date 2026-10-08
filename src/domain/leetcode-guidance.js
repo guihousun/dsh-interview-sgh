@@ -2,7 +2,7 @@ const DEFINITIONS = [
   {
     id: 'guided',
     label: '引导模式',
-    detail: '先补前置知识，按提示阶梯逐步推导，不主动给答案',
+    detail: '拆解题目与基础知识 → 理清思路 → 写伪代码 → 写真实代码，逐步手动展开',
     hintTotal: 4,
   },
   {

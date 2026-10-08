@@ -1,4 +1,5 @@
 import { effectiveLeetcodeGuidance, leetcodeHintBudget } from './leetcode-guidance.js'
+import { GUIDED_LEARNING_STAGES, hasGuidedLearningMaterials } from './guided-learning.js'
 
 const MERGE_INTERVALS = {
   hints: [
@@ -25,8 +26,11 @@ export function guidanceSource(question) {
   return question.materials?.source?.kind === 'local' || legacy ? 'local' : 'ai'
 }
 
-export function learningHints(_practice, question) {
-  return guidanceSource(question) === 'ai' ? question.materials.hints : []
+export function learningHints(practice, question) {
+  if (guidanceSource(question) !== 'ai') return []
+  if (effectiveLeetcodeGuidance(practice.config) === 'guided'
+    && !hasGuidedLearningMaterials(question.materials, practice.config.language)) return []
+  return question.materials.hints
 }
 
 export function questionLearningView(practice, question, reference = null) {
@@ -55,8 +59,9 @@ export function questionLearningView(practice, question, reference = null) {
       cached: Boolean(materials.source?.cacheKey), reused: materials.source?.reused === true,
       status: ready ? 'ready' : 'missing',
       canGenerate: practice.mode === 'leetcode' && practice.status === 'active',
-      introduction: materials.guidanceIntro || '围绕当前题目的具体示例逐步推导，每一级都有关键观察和自检问题。按需解锁提示，完整答案保持遮蔽。',
-      knowledge: guided ? knowledge : [],
+      introduction: (ready && materials.guidanceIntro) || (guided ? '像在考场上第一次遇到本题一样：先明确输入、输出和约束，补齐基础知识，再推导思路、写出伪代码，最后转成真实代码。每一步都由你手动展开。' : '围绕本题示例逐步推导，按需解锁提示，完整答案保持遮蔽。'),
+      stages: guided ? GUIDED_LEARNING_STAGES : [],
+      knowledge: guided && hintLevel > 0 ? knowledge : [],
       revealedHints: hints.slice(0, hintLevel),
       hintLevel, hintTotal: problem && practice.mode === 'leetcode' ? hints.length || leetcodeHintBudget(effectiveLeetcodeGuidance(practice.config)) : 0,
       canReveal: practice.mode === 'leetcode' && practice.status === 'active' && hints.length > hintLevel,

@@ -3,6 +3,7 @@ import { effectiveLeetcodeGuidance } from './leetcode-guidance.js'
 import { guidanceSource } from './question-learning.js'
 import { assertSolutionCodeComments } from './solution-code-comments.js'
 import { LEETCODE_LANGUAGES, leetcodeLanguageDefinition } from './leetcode-languages.js'
+import { GUIDED_LEARNING_VERSION, hasGuidedLearningMaterials } from './guided-learning.js'
 
 export const LEARNING_CACHE_VERSION = 1
 export const LEARNING_REQUEST_TIMEOUT = 180000
@@ -18,13 +19,15 @@ export function learningCacheContext(practice, question, kind, reference = null)
     advanced: reference.advanced, idea: reference.idea, code: reference.code, steps: reference.steps,
     complexity: reference.complexity, variants: reference.variants, background: reference.background,
   } : { slug: problem.slug, title: problem.title, url: problem.url }
-  const fingerprint = createHash('sha256').update(JSON.stringify({ version: LEARNING_CACHE_VERSION, content })).digest('hex')
+  const version = kind === 'guidance' && variant === 'guided' ? GUIDED_LEARNING_VERSION : LEARNING_CACHE_VERSION
+  const fingerprint = createHash('sha256').update(JSON.stringify({ version, content })).digest('hex')
   return { key: [problem.slug, language, kind, variant, fingerprint].join(':'), slug: problem.slug, language, kind, variant, fingerprint }
 }
 
 export function reusableGuidance(practice, question) {
   const count = effectiveLeetcodeGuidance(practice.config) === 'guided' ? 4 : 3
   return guidanceSource(question) === 'ai' && question.materials.hints.length === count
+    && (count !== 4 || hasGuidedLearningMaterials(question.materials, practice.config.language))
 }
 
 export function reusableExplanation(practice, question) {

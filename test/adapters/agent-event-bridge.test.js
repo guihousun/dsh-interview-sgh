@@ -12,17 +12,19 @@ test('AI 请求使用 DSH v4 接受的插件自有来源，不冒充直接用户
   assert.match(messages[0].content[0].text, /question_id=q1/)
 })
 
-test('AI 引导请求明确取证当前题并保存具体分级材料，不生成答案或作答', () => {
+test('AI 引导按考场四步生成材料，真实代码放最后，不提交或评分', () => {
   const messages = []
   const bridge = new AgentEventBridge({ get: () => ({ get: () => ({ followup: (message) => messages.push(message) }) }) })
   assert.equal(bridge.dispatch('s1', { type: 'guidance.generate', practiceId: 'p1', questionId: 'q1', mode: 'leetcode', guidance: 'guided', includeModeContext: true }), true)
   const prompt = messages[0].content[0].text
   assert.match(prompt, /practice_id=p1，question_id=q1/)
   assert.match(prompt, /interview_notes read/)
-  assert.match(prompt, /guided 恰好写 4 级 hints/)
-  assert.match(prompt, /具体小例子或手推状态/)
+  assert.match(prompt, /guided 必须恰好写 4 步 hints/)
+  for (const stage of ['拆解题目与基础知识', '理清思路', '写伪代码', '写真实代码']) assert.match(prompt, new RegExp(stage))
   assert.match(prompt, /状态不变量/)
-  assert.match(prompt, /不写完整代码或完整答案/)
+  assert.match(prompt, /用户主动进入本步后才能显示/)
+  assert.match(prompt, /基本注释/)
+  assert.match(prompt, /不运行代码、不提交作答、不评分/)
   assert.match(prompt, /interview_materials replace/)
   assert.match(prompt, /不调用 interview_materials reveal、interview_explanation/)
 })

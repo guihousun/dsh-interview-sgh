@@ -23,3 +23,9 @@
 验证：`npm run verify` 共 215 项测试通过，覆盖跨练习复用、语言/模式隔离、刷新和重启、多个数据库连接去重、失败保留、迟到结果回滚、旧内容失效、缓存更新同步、个人点评隔离、对话材料卡复用及界面读写行为。
 
 实现入口：`src/application/leetcode-learning-cache.js`、`src/domain/learning-cache.js`、`src/infrastructure/sqlite-interview-repository.js`；缓存版本由 `LEARNING_CACHE_VERSION` 控制。
+
+## 考场四步引导（2026-10-08）
+
+引导模式依次完成拆解题目与基础知识、理清思路、完整伪代码、带注释的真实代码。解锁进度保存在原有 hintLevel；代码只在第 4 步主动解锁后返回学习视图，不自动作答或评分。基础知识随第 1 步展示，各步可折叠。
+
+仅 guided 引导使用 GUIDED_LEARNING_VERSION=2 的缓存键；standard 提示和 solution 讲解继续沿用原有版本。旧四级提示缺少伪代码或完整实现时不能被回收到新缓存，历史材料保留，首次按新流程生成后继续跨练习复用。生成接口拒绝缺失伪代码、提前给真实代码、语言不一致和无基本注释的实现。

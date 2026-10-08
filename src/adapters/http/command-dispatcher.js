@@ -1,7 +1,7 @@
 import { assertModeCapability } from '../../domain/mode-capabilities.js'
 import { assertDomain } from '../../domain/errors.js'
 import { listLeetcodeProblems } from '../../domain/leetcode-problems.js'
-import { guidanceSource } from '../../domain/question-learning.js'
+import { learningHints } from '../../domain/question-learning.js'
 
 function practiceInput(payload) {
   return { mode: payload.mode, config: payload.config }
@@ -280,7 +280,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const question = current.data.practice.questions.find((item) => item.id === questionId)
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
       assertModeCapability(current.data.practice, 'materials.reveal', 'HINTS_NOT_ALLOWED', '当前模式不提供提示阶梯')
-      if (guidanceSource(question) !== 'ai') {
+      if (!learningHints(current.data.practice, question).length) {
         const result = await application.generateQuestionGuidance(sessionId, { practiceId: current.practiceId, questionId },
           (event) => dispatchAgent(eventBridge, sessionId, event))
         return { ...result, resource: { kind: 'materials-pending', data: { questionId } } }
@@ -293,7 +293,7 @@ export async function dispatchCommand({ application, eventBridge }, sessionId, c
       const question = current.data.practice.questions.find((item) => item.id === questionId)
       if (!question) throw new TypeError(`找不到题目：${String(questionId)}`)
       assertModeCapability(current.data.practice, 'materials.create', 'MATERIALS_NOT_ALLOWED', '当前模式不提供题目材料')
-      if (!payload.force && guidanceSource(question) === 'ai') {
+      if (!payload.force && learningHints(current.data.practice, question).length) {
         dispatchAgent(eventBridge, sessionId, { type: 'question.show', practiceId: current.practiceId, questionId,
           mode: current.data.practice.mode, guidance: guidanceOf(current.data.practice) })
         return application.getQuestion(current.practiceId, questionId)

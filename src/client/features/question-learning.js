@@ -42,6 +42,10 @@ export function QuestionLearningPanel({ sessionId, practiceId, question }) {
   if (query.loading && !context) return h('section', { className: 'di-learning-panel' }, h(Loading, { label: '正在载入完整题目…' }))
   if (!context) return h(ErrorNotice, null, query.error || '完整题目暂未载入，请稍后重试')
   const { problem, guidance } = context
+  const stages = guidance.stages?.length ? guidance.stages.map(stage => stage.label)
+    : ['拆解题目与基础知识', '理清思路', '写伪代码', '写真实代码']
+  const knowledgeBlock = guidance.knowledge.length ? h('div', { className: 'di-guided-knowledge' }, h('h5', null, '本题需要的基础知识'),
+    guidance.knowledge.map((knowledge) => h('div', { key: knowledge.title }, h('div', { className: 'di-lc-knowledge-title' }, knowledge.title), h(Markdown, null, knowledge.detail)))) : null
   return h('section', { className: 'di-learning-panel', 'aria-label': '题目与引导' },
     h('div', { className: 'di-learning-heading' },
       h('h4', null, '完整题目'),
@@ -65,7 +69,7 @@ export function QuestionLearningPanel({ sessionId, practiceId, question }) {
         problem.url ? h('a', { className: 'di-link', href: problem.url, target: '_blank', rel: 'noreferrer' }, '查看官方题目 ↗') : null) : null) : null,
     guidance.enabled || guidance.hintTotal ? h('section', { className: 'di-guided-panel', 'aria-label': guidance.enabled ? '引导模式' : '解题提示' },
       h('div', { className: 'di-learning-heading' },
-        h('h4', null, guidance.enabled ? 'AI 引导：一步一步推导' : 'AI 解题提示'),
+        h('h4', null, guidance.enabled ? 'AI 引导：像在考场上解题' : 'AI 解题提示'),
         h(Button, { 'aria-expanded': guideOpen, onClick: () => setGuideOpen((value) => !value) }, guideOpen ? '收起引导' : '展开引导')),
       guideOpen ? h(React.Fragment, null,
         h('div', { className: 'di-meta', role: 'status' }, guidance.ready
@@ -73,18 +77,21 @@ export function QuestionLearningPanel({ sessionId, practiceId, question }) {
             : guidance.cached ? 'AI 引导已存入题库 · 再次练习直接复用' : 'AI 针对本题生成 · 提示逐级解锁'
           : '首次生成后存入题库，重做直接复用；完整答案保持遮蔽'),
         generating ? h(Loading, { label: pollCount >= 90 ? 'AI 尚未完成，请查看对话中的状态后重试。' : 'AI 正在阅读题面并推导逐级引导…' }) : null,
-        guidance.enabled && guidance.ready ? h('div', { className: 'di-guided-intro' },
-          h('div', { className: 'di-guided-stages' }, ['读懂题意', '手推示例', '推导思路', '自己编码'].map((label, index) => h('span', { key: label, className: index === Math.min(guidance.hintLevel, 3) ? 'is-current' : '' }, `${index + 1}. ${label}`))),
+        guidance.enabled ? h('div', { className: 'di-guided-intro' },
+          h('div', { className: 'di-guided-stages' }, stages.map((label, index) => h('span', { key: label, className: index === Math.max(0, Math.min(guidance.hintLevel - 1, 3)) ? 'is-current' : '' }, `${index + 1}. ${label}`))),
           h('p', null, guidance.introduction)) : null,
-        guidance.knowledge.length ? h('div', { className: 'di-guided-knowledge' }, h('h5', null, '先补前置知识'),
-          guidance.knowledge.map((knowledge) => h('div', { key: knowledge.title }, h('div', { className: 'di-lc-knowledge-title' }, knowledge.title), h(Markdown, null, knowledge.detail)))) : null,
-        guidance.revealedHints.map((hint, index) => h('div', { className: 'di-guided-hint', key: index }, h('h5', null, `第 ${index + 1} 级引导`), h(Markdown, null, hint))),
+        !guidance.enabled ? knowledgeBlock : null,
+        guidance.revealedHints.map((hint, index) => h('details', { className: 'di-guided-hint', key: index, open: true },
+          h('summary', null, guidance.enabled ? `${index + 1}. ${stages[index]}` : `第 ${index + 1} 级提示`),
+          h(Markdown, null, hint), guidance.enabled && index === 0 ? knowledgeBlock : null)),
         !guidance.ready && !generating ? h('p', { className: 'di-meta' }, guidance.canAutoGenerate
           ? '题库中还没有当前语言和模式的引导，首次生成后会保存供以后复用。'
           : guidance.canGenerate ? '点击生成，让 AI 根据这道题的示例、约束和练习语言编写引导。' : '这道题尚未生成 AI 引导，请先重新打开练习。') : null,
         h('div', { className: 'di-guided-actions' },
           guidance.ready ? h(React.Fragment, null,
-            h('span', { className: 'di-meta', role: 'status' }, `已解锁 ${guidance.hintLevel}/${guidance.hintTotal}，不会自动展示后续提示或答案`),
+            h('span', { className: 'di-meta', role: 'status' }, guidance.enabled
+              ? guidance.hintLevel < guidance.hintTotal ? `已进入 ${guidance.hintLevel}/4 · 下一步：${stages[guidance.hintLevel]}${guidance.hintLevel === 3 ? '（包含带注释的完整实现）' : ''}` : '四步已完成 · 可以收起各步，再独立写一遍代码'
+              : `已解锁 ${guidance.hintLevel}/${guidance.hintTotal}，不会自动展示后续提示或答案`),
             h(Button, { tone: 'primary', disabled: !sessionId || !guidance.canReveal || generating || Boolean(command.busy), busy: command.busy === 'question.learning-hint', onClick: reveal },
               guidance.hintLevel >= guidance.hintTotal ? '引导已全部解锁' : guidance.enabled ? '解锁下一步引导' : '给我一个提示')) : null,
           guidance.canGenerate ? h(Button, { tone: guidance.ready ? 'default' : 'primary', disabled: !sessionId || generating || Boolean(command.busy), busy: command.busy === 'question.guidance-generate',

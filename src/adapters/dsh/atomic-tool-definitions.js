@@ -354,7 +354,7 @@ function definitionsFor(afterExecute = null) {
           },
         },
         constraints: { type: 'array', items: { type: 'string', minLength: 1 }, description: '数据范围与约束，例如 1 <= nums.length <= 10^4' },
-        hints: { type: 'array', maxItems: 4, items: { type: 'string', minLength: 1, maxLength: 1200 }, description: '引导模式恰好 4 级、标准模式恰好 3 级。每级用 Markdown 写本题的关键观察、具体小例子和一个自检问题；解释为什么，逐步到状态不变量和边界，最后一级才允许局部伪代码，不提供完整代码' },
+        hints: { type: 'array', maxItems: 4, items: { type: 'string', minLength: 1, maxLength: 8000 }, description: 'guided 恰好四步：1 拆解题目和补基础知识，2 从直观解法推导可行思路，3 用 text/pseudocode 代码块写完整伪代码，4 用 config.language 写带基本注释的完整真实代码并手推验证。第 4 步须用户主动解锁，前面不得出现真实代码。standard 保持三级提示，最后仅给局部伪代码，不给完整实现' },
         knowledge: {
           type: 'array',
           items: {

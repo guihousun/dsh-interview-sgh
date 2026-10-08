@@ -45,8 +45,8 @@ const AI_MATERIALS = {
   hints: [
     '关键观察：端点也属于闭区间。\n\n手推：[1,4] 与 [4,5] 共有端点 4。\n\n自检：若第二段从 5 开始，还能合并吗？',
     '关键观察：任意顺序会让你反复检查过去的区间。\n\n手推：[8,10]、[1,3]、[2,6]，统计逐对比较的次数。\n\n自检：哪种排列能减少回头检查？',
-    '关键观察：按左端点排序后，保留最后一段的覆盖范围。\n\n手推：[1,6] 后遇到 [2,4]，右端点不能缩到 4。\n\n自检：应更新为哪个值，为什么？',
-    '关键观察：当前左端点大于最后右端点时才开新段。\n\n手推：[1,4] 后接 [4,5] 与 [5,7] 两种情况。\n\n自检：单个区间和完全包含时的分支是否正确？',
+    '先用伪代码描述初始化、合并与返回。\n```text\n按左端点排序\n初始化空结果\n依次取每个区间：若不相交则加入，否则更新最后区间右端点\n返回结果\n```',
+    '将伪代码对应到真实代码，并手推相接区间。\n```python\nclass Solution:\n    def merge(self, intervals):\n        # 按左端点排序，使重叠区间连续出现\n        intervals.sort()\n        result = []\n        for left, right in intervals:\n            # 不重叠时新增，否则扩大最后一段的覆盖范围\n            if not result or left > result[-1][1]:\n                result.append([left, right])\n            else:\n                result[-1][1] = max(result[-1][1], right)\n        return result\n```',
   ],
 }
 
@@ -68,11 +68,15 @@ test('首次生成调用 AI 一次，保存后逐级解锁，原代码作答仍�
   assert.equal(ready.source, 'ai')
   assert.equal(ready.status, 'ready')
   assert.equal(ready.introduction, AI_MATERIALS.guidanceIntro)
+  assert.deepEqual(ready.stages.map(stage => stage.label), ['拆解题目与基础知识', '理清思路', '写伪代码', '写真实代码'])
+  assert.deepEqual(ready.knowledge, [])
   assert.deepEqual(ready.revealedHints, [])
   for (let level = 1; level <= 4; level += 1) {
     const result = await dispatchCommand(runtime, 's1', 'question.learning-hint', { practiceId, questionId })
     assert.equal(result.resource.data.guidance.hintLevel, level)
     assert.equal(result.resource.data.guidance.revealedHints.length, level)
+    assert.equal(result.resource.data.guidance.knowledge.length, 1)
+    if (level < 4) assert.doesNotMatch(JSON.stringify(result.resource.data.guidance), /class Solution|intervals.sort/)
   }
   const stored = await repository.getPractice(practiceId)
   assert.equal(stored.questions[0].hintLevel, 4)
@@ -96,7 +100,7 @@ test('标准模式保留三级提示，没有保存的题面明确为空，不�
 })
 
 test('已保存提示继续使用，完整题面仍以官方为准', async () => {
-  const { application, repository, practiceId, questionId } = await setup()
+  const { application, repository, practiceId, questionId } = await setup({ guidance: 'standard' })
   await application.saveAtomicMaterials('s1', { questionId, materials: { statement: 'AI 简短转述', hints: ['已保存的读题提示', '已保存的思路提示'] } })
   await application.revealQuestionLearningHint(practiceId, questionId)
   const learning = (await application.getQuestionLearning(practiceId, questionId)).resource.data
@@ -104,6 +108,33 @@ test('已保存提示继续使用，完整题面仍以官方为准', async () =>
   assert.deepEqual(learning.guidance.revealedHints, ['已保存的读题提示'])
   assert.equal(learning.guidance.hintTotal, 2)
   assert.equal((await repository.getPractice(practiceId)).questions[0].materials.statement, 'AI 简短转述')
+})
+
+test('旧四级提示不能伪装成考场四步，也不会挡住重新生成', async () => {
+  const { application, repository, practiceId, questionId } = await setup()
+  await application.saveAtomicMaterials('s1', { questionId, materials: { statement: '旧题面', hints: ['读题', '手推', '思路', '自己编码'] } })
+  const before = await repository.getPractice(practiceId)
+  const view = (await application.getQuestionLearning(practiceId, questionId, 's1')).resource.data.guidance
+  assert.equal(view.ready, false)
+  assert.deepEqual(view.revealedHints, [])
+  assert.equal(repository.learningCache.size, 0)
+  await assert.rejects(application.revealQuestionLearningHint(practiceId, questionId), { code: 'AI_GUIDANCE_REQUIRED' })
+  let calls = 0
+  await application.generateQuestionGuidance('s1', { practiceId, questionId }, () => { calls++; return true })
+  assert.equal(calls, 1)
+  assert.deepEqual((await repository.getPractice(practiceId)).questions[0].attempts, before.questions[0].attempts)
+})
+
+test('新引导拒绝缺失伪代码、提前泄露实现以及无注释代码', async () => {
+  const { application, repository, practiceId, questionId } = await setup()
+  await application.generateQuestionGuidance('s1', { practiceId, questionId }, () => true)
+  const before = await repository.getPractice(practiceId)
+  for (const hints of [
+    AI_MATERIALS.hints.map((hint, index) => index === 2 ? '请自己写伪代码' : hint),
+    AI_MATERIALS.hints.map((hint, index) => index === 1 ? AI_MATERIALS.hints[3] : hint),
+    AI_MATERIALS.hints.map((hint, index) => index === 3 ? '```python\ndef merge(intervals):\n    return []\n```' : hint),
+  ]) await assert.rejects(application.saveAtomicMaterials('s1', { questionId, materials: { ...AI_MATERIALS, hints } }))
+  assert.deepEqual(await repository.getPractice(practiceId), before)
 })
 
 test('已保存的通用模板不冒充 AI，重新生成重置提示并保留作答、答案与绑定', async () => {

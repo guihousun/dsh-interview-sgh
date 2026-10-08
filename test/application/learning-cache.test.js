@@ -9,7 +9,8 @@ const REFERENCE = { slug: 'merge-intervals', title: '合并区间', statement: '
   code: 'class Solution:\n    def merge(self, intervals):\n        # 返回合并后的区间列表\n        return []' }
 const MATERIALS = { statement: REFERENCE.statement, guidanceIntro: '观察端点的重叠关系。',
   hints: ['观察：[1,4] 与 [4,5] 相接。为什么能合并？', '先手推逐对比较，有哪些重复？',
-    '如何保留最后一段的右端点？', '更新边界时为什么不能缩短覆盖范围？'] }
+    '如何保留最后一段的右端点？\n```text\n排序区间\n初始化结果\n遍历并合并重叠区间\n返回结果\n```',
+    '更新边界时为什么不能缩短覆盖范围？\n```python\nclass Solution:\n    def merge(self, intervals):\n        # 返回已经合并的区间列表\n        return []\n```'] }
 const DETAIL = '通用推导与边界检查\n```python\nclass Solution:\n    def merge(self, intervals):\n        # 返回已经合并的区间列表\n        return []\n```'
 const idsOf = (result) => result.references
 async function draw(f, session = 's1', config = { language: 'python', guidance: 'guided' }) {

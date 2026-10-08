@@ -16,7 +16,8 @@ import { materialsWithReference } from '../domain/leetcode-reference.js'
 import { validateApplicationPorts } from './ports.js'
 import { assertModeCapability } from '../domain/mode-capabilities.js'
 import { formatCodeAnswer } from '../domain/code-answer.js'
-import { guidanceSource, questionLearningView, questionSolutionView } from '../domain/question-learning.js'
+import { guidanceSource, learningHints, questionLearningView, questionSolutionView } from '../domain/question-learning.js'
+import { assertGuidedLearningMaterials } from '../domain/guided-learning.js'
 import { LeetcodeLearningCache } from './leetcode-learning-cache.js'
 import { LEARNING_REQUEST_TIMEOUT, reusableGuidance } from '../domain/learning-cache.js'
 import { leetcodeCompletionProgress } from '../domain/leetcode-completion.js'
@@ -349,6 +350,7 @@ export class InterviewApplication {
       const expected = effectiveLeetcodeGuidance(practice.config) === 'guided' ? 4 : 3
       assertDomain(input.materials?.hints?.length === expected && guidanceSource({ materials: input.materials }) === 'ai',
         'INVALID_AI_GUIDANCE', `AI 引导必须包含 ${expected} 级针对本题的具体提示，不能使用通用模板`)
+      if (expected === 4) assertGuidedLearningMaterials(input.materials, practice.config.language)
     }
     // 示例与数据范围属于事实：题解库里有官方题面时以官方为准，其余表达仍按模型提供的内容保存。
     const reference = await this.#referenceForSlug(target.leetcode?.slug)
@@ -617,7 +619,7 @@ export class InterviewApplication {
     const binding = await this.repository.getSessionBinding(sessionId)
     const current = binding?.practiceId === practice.id && binding?.currentQuestionId === question.id
     if (automatic) assertDomain(current, 'GUIDANCE_SESSION_CHANGED', '请先切换到这道题，再生成 AI 引导')
-    if (!force && guidanceSource(question) === 'ai') return this.getQuestionLearning(practice.id, question.id, sessionId)
+    if (!force && reusableGuidance(practice, question)) return this.getQuestionLearning(practice.id, question.id, sessionId)
     const context = await this.learningCache.context(practice, question, 'guidance')
     assertDomain(context, 'GUIDANCE_LEETCODE_REQUIRED', '只有力扣题支持可复用引导')
     const reservation = await this.repository.reserveLearningRequest(context, { requestId: this.ids.next('guidance'), questionId: question.id,
@@ -713,7 +715,7 @@ export class InterviewApplication {
     const practice = await this.#practice(practiceId)
     const question = findQuestion(practice, requiredId(questionId, 'questionId'))
     assertModeCapability(practice, 'materials.reveal', 'HINTS_NOT_ALLOWED', '当前模式不提供提示阶梯')
-    assertDomain(guidanceSource(question) === 'ai', 'AI_GUIDANCE_REQUIRED', '请先让 AI 为这道题生成引导')
+    assertDomain(learningHints(practice, question).length > 0, 'AI_GUIDANCE_REQUIRED', '请先让 AI 为这道题生成当前版本的引导')
     const request = await this.learningCache.read(await this.learningCache.context(practice, question, 'guidance'))
     assertDomain(request?.status !== 'generating', 'AI_GUIDANCE_PENDING', 'AI 引导正在生成，请稍候')
     const revealed = revealHint(practice, { questionId: question.id, now: this.clock.now() })

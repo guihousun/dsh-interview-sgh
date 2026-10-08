@@ -1,4 +1,4 @@
-import { ANSWER_CODE_COMMENTS_POLICY, modeContextForMode } from './atomic-prompt-policy.js'
+import { ANSWER_CODE_COMMENTS_POLICY, GUIDED_LEARNING_POLICY, modeContextForMode } from './atomic-prompt-policy.js'
 
 function pluginMessage(text) {
   return {
@@ -37,7 +37,7 @@ function instructionFor(event) {
     case 'materials.generate':
       return `${activeModeContext(event)}练习 UI 请求为当前力扣题生成题目材料。${practice}${question}。先调用 interview_practice read 读取真实题目与已保存材料；尚无材料时调用 interview_materials create 保存题意、示例、数据范围、前置知识、分级提示、常见误区和相似题，已有材料则调用 interview_materials replace 重写。最后把工具返回的 materialsFence 原样输出到回复正文。${END}`
     case 'guidance.generate':
-      return `${activeModeContext(event)}用户请求 AI 为这道题生成专业的逐级引导。${practice}${question}。${request}先调用 interview_practice read 读取指定练习的真实题目和 config.language，再调用 interview_notes read 读取官方题面与参考笔记，必要时调用 interview_notes topics 取专题背景。内容会进入题库供以后复用：只围绕题目编写，不引用个人历史作答、得分或代码错误；传 reusable=true。禁止另出一道题或改用会话里的其他题目。用自己的推导编写材料：guidance_intro 说明本题具体学习目标；knowledge 解释本题用到的概念和操作成本，不提前给出最优算法；guided 恰好写 4 级 hints，standard 恰好写 3 级。每一级都必须包含“关键观察/为什么”“本题的一个具体小例子或手推状态”“一个可回答的自检问题”，用 Markdown 分段，避免“先理解题意”“选择合适的数据结构”这类空话。按读题与语义边界、直观解法与瓶颈、关键关系及状态不变量、更新步骤与边界验证逐步加深，标准模式可合并前两级。只在最后一级给局部伪代码，不写完整代码或完整答案；不要在前置知识、pitfalls 或 guidance_intro 提前泄露后面的提示。存在旧材料（包括本地模板）则 interview_materials replace，否则 create；传入明确的 question_id，保存后保持提示未解锁，不调用 interview_materials reveal、interview_explanation 或任何作答/评分工具。最后把工具返回的 materialsFence 原样输出到回复正文，UI 会自行刷新。${END}`
+      return `${activeModeContext(event)}用户请求 AI 为这道题生成专业的逐级引导。${practice}${question}。${request}先调用 interview_practice read 读取指定练习的真实题目和 config.language，再调用 interview_notes read 读取官方题面与参考笔记，必要时调用 interview_notes topics 取专题背景。内容会进入题库供以后复用：只围绕题目编写，不引用个人历史作答、得分或代码错误；传 reusable=true。禁止另出一道题或改用会话里的其他题目。${GUIDED_LEARNING_POLICY}存在旧材料（包括本地模板）则 interview_materials replace，否则 create；传入明确的 question_id，保存后保持提示未解锁，不调用 interview_materials reveal、interview_explanation 或任何作答/评分工具。最后把工具返回的 materialsFence 原样输出到回复正文，UI 会自行刷新。${END}`
     case 'review.generate':
       return `${activeModeContext(event)}练习 UI 请求当前题讲解。${practice}${question}，phase=reveal。${request}调用 interview_practice read 读取真实配置与完整上下文。${event.mode === 'leetcode' ? '调用 interview_notes read 读取题面与参考。编写可以反复使用的通用完整题解，不引用个人作答、评分或修正某次提交；传 scope=reference。' : ''}已有讲解时调用 interview_explanation replace，否则 create 保存，然后调用 interview_show_review 展示。直接看答案不创建作答、评价或评分。${END}`
     case 'review.show':
