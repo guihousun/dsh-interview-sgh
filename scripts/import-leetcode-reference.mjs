@@ -11,7 +11,7 @@
 //   --database <path>     直接指定数据库文件
 //   --limit <n>           只处理前 n 道题（调试用）
 //
-// 说明：题解库只写本地 SQLite；官方题面在导入时抓取并缓存到 --notes 目录，不会打进 npm 包。
+// 说明：显式导入会更新本地 SQLite；插件另带 Hot100 离线快照，首次启动自动补缺失记录。
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'

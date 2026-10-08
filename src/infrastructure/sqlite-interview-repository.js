@@ -480,6 +480,15 @@ export class SqliteInterviewRepository {
 
   // 题解库整批导入：一次事务里 upsert，导入脚本可以反复执行。
   async saveReferenceLibrary({ references = [], topics = [], now = Date.now() } = {}) {
+    return this.#writeReferenceLibrary({ references, topics, now, overwrite: true })
+  }
+
+  // 首次安装/升级补齐缺失题目；不覆盖用户已经导入或修改的记录。
+  seedReferenceLibrary({ references = [], topics = [], now = Date.now() } = {}) {
+    return this.#writeReferenceLibrary({ references, topics, now, overwrite: false })
+  }
+
+  #writeReferenceLibrary({ references, topics, now, overwrite }) {
     const insertReference = this.database.prepare(`
       INSERT INTO leetcode_reference (
         slug, number, title, title_en, difficulty, category, tags_json, url,
@@ -497,6 +506,7 @@ export class SqliteInterviewRepository {
         complexity = excluded.complexity, variants_json = excluded.variants_json, hardcode_json = excluded.hardcode_json,
         source_file = excluded.source_file, source_anchor = excluded.source_anchor,
         official_source = excluded.official_source, fetched_at = excluded.fetched_at, updated_at = excluded.updated_at
+      WHERE ?
     `)
     const insertTopic = this.database.prepare(`
       INSERT INTO leetcode_topic_notes (category, core, topics_json, pitfalls_json, source_file, updated_at)
@@ -504,11 +514,13 @@ export class SqliteInterviewRepository {
       ON CONFLICT(category) DO UPDATE SET
         core = excluded.core, topics_json = excluded.topics_json, pitfalls_json = excluded.pitfalls_json,
         source_file = excluded.source_file, updated_at = excluded.updated_at
+      WHERE ?
     `)
     this.database.exec('BEGIN IMMEDIATE')
+    let referencesWritten = 0, topicsWritten = 0
     try {
       for (const reference of references) {
-        insertReference.run(
+        referencesWritten += insertReference.run(
           reference.slug,
           reference.number || '',
           reference.title || '',
@@ -536,24 +548,26 @@ export class SqliteInterviewRepository {
           reference.officialSource || '',
           reference.fetchedAt || now,
           now,
-        )
+          overwrite ? 1 : 0,
+        ).changes
       }
       for (const topic of topics) {
-        insertTopic.run(
+        topicsWritten += insertTopic.run(
           topic.category,
           topic.core || '',
           JSON.stringify(topic.topics || []),
           JSON.stringify(topic.pitfalls || []),
           topic.sourceFile || '',
           now,
-        )
+          overwrite ? 1 : 0,
+        ).changes
       }
       this.database.exec('COMMIT')
     } catch (error) {
       this.database.exec('ROLLBACK')
       throw error
     }
-    return { references: references.length, topics: topics.length }
+    return { references: referencesWritten, topics: topicsWritten }
   }
 
   async findReference(slug) {

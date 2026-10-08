@@ -1,6 +1,7 @@
 import { InterviewApplication } from '../../application/interview-application.js'
 import { MarkdownPracticeExporter } from '../../infrastructure/markdown-practice-exporter.js'
 import { SqliteInterviewRepository } from '../../infrastructure/sqlite-interview-repository.js'
+import { initializeBundledReferenceLibrary } from '../../infrastructure/bundled-reference-library.js'
 import { createSystemPorts } from '../../infrastructure/system-ports.js'
 import { registerApiRoutes } from '../http/api-routes.js'
 import { AgentEventBridge } from './agent-event-bridge.js'
@@ -13,6 +14,7 @@ export const inject = ['tools', 'agents']
 
 export function createRuntime(ctx, options = {}) {
   const repository = options.repository || new SqliteInterviewRepository(options.databasePath)
+  initializeBundledReferenceLibrary(repository)
   const exporter = options.exporter || new MarkdownPracticeExporter({ outputDirectory: options.exportDirectory })
   const system = createSystemPorts()
   const application = options.application || new InterviewApplication({

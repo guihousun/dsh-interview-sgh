@@ -1,0 +1,3 @@
+# 原始题解笔记和 CSV 跨平台使用 LF；保留 Markdown 硬换行及题面字段原有空格。
+docs/hot100/*.md text eol=lf whitespace=-blank-at-eol
+docs/hot100/*.csv text eol=lf whitespace=-blank-at-eol

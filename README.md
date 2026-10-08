@@ -51,7 +51,11 @@
 - **个性化点评单独保存**：代码分析仍检查本次提交，但优先使用已保存参考答案，不重复写整题讲解。针对个人作答的修正版不进入通用题库；旧记录只有确认不依赖个人作答的内容才自动回收为缓存。
 - 需要「生成式 UI」渲染：材料卡由 [`@changfenhuang/dsh-genui`](https://github.com/omdsh-dev/dsh-genui) 渲染，未安装该插件时材料仍可在题目卡内查看。
 
-### 题解库：把你自己整理的题解接进来
+### 内置 Hot100 题解库与个人题解导入
+
+本分支已随包内置 **100 道 Hot100 完整题解和 17 组专题基础知识**：题面、示例、约束、解析、带注释的 Python 答案、替代解法与复杂度均可直接读取。新电脑首次启动插件就会自动初始化，无需复制作者的数据库或指定笔记路径；重复启动只补齐缺失题目，保留已有个人题解。
+
+[分专题 Markdown、速记笔记和题面 CSV](docs/hot100/README.md) 一并上传并随包分发，插件使用的是已应用代码审核修正的 [`hot100-reference-library.json`](src/data/hot100-reference-library.json)。题面为离线快照，保留官方来源与抓取时间；阅读内置题目和 Python 参考答案不需要调用 AI，生成 AI 引导/讲解仍使用你自己配置的模型。
 
 如果你有一份自己的 Hot 100 题解（按专题分册的 Markdown，或者从 LeetCode 导出的题目 CSV），可以用导入脚本把它变成插件的**本地题解库**：
 
@@ -64,7 +68,7 @@ node scripts/import-leetcode-reference.mjs --notes "D:\path\to\Hot100_题解" --
 - **官方题面是事实基线**：题意、示例、数据范围默认从 `leetcode.cn` 实时抓取（逐题失败回退本地 CSV），保存材料时也会自动以官方为准——模型把示例数字写错也会被纠正。
 - **你的题解是参考素材**：思路、口诀、图解、代码、复杂度、易错点、专题前置知识都会入库（`interview_notes` 工具按题/按专题读取），但它们只是参考：讲解与材料由模型重新组织，可以改写、补充或重写，不会照抄。
 - **来源可追溯**：材料卡与对话里的材料围栏都会写明「示例与数据范围取自官方题面；参考了你的《…》，已按需重写」。
-- **不进发行包**：脚本运行时从你本地的目录读，官方题面缓存在该目录下，npm 包里只有解析器，不含任何 LeetCode 内容。
+- **分发与个人数据分开**：发行包只包含公共 Hot100 题面快照和题解笔记；个人练习、作答、完成状态、简历、附件及 AI 会话/缓存仍保存在本机。你也可以用上述脚本明确导入或更新自己的笔记。
 
 ### 跟随宿主主题（含暗色模式）
 
@@ -110,16 +114,25 @@ node scripts/import-leetcode-reference.mjs --notes "D:\path\to\Hot100_题解" --
 需要 DeepSeek Harness Web 和 Node.js 22.5 或更高版本。
 
 ```powershell
-dsh plugin --profile web add dsh-interview
+git clone https://github.com/guihousun/dsh-interview-sgh.git
+cd dsh-interview-sgh
+npm ci
+npm run build
+$pluginPath = (Get-Location).Path -replace '\\', '/'
+dsh plugin --profile web add "link:$pluginPath"
 ```
 
-安装完成后重启 `dsh web`。
+安装完成后启动或重启 `dsh web --port 3080`，即可使用内置题解。本分支没有发布 npm；直接安装 npm 的 `dsh-interview` 会得到上游版本。
 
 更新插件：
 
 ```powershell
-dsh plugin --profile web update dsh-interview
+git pull --ff-only
+npm ci
+npm run build
 ```
+
+更新完成后重启 DSH Web；题库初始化不会覆盖你修改过的题解。
 
 ## 开始第一次练习
 
